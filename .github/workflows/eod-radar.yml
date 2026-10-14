@@ -1,0 +1,38 @@
+name: 大量K雷達盤後自動更新
+on:
+  workflow_dispatch:
+    inputs:
+      backfill_days:
+        description: '初次回補輸入 220，平常留 0'
+        required: false
+        default: '0'
+  schedule:
+    - cron: '15 10 * * 1-5'
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Collect official Taiwan market data
+        env:
+          BACKFILL: ${{ github.event.inputs.backfill_days || '0' }}
+        run: |
+          python scripts/collector.py --backfill "$BACKFILL" --delay 1.1
+          python -m unittest discover -s scripts -p 'test_*.py'
+      - name: Commit updated market data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add storage/history.json data/radar.json
+          if ! git diff --cached --quiet; then
+            git commit -m "data: update end-of-day TWSE TPEx radar"
+            git push
+          else
+            echo "No market data changes"
+          fi
