@@ -404,8 +404,9 @@ def run(days,delay,as_of=None):
         c['investment']=score_company(st,c)
     snapshot['fundamentalFeeds']=financial_sources
     snapshot['financeRulesVersion']='finance-v1.3'
-    snapshot['rankMethod']='Tech is independent; financial score requires monthly revenue YoY and cumulative YoY; missing values are null; not buy advice'
-    snapshot['priorityTop60']=[{'code':c['code'],'market':c['market'],'priority':c['investment']['overall']} for c in sorted(snapshot['candidates'],key=lambda c:((c['investment']['overall'] is not None),c['investment']['overall'] or -1,c['score']),reverse=True)[:60]]
+    snapshot['rankMethod']='V1.4 first-launch priority; finance score is secondary, requires monthly revenue YoY and cumulative YoY; missing remains null; not buy advice'
+    snapshot['launchRulesVersion']='launch-v1.4'
+    snapshot['priorityTop60']=[{'code':c['code'],'market':c['market'],'priority':c['investment']['overall']} for c in sorted(snapshot['candidates'],key=lambda c:(c.get('launchRank',0),(c['investment']['overall'] is not None),c['investment']['overall'] or -1,c['score']),reverse=True)[:60]]
     snapshot['generatedAt']=dt.datetime.now(dt.timezone.utc).isoformat()
     atomic_json(SNAPSHOT,snapshot)
     LOG.info('Wrote %s records, %s eligible stocks, %s candidates on %s',modified,snapshot['eligibleCount'],snapshot['candidateCount'],snapshot['asOf'])

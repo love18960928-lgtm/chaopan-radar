@@ -47,105 +47,156 @@ def limit_up_count(bars):
     return count
 
 
+def _five_day_change(history, close):
+    if len(history) < 5 or float(history[-5][4]) <= 0:
+        return 0.0
+    return 100 * (close / float(history[-5][4]) - 1)
+
+
 def scan_stock(stock):
-    """One stock -> candidate or None, using ONLY completed daily candles."""
-    bars = sorted(stock.get('bars', []), key=lambda r: r[0])
+    """V1.4: completed day K only; priority is FIRST price crossing, regardless of volume.
+
+    A lock-limit candle with low turnover still qualifies. Prelaunch is a speculative
+    watch signal, not an assertion that tomorrow will rise. Old V1.3 tags preserved.
+    """
+    bars = sorted(stock.get('bars', []), key=lambda r:r[0])
     if len(bars) < MIN_SESSIONS:
         return None
-    t = bars[-1]
-    history = bars[:-1][-LOOKBACK:]
-    if len(history)<54:
+    t, history = bars[-1], bars[:-1][-LOOKBACK:]
+    if len(history) < 54:
         return None
-    close, high, low, opn, vol = (float(t[4]),float(t[2]),float(t[3]),float(t[1]),float(t[5]))
-    if min(close, high, low, opn) <= 0 or vol <= 0:
+    close, high, low, opn, vol = map(float,(t[4],t[2],t[3],t[1],t[5]))
+    if min(close,high,low,opn,vol) <= 0 or high < low or close > high + .011 or close < low - .011:
         return None
-    prior10 = bars[-11:-1]
-    prior20 = bars[-21:-1]
-    if len(prior20)<20:
+    prior10,prior20=bars[-11:-1],bars[-21:-1]
+    if len(prior20) < 20:
         return None
-    avg10 = mean(float(b[5]) for b in prior10)
-    avg20 = mean(float(b[5]) for b in prior20)
-    if avg20<MIN_AVG_LOTS:
+    avg10=mean(float(b[5]) for b in prior10)
+    avg20=mean(float(b[5]) for b in prior20)
+    if avg20 < MIN_AVG_LOTS:
         return None
-    vol_ratio = round(vol/avg10, 2) if avg10 else 0
-    recent = history[-LOOKBACK:]
-    pct90 = percentile([float(b[5]) for b in recent], .9)
-    anchors = []
-    for i, b in enumerate(bars[:-1]):
-        if b[0] < recent[0][0]: continue
-        prev20 = bars[max(0,i-20):i]
-        if len(prev20)<20: continue
-        anchor_vol = float(b[5]); anchor_high = float(b[2])
-        if not (anchor_vol >= pct90 and anchor_vol >= 1.8*mean(float(x[5]) for x in prev20)):
+    vol_ratio=round(vol/avg10,2) if avg10 else 0
+    prev_close=float(bars[-2][4])
+    pct90=percentile([float(b[5]) for b in history], .9)
+    anchors=[]
+    first_index=len(bars)-1-len(history)
+    for j,b in enumerate(history):
+        i=first_index+j
+        prev20=bars[max(0,i-20):i]
+        if len(prev20)<20:continue
+        a_vol=float(b[5]);a_high=float(b[2]);
+        if not(a_vol>=pct90 and a_vol>=1.8*mean(float(r[5]) for r in prev20)):
             continue
-        # An intact resistance: no following CLOSE exceeded anchor high prior to today.
-        if any(float(x[4]) > anchor_high + 1e-7 for x in bars[i+1:-1]):
+        # A historical close ABOVE this high before today invalidates a fresh signal.
+        if any(float(r[4])>a_high+1e-7 for r in bars[i+1:-1]):
             continue
-        anchors.append({'date':b[0], 'high':anchor_high, 'close':float(b[4]), 'vol':round(anchor_vol), 'index':i})
-    prev_close = float(bars[-2][4])
-    # The highest intact volume-K resistance is the most conservative resistance line.
-    anchor = max(anchors, key=lambda a:(a['high'],a['vol'])) if anchors else None
-    neck = anchor['high'] if anchor else None
-    dist = round(100*(close/neck-1),2) if neck else None
-    first = bool(anchor and prev_close <= neck and close > neck)
-    near = bool(anchor and -3.0 <= dist <= 0)
-    old_max = max(history, key=lambda b:float(b[5]))
-    new_volume = vol>float(old_max[5]) and close>float(old_max[4])
-    broke_old_high = close > float(old_max[2])
-    limit20 = limit_up_count(bars)
-    close_in_top = ((close-low)/(high-low)) if high>low else 1.
-    confirmed = bool(first and vol_ratio>=1.5 and close_in_top >= .7)
-    valid = first or near or new_volume or limit20 >=2
-    if not valid: return None
-    tags = []
-    if first: tags.append('first')
-    if near: tags.append('near')
-    if new_volume: tags.append('volume')
-    if limit20 >=2: tags.append('limit')
-    points = (70 if first else 0) + (32 if near else 0) + (28 if new_volume else 0) + min(limit20, 5)*7
-    points += min(vol_ratio,5)*6 if first or new_volume else min(vol_ratio,3)*2
-    if confirmed: points += 12
-    if first and dist is not None and dist>8: points -= 30
-    if new_volume and not broke_old_high: points -= 5
-    if near and dist is not None: points += 6-max(0,abs(dist))*2
-    points = round(points)
+        anchors.append({'date':b[0],'high':a_high,'close':float(b[4]),
+                        'vol':round(a_vol),'index':i})
+
+    crossings=[a for a in anchors if prev_close <= a['high'] < close]
+    # A: reference the heaviest intact anchor that today's close crosses.
+    anchor=max(crossings,key=lambda a:(a['vol'],a['high'])) if crossings else None
+    if not anchor:
+        # B and legacy near signal: closest unbroken upper resistance.
+        ceilings=[a for a in anchors if a['high']>=close]
+        anchor=min(ceilings,key=lambda a:(a['high']-close,-a['vol'])) if ceilings else None
+    neck=anchor['high'] if anchor else None
+    dist=round(100*(close/neck-1),2) if neck else None
+    first=bool(anchor and anchor in crossings)
+    near=bool(anchor and dist is not None and -3 <= dist <= 0 and not first)
+    # B: 3%-10% below anchor, but MUST show improving price/volume; not pure sideways.
+    sma10=mean(float(b[4]) for b in prior10)
+    price_change5=_five_day_change(history,close)
+    recent_high=max(float(b[4]) for b in history[-10:])
+    momentum=bool(close>=sma10 and (price_change5>=2 or vol_ratio>=1.3 or close>recent_high))
+    prep=bool(anchor and dist is not None and -10 <= dist < -3 and momentum)
+    old_max=max(history,key=lambda b:float(b[5]))
+    new_volume=bool(vol>float(old_max[5]) and close>float(old_max[4]))
+    broke_old_high=close>float(old_max[2])
+    limit20=limit_up_count(bars)
+    close_in_top=(close-low)/(high-low) if high>low else 1.
+    one_price=abs(opn-high)<.011 and abs(opn-low)<.011 and abs(opn-close)<.011
+    limit_target=(float(bars[-2][6]) if len(bars[-2])>6 and bars[-2][6] is not None
+                  else approximate_limit_up(prev_close))
+    locked_limit=bool(first and one_price and close>=limit_target-.011 and
+                      1.085<=close/prev_close<=1.115)
+    # A is price-confirmed on close even with low trading volume.
+    price_confirmed=first
+    volume_confirmed=bool(first and vol_ratio>=1.5 and close_in_top>=.7)
+    confirmed=volume_confirmed  # backward-compatible V1.3 meaning
+    valid=first or prep or near or new_volume or limit20>=2
+    if not valid:return None
+    tags=[]
+    if first:tags.append('first')
+    if prep:tags.append('prep')
+    if near:tags.append('near')
+    if new_volume:tags.append('volume')
+    if limit20>=2:tags.append('limit')
+    points=(70 if first else 0)+(49 if prep else 0)+(32 if near else 0)+ (28 if new_volume else 0)+min(limit20,5)*7
+    points+=min(vol_ratio,5)*6 if first or new_volume else min(vol_ratio,3)*2
+    if volume_confirmed:points+=12
+    if locked_limit:points+=16
+    if first and dist is not None and dist>8:points-=30
+    if new_volume and not broke_old_high:points-=5
+    if near and dist is not None:points+=6-max(0,abs(dist))*2
+    if prep:points+=max(0,min(10,price_change5))
+    launch_stage='首次發動' if first else '發動前預備' if prep else '接近頸線' if near else '大量確認' if new_volume else '漲停動能'
+    launch_rank=5 if first else 4 if prep else 3 if new_volume else 2 if near else 1
+    launch_reason=( '一字漲停突破大量K高點；成交量非必要條件' if locked_limit else
+                    '今天收盤首次站上有效歷史大量K高點' if first else
+                    '尚未突破：位於大量K高點下3%～10%，且短期價量改善' if prep else
+                    '距歷史大量K高點3%以內，尚未正式突破' if near else
+                    '今日成交量大於前120日最大量' if new_volume else
+                    '20日內有多次漲停，但不能代替突破')
     return {
         'code':stock['code'],'name':stock['name'],'market':stock['market'],
-        'date':t[0], 'open':opn,'high':high,'low':low,'close':close,'lots':round(vol),
+        'date':t[0],'open':opn,'high':high,'low':low,'close':close,'lots':round(vol),
         'prevClose':prev_close,'changePct':round(100*(close/prev_close-1),2) if prev_close>0 else None,
-        'neck':neck,'neckDate':anchor['date'] if anchor else None,'neckLots':anchor['vol'] if anchor else None,
-        'distancePct':dist,'volumeRatio':vol_ratio, 'limit20':limit20,
+        'neck':neck,'neckDate':anchor['date'] if anchor else None,
+        'neckLots':anchor['vol'] if anchor else None,'distancePct':dist,
+        'volumeRatio':vol_ratio,'limit20':limit20,
         'oldMaxLots':round(float(old_max[5])),'oldMaxDate':old_max[0],
         'oldMaxClose':float(old_max[4]),'oldMaxHigh':float(old_max[2]),
-        'newVolumeAboveOldHigh':broke_old_high,'confirmed':confirmed,'overextended':bool(first and dist>8),
-        'tags':tags,'score':points,
-        'bars':[[b[0],float(b[1]),float(b[2]),float(b[3]),float(b[4]),round(float(b[5]))] for b in bars[-120:]],
+        'newVolumeAboveOldHigh':broke_old_high,'confirmed':confirmed,
+        'priceConfirmed':price_confirmed,'volumeConfirmed':volume_confirmed,
+        'onePriceLimit':locked_limit,'preLaunch':prep,'launchStage':launch_stage,
+        'launchReason':launch_reason,'launchRank':launch_rank,
+        'momentum5Pct':round(price_change5,2),'overextended':bool(first and dist>8),
+        'tags':tags,'score':round(points),
+        'bars':[[b[0],float(b[1]),float(b[2]),float(b[3]),float(b[4]),round(float(b[5]))]
+                for b in bars[-120:]],
     }
 
 
 def build_snapshot(stocks):
-    candidates=[]
-    eligible = 0
-    by_market={'上市':0,'上櫃':0}
+    candidates=[];eligible=0;by_market={'上市':0,'上櫃':0}
     for stock in stocks.values():
-        if len(stock.get('bars',[])) >= MIN_SESSIONS: eligible += 1
-        if stock.get('market') in by_market: by_market[stock['market']]+=1
+        if len(stock.get('bars',[]))>=MIN_SESSIONS:eligible+=1
+        if stock.get('market') in by_market:by_market[stock['market']]+=1
         result=scan_stock(stock)
-        if result: candidates.append(result)
-    candidates.sort(key=lambda x:(x['score'],x['lots']),reverse=True)
+        if result:candidates.append(result)
+    # CRITICAL: first breakout goes above every 20-day multi-limit or near-only pick.
+    candidates.sort(key=lambda x:(x['launchRank'],x['score'],x['lots']),reverse=True)
     lastdate=max((x['bars'][-1][0] for x in stocks.values() if x.get('bars')),default=None)
-    market_dates={m:max((x['bars'][-1][0] for x in stocks.values() if x.get('market')==m and x.get('bars')),default=None) for m in ('上市','上櫃')}
+    market_dates={m:max((x['bars'][-1][0] for x in stocks.values()
+                         if x.get('market')==m and x.get('bars')),default=None)
+                  for m in ('上市','上櫃')}
     if market_dates['上市']!=market_dates['上櫃']:
         readiness='partial'
     else:
-        readiness='live' if eligible>=500 and all(sum(stock.get('market')==m and len(stock.get('bars',[]))>=MIN_SESSIONS for stock in stocks.values())>=250 for m in ('上市','上櫃')) else 'warming'
-    # No cross-day mixing: only emit candidates whose latest bar equals the newest trading date.
+        readiness='live' if eligible>=500 and all(
+            sum(stock.get('market')==m and len(stock.get('bars',[]))>=MIN_SESSIONS
+                for stock in stocks.values())>=250 for m in ('上市','上櫃')) else 'warming'
     candidates=[c for c in candidates if c['date']==lastdate]
-    return {
-        'mode':readiness,
-        'asOf':lastdate, 'tradingDate':lastdate,'marketAsOf':market_dates,'marketCount':by_market,'stockCount':len(stocks),'eligibleCount':eligible,
-        'candidateCount':len(candidates),'counts':{key:sum(key in c['tags'] for c in candidates) for key in ('first','near','volume','limit')},
-        'rulesVersion':'eod-v1.0',
-        'notes':['僅盤後資料，不是即時行情','漲停次數為價格推估，除權息或特殊交易股票可能誤判', '新大量條件：成交量大於前120日最大量，收盤高於舊最大量K收盤'],
-        'candidates':candidates[:600],
-    }
+    return {'mode':readiness,'asOf':lastdate,'tradingDate':lastdate,
+            'marketAsOf':market_dates,'marketCount':by_market,'stockCount':len(stocks),
+            'eligibleCount':eligible,'candidateCount':len(candidates),
+            'counts':{k:sum(k in c['tags'] for c in candidates)
+                      for k in ('first','prep','near','volume','limit')},
+            'rulesVersion':'eod-v1.4-launch',
+            'notes':['僅盤後資料，無法在漲停當下預警',
+                     '首次突破不要求新成交量超過舊大量K',
+                     '發動前預備是機率不明的候選觀察，不能推論隔日必漲',
+                     '漲停次數為價格估算，除權息或特殊交易可能誤判',
+                     '價量未經除權息還原，異常跳空須額外驗證'],
+            'candidates':candidates[:600]}
