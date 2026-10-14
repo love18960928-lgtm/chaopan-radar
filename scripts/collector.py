@@ -7,9 +7,12 @@ Network access to the exchanges can be blocked, throttled, or changed; errors ar
 swallowed into empty/counterfeit signals. No snapshot is published if markets are incomplete.
 """
 import argparse
+import csv
+import io
 import datetime as dt
 import json
 import logging
+import math
 import os
 import random
 import re
@@ -206,6 +209,157 @@ def atomic_json(path,payload):
     os.replace(temp,path)
 
 
+# Optional company fundamentals: official/public snapshots; never fabricate missing values.
+FIN_SOURCES = (
+ ('上市','revenue','https://openapi.twse.com.tw/v1/opendata/t187ap05_L','json'),
+ ('上櫃','revenue','https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O','json'),
+ ('上櫃','revenue','https://mopsfin.twse.com.tw/opendata/t187ap05_O.csv','csv'),
+ ('上市','valuation','https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL','json'),
+ ('上市','income','https://openapi.twse.com.tw/v1/opendata/t187ap06_L_ci','json'),
+ ('上櫃','income','https://mopsfin.twse.com.tw/opendata/t187ap06_O_ci.csv','csv'),
+)
+
+
+def financial_rows(url,kind):
+    if kind=='json':
+        data=get_json(url)
+        return data if isinstance(data,list) else data.get('data',[]) if isinstance(data,dict) else []
+    req=urllib.request.Request(url,headers={'User-Agent':UA,'Accept':'text/csv,*/*'})
+    with urllib.request.urlopen(req,timeout=35) as resp:raw=resp.read()
+    for encoding in ('utf-8-sig','big5','cp950'):
+        try:return list(csv.DictReader(io.StringIO(raw.decode(encoding))))
+        except UnicodeDecodeError:continue
+    raise RuntimeError('Cannot decode financial CSV')
+
+
+def findval(row,*keys):
+    for key in keys:
+        value=row.get(key)
+        if value is not None and str(value).strip() not in ('','--','-','N/A','—'):
+            return value
+    return None
+
+
+def validnum(value,low=-1e12,high=1e12):
+    x=num(value)
+    return round(x,3) if x is not None and math.isfinite(x) and low<=x<=high else None
+
+
+def financial_fields(kind,row):
+    if kind=='revenue':
+        period=str(findval(row,'資料年月','資料月份','年月') or '').strip()
+        if not re.fullmatch(r'\d{5,6}',period):return None
+        month=int(period[-2:]); year=int(period[:-2])+1911
+        if not (2000<=year<=2100 and 1<=month<=12):return None
+        return {'revenuePeriod':f'{year:04d}-{month:02d}',
+                'revenueYoY':validnum(findval(row,'營業收入-去年同月增減(%)','營業收入-去年同月增減％','當月營收較去年同期增減(%)'),-1000,10000),
+                'revenueCumYoY':validnum(findval(row,'累計營業收入-前期比較增減(%)','累計營業收入-前期比較增減％','累計營收較去年同期增減(%)'),-1000,10000),
+                'industry':str(findval(row,'產業別','產業類別') or '')[:60]}
+    if kind=='valuation':
+        date=str(findval(row,'Date') or '').strip()
+        if not re.fullmatch(r'\d{7}',date):return None
+        return {'valuationDate':f'{int(date[:3])+1911:04d}-{date[3:5]}-{date[5:]}',
+                'pe':validnum(findval(row,'PEratio'),0,10000),
+                'pb':validnum(findval(row,'PBratio'),0,10000),
+                'dividendYield':validnum(findval(row,'DividendYield'),0,100)}
+    if kind=='income':
+        yy=str(findval(row,'年度','報表年度') or '').strip()
+        season=str(findval(row,'季別','季度') or '').strip().replace('第','').replace('季','')
+        if not (yy.isdigit() and season.isdigit() and int(season) in (1,2,3,4)):return None
+        year=int(yy)+(1911 if int(yy)<1911 else 0)
+        eps=validnum(findval(row,'基本每股盈餘（元）','基本每股盈餘(元)','基本每股盈餘'),-10000,10000)
+        gross=validnum(findval(row,'營業毛利（毛損）','營業毛利(毛損)','營業毛利淨額（毛損）'))
+        sales=validnum(findval(row,'營業收入','收入'))
+        margin=round(gross/sales*100,2) if gross is not None and sales is not None and sales>0 else None
+        return {'epsPeriod':f'{year}Q{int(season)}','eps':eps,'grossMargin':margin}
+    return None
+
+
+def enrich_financials(allstocks):
+    # Update only valid official data; preserve previous fields after transient failures.
+    fetched={}
+    for market,kind,url,format_type in FIN_SOURCES:
+        try:
+            rows=financial_rows(url,format_type)
+            if len(rows)<50:raise RuntimeError(f'incomplete financial response: {len(rows)} rows')
+            count=0
+            for row in rows:
+                if not isinstance(row,dict):continue
+                code=str(findval(row,'公司代號','股票代號','證券代號','Code','代號') or '').strip()
+                stock=allstocks.get(market+code)
+                if not stock:continue
+                fields=financial_fields(kind,row)
+                if not fields:continue
+                previous=stock.setdefault('fundamentals',{})
+                anchor='revenuePeriod' if kind=='revenue' else 'epsPeriod' if kind=='income' else 'valuationDate'
+                # Prevent latest-request ordering or stale official response from overwriting newer values.
+                if str(fields.get(anchor,'')) < str(previous.get(anchor,'')):continue
+                for key,value in fields.items():
+                    if value is not None and value!='':previous[key]=value
+                count+=1
+            fetched[market+':'+kind]=count
+            LOG.info('Financial feed %s %s: %d matched stocks',market,kind,count)
+        except Exception as ex:
+            LOG.warning('Optional financial feed %s %s unavailable: %s',market,kind,ex)
+    return fetched
+
+
+
+
+def score_company(stock, candidate):
+    """Transparent rule-based scores, not forecasts or probabilities. None if source missing."""
+    f=dict(stock.get('fundamentals') or {})
+    trade_date=candidate.get('date','')
+    # Explicit freshness gates. Do not score a company using stale last-known facts.
+    try:
+        rd=dt.date.fromisoformat(str(f.get('revenuePeriod',''))+'-01')
+        td=dt.date.fromisoformat(trade_date)
+        month_age=(td.year-rd.year)*12+td.month-rd.month
+        if month_age<0 or month_age>3:
+            f.pop('revenueYoY',None);f.pop('revenueCumYoY',None)
+    except (ValueError,TypeError):
+        f.pop('revenueYoY',None);f.pop('revenueCumYoY',None)
+    try:
+        vd=dt.date.fromisoformat(str(f.get('valuationDate','')))
+        if abs((dt.date.fromisoformat(trade_date)-vd).days)>20:f.pop('pe',None)
+    except (ValueError,TypeError):f.pop('pe',None)
+    def scaled(value,tiers):
+        if value is None:return None
+        for minv,points in tiers:
+            if value>=minv:return points
+        return 0
+    r1=scaled(f.get('revenueYoY'),[(40,25),(25,22),(15,18),(8,14),(0,9),(-10,4),(-1e9,0)])
+    r2=scaled(f.get('revenueCumYoY'),[(30,25),(20,22),(12,18),(5,14),(0,9),(-10,4),(-1e9,0)])
+    eps=scaled(f.get('eps'),[(5,20),(2,17),(.01,13),(0,4),(-1e9,0)])
+    gm=scaled(f.get('grossMargin'),[(40,15),(25,12),(15,9),(5,6),(-1e9,2)])
+    weighted=[(25,r1),(25,r2),(20,eps),(15,gm)]
+    avail=sum(w for w,v in weighted if v is not None)
+    earned=sum(v for w,v in weighted if v is not None)
+    growth=round(earned / avail * 100) if avail>=50 and r1 is not None and r2 is not None else None
+    pe=f.get('pe')
+    pe_score=scaled(pe,[(0,0)]) if pe is not None else None
+    if pe is not None and pe>0:
+        pe_score=15 if pe<=12 else 12 if pe<=22 else 9 if pe<=35 else 5 if pe<=55 else 0
+    tech=min(100,max(0,round(float(candidate.get('score') or 0)/1.45)))
+    c_coverage=round(avail/85*100)
+    if f.get('pe') is not None: c_coverage=min(100,c_coverage+12)
+    bars=candidate.get('bars',[])
+    ret20=round((bars[-1][4]/bars[-21][4]-1)*100,2) if len(bars)>20 and bars[-21][4]>0 else None
+    penalties=0
+    if candidate.get('overextended'): penalties+=15
+    if ret20 is not None and ret20>=45: penalties+=15
+    if candidate.get('distancePct') is not None and candidate['distancePct']>8:penalties+=10
+    # Avoid ranking unverified low-coverage financial data as confirmed high-conviction picks.
+    if growth is None:
+        overall=None
+        label='待基本面資料'
+    else:
+        overall=max(0,min(100,round(.40*tech+.45*growth*(.7+.3*c_coverage/100)+.15*((pe_score or 0)/15*100)-penalties)))
+        label='優先研究' if overall>=75 and c_coverage>=75 else '持續觀察' if overall>=60 and c_coverage>=60 else '謹慎追蹤'
+    return {'technical':tech,'growth':growth,'overall':overall,'grade':label,
+            'coverage':c_coverage,'valuation':None if pe_score is None else round(pe_score/15*100),
+            'overheatPenalty':penalties,'return20Pct':ret20}
+
 def run(days,delay,as_of=None):
     now=(dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()) if as_of is None else dt.date.fromisoformat(as_of)
     allstocks=read_existing()
@@ -241,8 +395,17 @@ def run(days,delay,as_of=None):
     if not allstocks:
         LOG.warning('No history acquired; keep APP in empty setup state')
         return
+    financial_sources=enrich_financials(allstocks)
     atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values())})
     snapshot=build_snapshot(allstocks)
+    for c in snapshot['candidates']:
+        st=allstocks.get(c['market']+c['code'],{})
+        c['fundamentals']=st.get('fundamentals',{})
+        c['investment']=score_company(st,c)
+    snapshot['fundamentalFeeds']=financial_sources
+    snapshot['financeRulesVersion']='finance-v1.3'
+    snapshot['rankMethod']='Tech is independent; financial score requires monthly revenue YoY and cumulative YoY; missing values are null; not buy advice'
+    snapshot['priorityTop60']=[{'code':c['code'],'market':c['market'],'priority':c['investment']['overall']} for c in sorted(snapshot['candidates'],key=lambda c:((c['investment']['overall'] is not None),c['investment']['overall'] or -1,c['score']),reverse=True)[:60]]
     snapshot['generatedAt']=dt.datetime.now(dt.timezone.utc).isoformat()
     atomic_json(SNAPSHOT,snapshot)
     LOG.info('Wrote %s records, %s eligible stocks, %s candidates on %s',modified,snapshot['eligibleCount'],snapshot['candidateCount'],snapshot['asOf'])
