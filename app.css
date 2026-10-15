@@ -83,3 +83,16 @@
 .ladder-line.defense>span{color:#d4b9ef}
 .structure-chips{display:flex;flex-wrap:wrap;gap:7px;padding:10px 0 15px}
 .structure-pill{display:inline-block;padding:6px 9px;border-radius:8px;line-height:1.5;border:1px solid #365063;color:#b9d7e2;background:rgba(19,42,58,.6);font-size:11px}
+
+/* V2.4: a single all-market judgement panel; never hide stocks behind multi-toggle gates. */
+.unified-note,.unified-scan-title{padding:14px 16px;background:#112c3a;border:1px solid #285264;color:#bdf0e6;border-radius:16px;margin:12px 0;line-height:1.55;}
+.unified-scan-title{display:flex;flex-direction:column;gap:3px} .unified-scan-title small{color:#aac6d0;}
+
+/* V2.5 one-screen lifecycle evidence; doesn't alter swipe/scroll handlers. */
+.cycle-alert {padding:12px 13px;line-height:1.75;background:rgba(48,98,116,.18);border:1px solid #3c6577;border-radius:13px;color:#d5f3f6;font-size:13px;margin:10px 0;}
+.cycle-alert b{color:#82e6ce}
+.cycle-panel{background:#102534;border:1px solid #366173;border-radius:17px;padding:15px;margin:16px 0;color:#d8e7f1;line-height:1.6}
+.cycle-panel p{margin:8px 0;font-size:13px}.cycle-panel small{color:#a9bbc8;font-size:11px}
+.cycle-indicators{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:12px 0}
+.cycle-indicators span{padding:8px;background:#1c384a;border-radius:9px;font-size:12px;display:flex;justify-content:space-between;gap:5px}
+.cycle-indicators b{font-variant-numeric:tabular-nums;color:#b8f8e6}
