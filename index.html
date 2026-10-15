@@ -4,13 +4,13 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#081222"><meta name="description" content="超盤手大量K突破雷達。上市櫃免費盤後掃描、歷史大量K壓力、20日漲停次數與成交量確認。">
 <link rel="icon" href="assets/icon-192.png"><link rel="apple-touch-icon" href="assets/icon-192.png"><link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="app.css?v=3.0.1-daily-export"><title>超盤手 V3.0.1 當日強勢與分類名單匯出｜大量K雷達</title>
+<link rel="stylesheet" href="app.css?v=3.0.2-strict-strength"><title>超盤手 V3.0.2 當日強勢與分類名單匯出｜大量K雷達</title>
 </head>
 <body>
 <div class="app-shell">
 <header class="topbar">
   <div class="brandmark"><span class="logo-pulse">◉</span></div>
-  <div class="brandtext"><div class="brandname">超盤手 <span>RADAR</span> <b aria-label="超盤手 V3.0.1 盤後版" style="display:inline-block;vertical-align:middle;font-size:12px;line-height:1.3;letter-spacing:0;color:#a6f3df;background:#204c46;border:1px solid #3b9c8c;border-radius:8px;padding:3px 7px;margin-left:5px">V3.0.1</b></div><div class="branddesc">全市場強勢20名＋風險診斷 <span class="tinysep">/</span> 盤後計畫＋手動盤中檢查</div></div>
+  <div class="brandtext"><div class="brandname">超盤手 <span>RADAR</span> <b aria-label="超盤手 V3.0.2 盤後版" style="display:inline-block;vertical-align:middle;font-size:12px;line-height:1.3;letter-spacing:0;color:#a6f3df;background:#204c46;border:1px solid #3b9c8c;border-radius:8px;padding:3px 7px;margin-left:5px">V3.0.2</b></div><div class="branddesc">全市場四線多頭・頸線站穩＋風險診斷 <span class="tinysep">/</span> 盤後計畫＋手動盤中檢查</div></div>
   <button id="refreshBtn" class="icon-button" aria-label="重新載入資料" title="重新載入資料"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 1 0-2.7 6M20 4v7h-7"/></svg></button>
 </header>
 <main>
@@ -25,7 +25,7 @@
   <section class="unified-note" aria-label="唯一綜合選股入口">◎ 單一全市場掃描：近期頸線、支撐、第一根、假突破、重新站回、量縮整理與風險一起判斷；下方不需勾選多個條件。</section>
   <section class="content-area">
     <div class="section-header"><div><div class="eyebrow">WATCHLIST / SCAN RESULTS</div><h2>全市場強勢排行</h2></div><div class="coverage" id="coverageText">—</div></div>
-    <div class="unified-scan-title"><strong>預設看「強勢前20名」；可切到第一根預備、突破第一根及突破第二根</strong><small>依趨勢、量能、相對強度、突破K及風險統一計算；弱勢不湊數、可搜尋</small></div>
+    <div class="unified-scan-title"><strong>預設看「強勢前20名」；可切到第一根預備、突破第一根及突破第二根</strong><small>強勢榜須站上MA5/10/20/60、多頭排列、連續守原頸線至少2日、無明顯回弱；第一二根另追蹤</small></div>
     <div class="filters"><div class="search-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg><input id="searchBox" inputmode="search" autocomplete="off" placeholder="搜尋全部上市櫃股票代號或名稱" aria-label="搜尋股票"></div></div>
     <div class="rank-toolbar" role="group" aria-label="顯示名次範圍"><button type="button" class="rank-scope active" data-scope="20" aria-pressed="true">強勢前20名</button><button type="button" class="rank-scope" data-scope="60" aria-pressed="false">強勢前60名</button><button type="button" class="rank-scope" data-scope="all" aria-pressed="false">全部股票</button></div><div class="stage-toolbar" role="group" aria-label="突破第一根第二根快速查看">
  <button type="button" class="stage-scope active" data-stage="all" aria-pressed="true">全部強勢</button>
@@ -38,12 +38,12 @@
     <button id="showMore" class="show-more" hidden>再顯示 30 檔 ↓</button>
   </section>
 
-  <section class="guide" id="guide"><div class="guide-head"><div class="eyebrow">SCAN METHODOLOGY</div><h2>如何判斷突破？</h2></div><div class="guide-items"><div><span class="stepno">01</span><strong>歷史大量K</strong><p>以已累積的歷史大量K記錄高點及收盤，保留多層頸線；歷史目標24–36個月，資料不足會標示。</p></div><div><span class="stepno">02</span><strong>關鍵頸線</strong><p>首次收盤突破仍獨立認證，最新大量K高點成為下次參考；舊頸線仍留歷史。</p></div><div><span class="stepno">03</span><strong>突破後追蹤</strong><p>突破後追蹤原始事件，觀察站穩、跌破與重新站回；第一、第二與最後防守分開保存；新頸線不自動取代舊支撐，回測成立才新增。</p></div></div><p class="disclaimer">強勢排行以趨勢25分、5日漲幅12分、相對大盤12分、同業8分、量能16分、近期突破狀態12分、收盤K棒10分、買點品質5分，再扣風險分。低於58分、趨勢低於55分或高風險不列入強勢前20名，但仍可搜尋；強勢不等於可以直接買進，另以MA5／10／20多頭排列及站穩原頸線天數小幅加減分，風險仍優先；所有權重均未經回測校準。<br>V3.0 全市場統一辨識近期重要壓力、前波反覆低點、歷史大量K低點／收盤區與未回補向上缺口；支撐並非主力成本或保證價位，收盤破位須結合同業及大盤。資料用途為個人研究，並非投資建議。漲停次數為估算，未充分考慮除權息、特殊漲跌幅制度；買賣前請核對官方行情。股票價格未做還原權值調整。</p></section>
-  <footer>超盤手 · 大量K雷達 <span>WEBSITE V3.0.1 · SINGLE SCAN · NEXT SESSION PLAN / NO LIVE QUOTES</span><div>資料來源：臺灣證券交易所、櫃買中心公開盤後行情</div></footer>
+  <section class="guide" id="guide"><div class="guide-head"><div class="eyebrow">SCAN METHODOLOGY</div><h2>如何判斷突破？</h2></div><div class="guide-items"><div><span class="stepno">01</span><strong>歷史大量K</strong><p>以已累積的歷史大量K記錄高點及收盤，保留多層頸線；歷史目標24–36個月，資料不足會標示。</p></div><div><span class="stepno">02</span><strong>關鍵頸線</strong><p>首次收盤突破仍獨立認證，最新大量K高點成為下次參考；舊頸線仍留歷史。</p></div><div><span class="stepno">03</span><strong>突破後追蹤</strong><p>突破後追蹤原始事件，觀察站穩、跌破與重新站回；第一、第二與最後防守分開保存；新頸線不自動取代舊支撐，回測成立才新增。</p></div></div><p class="disclaimer">已確認持續強勢先查四線多頭排列、連續守住原突破頸線至少2日、均線方向與量價回弱，缺證據不列入強勢榜；新突破第一／第二根仍在階段名單追蹤，不等於立即進場。強勢度排序以趨勢25分、5日漲幅12分、相對大盤12分、同業8分、量能16分、近期突破狀態12分、收盤K棒10分、買點品質5分，再扣風險分。低於58分、趨勢低於55分或高風險不列入強勢前20名，但仍可搜尋；強勢不等於可以直接買進，再以MA5／10／20多頭排列及站穩原頸線天數加減分；強勢資格審查優先於評分，風險仍優先；所有權重均未經回測校準。<br>V3.0 全市場統一辨識近期重要壓力、前波反覆低點、歷史大量K低點／收盤區與未回補向上缺口；支撐並非主力成本或保證價位，收盤破位須結合同業及大盤。資料用途為個人研究，並非投資建議。漲停次數為估算，未充分考慮除權息、特殊漲跌幅制度；買賣前請核對官方行情。股票價格未做還原權值調整。</p></section>
+  <footer>超盤手 · 大量K雷達 <span>WEBSITE V3.0.2 · SINGLE SCAN · NEXT SESSION PLAN / NO LIVE QUOTES</span><div>資料來源：臺灣證券交易所、櫃買中心公開盤後行情</div></footer>
 </main>
 <nav class="bottom-nav" aria-label="頁面導覽"><button class="nav-item active" data-page="list"><span>▦</span>候選雷達</button><button class="nav-item" data-page="star"><span>☆</span>自選追蹤</button><button class="nav-item" data-page="guide"><span>◈</span>規則說明</button><button class="nav-item" data-page="setting"><span>⚙</span>狀態設定</button></nav>
 </div>
 <div id="modalOverlay" class="modal-overlay" hidden><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="handle"></div><button id="closeModal" class="close-modal" aria-label="關閉詳情">×</button><div id="modalContent"></div></section></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<script src="app-detail-swipe-v222.js?v=20261016-v301-daily-export" defer></script>
+<script src="app-detail-swipe-v222.js?v=20261016-v302-strict-strength" defer></script>
 </body></html>
