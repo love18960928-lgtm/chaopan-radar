@@ -25,10 +25,12 @@ from rules import build_snapshot
 from trader import trader_overlay,apply_sector_relative_strength
 from performance import update_diary
 from market_quality import breadth
+from risk_v22 import build_universe
 
 ROOT = Path(__file__).resolve().parents[1]
 HISTORY = ROOT / 'storage' / 'history.json'
 SNAPSHOT = ROOT / 'data' / 'radar.json'
+UNIVERSE = ROOT / 'data' / 'universe.json'
 UA = 'Mozilla/5.0 (compatible; TaiwanEODResearch/1.0; personal research)'
 LOG = logging.getLogger('collector')
 
@@ -469,6 +471,10 @@ def run(days,delay,as_of=None):
                                 'tradeScore':c['trading']['score'],'status':c['trading'].get('status')}
                                for c in sorted(snapshot['candidates'],key=rank_trade,reverse=True)[:60]]
     snapshot['generatedAt']=dt.datetime.now(dt.timezone.utc).isoformat()
+    universe=build_universe(allstocks,snapshot,snapshot['asOf'])
+    snapshot['rulesVersion']='eod-v2.2-risk'
+    snapshot['rankMethod']='V2.2: unified full-universe risk/opportunity; prices-as-of only; institutional/global sources NOT enabled'
+    snapshot['universeCount']=universe['coverage']
     # Safety: don't replace the public radar with partial market/insufficient history.
     # Keep raw observations for later recovery, but only write new public snapshot if healthy.
     if snapshot['mode']!='live':
@@ -476,6 +482,7 @@ def run(days,delay,as_of=None):
         LOG.warning('BLOCKED public snapshot: market coverage/date inconsistent: %s',snapshot['marketAsOf'])
         return
     atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values()),'signalEvents':updated_signals})
+    atomic_json(UNIVERSE,universe)
     atomic_json(SNAPSHOT,snapshot)
     LOG.info('Wrote %s records, %s eligible stocks, %s candidates on %s',modified,snapshot['eligibleCount'],snapshot['candidateCount'],snapshot['asOf'])
 

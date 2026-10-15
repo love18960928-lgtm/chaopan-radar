@@ -53,7 +53,7 @@ def _five_day_change(history, close):
     return 100 * (close / float(history[-5][4]) - 1)
 
 
-def scan_stock(stock, detect_follow=True):
+def scan_stock(stock, detect_follow=True, include_all=False):
     """V1.4: completed day K only; priority is FIRST price crossing, regardless of volume.
 
     A lock-limit candle with low turnover still qualifies. Prelaunch is a speculative
@@ -73,7 +73,7 @@ def scan_stock(stock, detect_follow=True):
         return None
     avg10=mean(float(b[5]) for b in prior10)
     avg20=mean(float(b[5]) for b in prior20)
-    if avg20 < MIN_AVG_LOTS:
+    if avg20 < MIN_AVG_LOTS and not include_all:
         return None
     vol_ratio=round(vol/avg10,2) if avg10 else 0
     prev_close=float(bars[-2][4])
@@ -159,7 +159,7 @@ def scan_stock(stock, detect_follow=True):
             anchor={'high':old_neck,'date':old_signal['neckDate'],'vol':old_signal['neckLots']}
             neck=old_neck;dist=round(100*(close/neck-1),2)
     valid=first or prep or near or new_volume or limit20>=2 or bool(recent_event)
-    if not valid:return None
+    if not valid and not include_all:return None
     tags=[]
     if first:tags.append('first')
     if prep:tags.append('prep')
