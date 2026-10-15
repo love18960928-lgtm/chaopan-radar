@@ -185,17 +185,54 @@ function sixtyChanges(current){
  }
  return changes;
 }
-function exportSixty(){
- const records=sixtyCandidates();if(!records.length){toast('目前尚無可匯出的股票');return}
- const cols=['全市場強勢排名','強勢分數','發動階段','首次發動','突破類型','參考大量K日期','預備條件','日期','股票代號','股票名稱','市場','收盤價','技術訊號強度','操盤品質分數','趨勢延續分數','買點品質分數','風險狀態','成長品質分數','投資優先度','資料完整度','營收年增百分比','累計營收年增百分比','EPS','毛利率','本益比','股價淨值比','股息殖利率','財報期別','營收期別','官方產業','產業20日相對強度','成交量張','量比','大量K頸線','距離頸線百分比','20日漲停次數','20日報酬百分比','60日報酬百分比','MA20','RSI14','標籤'];
- const rows=[cols,...records.map((c,index)=>{
-  const k=techMetrics(c);
-  const f=c.fundamentals||{}, i=c.investment||{};return [index+1,rankingScore(c),c.launchStage||'未分類',c.priceConfirmed?'是':'否',c.onePriceLimit?'一字漲停':'一般',c.neckDate,c.preLaunch?'是':'否',c.date,c.code,c.name,c.market,c.close,c.score,c.trading?.score,c.trading?.trend,c.trading?.entryQuality,c.trading?.status,i.growth,i.overall,i.coverage,f.revenueYoY,f.revenueCumYoY,f.eps,f.grossMargin,f.pe,f.pb,f.dividendYield,f.epsPeriod,f.revenuePeriod,f.industry,c.trading?.sectorRelative20Pct,c.lots,c.volumeRatio,c.neck,c.distancePct,c.limit20,k.ret20?.toFixed(2),k.ret60?.toFixed(2),k.ma20?.toFixed(2),k.rsi14?.toFixed(1),(c.tags||[]).map(t=>TAGS[t]).join('|')];
+// Every tab exports the exact complete list for the selected trading-date snapshot,
+// independent of the 30-card pagination. Strength 20/60 are recalculated each day;
+// previous-day lists must be kept via date-labelled exports rather than reused as picks.
+function activeSelection(){
+ const search=state.query.trim();
+ const records=filtered();
+ if(search || state.tab==='star')return {records, label:search?'搜尋結果':'自選追蹤'};
+ if(state.stageView!=='all'){
+   const names={ready:'第一根預備',first:'突破第一根',second:'突破第二根'};
+   return {records:records.filter(c=>breakoutReadout(c).phase===state.stageView),label:names[state.stageView]||'突破階段'};
+ }
+ if(state.rankView==='all')return {records,label:'全部股票'};
+ const limit=state.rankView==='60'?60:20;
+ return {records:records.filter(isStrengthCandidate).slice(0,limit),label:`當日強勢前${limit}名`};
+}
+function exportCsvRecords(records,label){
+ if(!records.length){toast(`目前「${label}」沒有股票可以匯出`);return}
+ const columns=['資料交易日','名單分類','分類內名次','全市場強勢名次','股票代號','股票名稱','上市上櫃','產業',
+ '收盤價','漲跌百分比','近期頸線','盤中跨越參考價','原突破頸線','首次突破日期','突破階段','第二根評估',
+ '第一根收盤','第二根收盤','第二根量比第一根','5日均線','10日均線','20日均線',
+ '連續收在原頸線上方日數','20日平均成交量張','當日成交量張','成交量倍數','第一支撐下界','第一支撐上界',
+ '強勢分數','交易風險級別','風險提示','當日狀態','資料來源'];
+ const fullRanking=new Map(rankedUniverse().map((c,i)=>[rowId(c),i+1]));
+ const asOf=String(state.payload?.asOf||'日期待資料');
+ const csvRows=[columns,...records.map((c,i)=>{
+   const m=maReadout(c),b=breakoutReadout(c),k=techMetrics(c),sup=supportLines(c)[0];
+   return [asOf,label,i+1,fullRanking.get(rowId(c))??'',c.code,c.name,c.market,c.industry||c.fundamentals?.industry,
+    c.close,c.changePct,latestNeck(c),c.intradayPlan?.crossPrice,m.originalNeckline||b.level,b.initialDate||m.breakoutDate,
+    b.label,b.assessment,b.firstClose,b.secondClose,b.secondVsFirstVolumeRatio,
+    m.ma5,m.ma10,m.ma20,m.necklineHoldDays,k.avg20,c.lots,c.volumeRatio,sup?.lower,sup?.upper,
+    rankingScore(c),c.riskLevel,(Array.isArray(c.riskReasons)?c.riskReasons.join('；'):(c.riskReasons||'')),c.unifiedStage,state.mode==='demo'?'示範資料':'盤後公開資料'];
  })];
- const csv='\ufeff'+rows.map(r=>r.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
- const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
- const a=document.createElement('a');a.href=url;a.download=`超盤手_前60名_${state.payload?.asOf||'未標示日期'}.csv`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
- toast('已匯出通用CSV，不能直接視為三竹可匯入格式');
+ downloadPlain('\ufeff'+csvRows.map(r=>r.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n'),
+  `超盤手_${label}_${asOf}_${records.length}檔.csv`,'text/csv;charset=utf-8;');
+ toast(`已匯出「${label}」共 ${records.length} 檔，日期 ${asOf}`);
+}
+function downloadPlain(body,filename,mime){
+ const blob=new Blob([body],{type:mime}),url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),5000);
+}
+function exportCurrent(){const {records,label}=activeSelection();exportCsvRecords(records,label)}
+function exportSixty(){exportCsvRecords(sixtyCandidates(),'當日強勢前60名')}
+function exportCurrentCodes(){
+ const {records,label}=activeSelection();if(!records.length){toast('目前沒有可匯出的股票代號');return}
+ const asOf=String(state.payload?.asOf||'日期待資料');
+ downloadPlain(records.map(c=>c.code).join('\r\n')+'\r\n',`超盤手_${label}_股票代號_${asOf}_${records.length}檔.txt`,'text/plain;charset=utf-8;');
+ toast(`已匯出 ${records.length} 檔代號；是否能直接匯入券商須核對其格式`);
 }
 async function copySixty(){
  const list=sixtyCandidates();if(!list.length){toast('目前沒有候選名單');return}
@@ -213,10 +250,10 @@ function showSixty(){
 }
 function setupSixtyToolbar(){
  if($('#sixtyToolbar'))return;
- const wrap=document.createElement('div');wrap.id='sixtyToolbar';wrap.className='action-row';wrap.style.margin='10px 0 15px';
- wrap.innerHTML='<button id="sixtyOpen" class="secondary-action">強勢前60名・可點股票</button><button id="sixtyExport" class="secondary-action">下載排行 CSV</button>';
+ const wrap=document.createElement('div');wrap.id='sixtyToolbar';wrap.className='daily-export-toolbar';
+ wrap.innerHTML='<div class="daily-export-note"><b>每日收盤重新排名</b>｜前20／前60是該資料日的強勢股；切換「第一根預備／突破第一根／突破第二根」可下載該類全部股票，不限60檔。檔案會保留交易日，供隔天比較。</div><div class="action-row"><button type="button" id="currentExport" class="primary-action">下載目前分類全部 CSV</button><button type="button" id="currentCodes" class="secondary-action">下載目前分類代號 TXT</button></div><div class="action-row"><button type="button" id="sixtyOpen" class="secondary-action">查看當日強勢前60名・可點股票</button></div>';
  const anchor=$('#infoBanner');anchor.parentNode.insertBefore(wrap,anchor);
- $('#sixtyOpen').onclick=showSixty;$('#sixtyExport').onclick=exportSixty;
+ $('#sixtyOpen').onclick=showSixty;$('#currentExport').onclick=exportCurrent;$('#currentCodes').onclick=exportCurrentCodes;
 }
 
 function toast(msg){const el=$('#toast');el.textContent=msg;el.classList.add('show');clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>el.classList.remove('show'),2600)}
@@ -308,22 +345,21 @@ function renderList(){
    list.innerHTML=`<div class="empty-state"><h3>${ready?'暫無候選資料':'雷達等待首次資料啟用'}</h3><p>${ready?'請檢查雷達資料日期與全市場資料是否同步。':'部署並完成盤後資料回補才有真實全市場排行。'}</p></div>`;
    more.hidden=true;$('#rankSummary').textContent='等待盤後資料';return;
  }
- const normal=filtered();
  const strong=strengthCandidates();
  const stageFilter=state.stageView!=='all'&&!state.query.trim()&&state.tab!=='star';
  const showAll=Boolean(state.query.trim()||state.tab==='star'||state.rankView==='all'||stageFilter);
- const cards=stageFilter?normal.filter(c=>breakoutReadout(c).phase===state.stageView):(showAll?normal:normal.filter(isStrengthCandidate));
+ const selection=activeSelection(),cards=selection.records;
  const rawRank=rankedUniverse();
  const rankById=new Map(rawRank.map((c,i)=>[rowId(c),i+1]));
- const cap=stageFilter?state.visible:(showAll?state.visible:Number(state.rankView));
+ const cap=showAll?state.visible:cards.length;
  const shown=cards.slice(0,cap);
- $('#rankSummary').textContent=stageFilter?`目前「${{ready:'第一根預備',first:'突破第一根',second:'突破第二根'}[state.stageView]}」共 ${cards.length} 檔，依同一強勢分排序，可按顯示更多`:
+ $('#rankSummary').textContent=stageFilter?`資料日 ${state.payload?.asOf||'—'}｜目前「${selection.label}」共 ${cards.length} 檔，依同一強勢分排序，可下載完整名單`:
  state.query.trim()?`搜尋 ${cards.length} 檔｜保留全市場名次`:
   state.tab==='star'?`自選追蹤 ${cards.length} 檔`:
-  `強勢前 ${Math.min(cap,cards.length)} 名｜合格強勢候選 ${strong.length} 檔／${state.universe?'全市場':'目前可讀'} ${rawRank.length} 檔；不足名額不補弱勢`;
+  `資料日 ${state.payload?.asOf||'—'}｜${selection.label}：${cards.length} 檔｜合格強勢候選 ${strong.length} 檔／${state.universe?'全市場':'目前可讀'} ${rawRank.length} 檔；隔日重新排名，不足不補弱勢`;
  $$('.rank-scope').forEach(b=>{const active=b.dataset.scope===state.rankView&&!stageFilter;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active?'true':'false')});
  $$('.stage-scope').forEach(b=>{const active=b.dataset.stage===state.stageView;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active?'true':'false')});
- if(!cards.length){const metricsReady=rawRank.some(c=>numeric(c.trading?.trend)!==null);const note=!metricsReady?'強勢資料尚未載入；請檢查data/universe.json與GitHub Actions是否已產生V2.6以上盤後資料。':'行情偏弱時不硬湊20檔。可切換「全部股票」或搜尋指定股票。';list.innerHTML='<div class="empty-state"><h3>目前沒有符合強勢門檻的股票</h3><p>'+esc(note)+'</p></div>';more.hidden=true;return;}
+ if(!cards.length){const metricsReady=rawRank.some(c=>numeric(c.trading?.trend)!==null);const note=!metricsReady?'強勢資料尚未載入；請檢查data/universe.json與GitHub Actions是否已產生V2.6以上盤後資料。':'行情偏弱時不硬湊20檔。可切換「全部股票」或搜尋指定股票。';list.innerHTML='<div class="empty-state"><h3>目前「'+esc(selection.label)+'」沒有符合股票</h3><p>'+esc(note)+'</p></div>';more.hidden=true;return;}
  list.innerHTML=shown.map(c=>{
    const id=esc(rowId(c)),cls=c.changePct>0?'rising':c.changePct<0?'falling':'neutral';
    const riskTag=c.riskLevel==='high'||c.riskFirst?'<span class="signal-tag risk-high">高風險・已降權</span>':c.riskLevel==='medium'?'<span class="signal-tag risk">轉弱風險・已降權</span>':'<span class="signal-tag risk-low">無高風險組合</span>';

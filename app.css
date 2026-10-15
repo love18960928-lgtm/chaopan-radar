@@ -178,3 +178,9 @@
 .ma-structure-stage{font-size:13px;font-weight:650;line-height:1.65;color:#b6f3d9;margin:8px 0}
 .ma-structure-note{font-size:11px;line-height:1.6;color:#a7c0d2;margin:5px 0 0}
 .chart-legend{flex-wrap:wrap;row-gap:6px}
+/* V3.0.1: clear separation of trading-day rankings and downloadable historical snapshots */
+.daily-export-toolbar{margin:14px 0 16px;padding:13px 12px 14px;background:#10283a;border:1px solid #326a6c;border-radius:15px}
+.daily-export-note{font-size:12px;line-height:1.7;color:#b8d2db}.daily-export-note b{color:#82ebd1}
+.daily-export-toolbar .action-row{margin-top:10px;display:flex;gap:9px;flex-wrap:wrap}
+.daily-export-toolbar .action-row button{flex:1 1 145px;min-height:45px;font-size:12px}
+@media(max-width:460px){.daily-export-toolbar .action-row button{flex:1 1 100%}}
