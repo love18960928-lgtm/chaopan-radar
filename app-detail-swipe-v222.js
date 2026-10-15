@@ -10,7 +10,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&
 
 
 // V1.1 Top 60 candidate workflow. Generic CSV is NOT the proprietary 三竹匯入格式.
-const sixtyKey='chaopan-sixty-snapshot-v1';
+const sixtyKey='chaopan-sixty-strength-snapshot-v28';
 const hasData=c=>c?.investment?.overall!==null&&Number.isFinite(Number(c?.investment?.overall));
 const investing=c=>hasData(c)? Number(c.investment.overall): null;
 const showField=v=>v===null||v===undefined||v===''?'待資料':String(v);
@@ -47,24 +47,65 @@ function sixtyScore(c){
 }
 function allRows(){return state.universe?.rows||state.payload?.candidates||[];}
 function rowId(c){return c.market+'-'+c.code;}
-// V2.7: ONE ordering for the homepage, Top60, CSV and detail navigation.
-// This is a research queue, not a probability of profit or a buy recommendation.
-function rankingScore(c){
- const base=numeric(c.unifiedScore);
- if(base===null||c.unifiedStage==='資料不足')return null;
- const penalty=(c.riskFirst||c.riskLevel==='high'?40:c.riskLevel==='medium'?12:0)+
-     (c.overextended?8:0)+(c.possiblePriceAdjustment?12:0);
- return Math.max(0,Math.min(100,Math.round((base-penalty)*10)/10));
+// V2.8: All stocks share ONE strength ranking; strength is not buy readiness.
+// Quantities below are heuristic research weights, not a fitted win probability.
+// Missing evidence does not pretend to be zero-risk. High-risk stocks remain searchable.
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+function strengthScore(c){
+ const t=c.trading||{};
+ const trend=numeric(t.trend),r5=numeric(t.return5Pct),vol=numeric(c.volumeRatio);
+ if(trend===null||r5===null||vol===null||c.unifiedStage==='資料不足')return null;
+ // 25 trend, 12 5-day momentum, 12 relative-market, 8 relative-industry,
+ // 16 volume expansion, 12 recent breakout state, 10 daily candle, 5 entry quality.
+ let result=.25*clamp(trend,0,100);
+ result+=12*clamp(r5/10,0,1);
+ const market=numeric(c.relMarket5Pct),sector=numeric(c.relSector5Pct);
+ result+=market===null?5:12*clamp((market+2)/10,0,1);
+ result+=sector===null?3:8*clamp((sector+2)/8,0,1);
+ result+=16*clamp((vol-.6)/1.4,0,1);
+ const stage=String(c.unifiedStage||'');
+ let phase=2;
+ if(stage.includes('近期首次突破'))phase=12;
+ else if(stage.includes('重新站回後確認')||stage.includes('突破後續強')||stage.includes('突破後趨勢續行'))phase=11;
+ else if(stage.includes('突破後量縮整理／守頸線')||stage.includes('接近頸線')||stage.includes('接近近期頸線'))phase=9;
+ else if(stage.includes('準備區')||stage.includes('待確認'))phase=6;
+ if(stage.includes('品質偏弱'))phase=Math.min(phase,4);
+ if(stage.includes('突破失敗')||stage.includes('結構破壞')||stage.includes('趨勢轉弱'))phase=0;
+ result+=phase;
+ const hi=numeric(c.high),lo=numeric(c.low),close=numeric(c.close),open=numeric(c.open);
+ if(hi!==null&&lo!==null&&close!==null&&hi>lo){
+   const closePos=clamp((close-lo)/(hi-lo),0,1);
+   result+=10*closePos*(open!==null&&close<open?.5:1);
+ }
+ result+=.05*clamp(numeric(t.entryQuality)??0,0,100);
+ if(c.riskLevel==='medium')result-=12;
+ if(c.riskLevel==='high')result-=32;
+ if(c.riskFirst)result-=32;
+ if(c.possiblePriceAdjustment)result-=25;
+ if(c.onePriceLimit)result-=10;
+ if(c.overextended)result-=10;
+ const r20=numeric(t.return20Pct);
+ if(r20!==null&&r20>40)result-=Math.min(15,(r20-40)*.4+4);
+ if(stage.includes('突破失敗')||stage.includes('結構破壞'))result-=18;
+ return Math.round(clamp(result,0,100)*10)/10;
 }
+// At most twenty authentic strength candidates; do not pad a weak market to 20.
+function isStrengthCandidate(c){
+ const sc=strengthScore(c),trend=numeric(c.trading?.trend);
+ return sc!==null&&sc>=58&&trend!==null&&trend>=55&&
+   c.riskLevel!=='high'&&!c.riskFirst&&!c.possiblePriceAdjustment;
+}
+function rankingScore(c){return strengthScore(c)}
 function rankedUniverse(){
  return allRows().slice().sort((a,b)=>
-   (rankingScore(b)??-1)-(rankingScore(a)??-1) ||
+   Number(isStrengthCandidate(b))-Number(isStrengthCandidate(a)) ||
+   (strengthScore(b)??-1)-(strengthScore(a)??-1) ||
    (numeric(b.unifiedScore)??-1)-(numeric(a.unifiedScore)??-1) ||
-   (numeric(b.opportunityScore)??-1)-(numeric(a.opportunityScore)??-1) ||
    String(a.code).localeCompare(String(b.code),'zh-Hant',{numeric:true}) ||
    String(a.market).localeCompare(String(b.market),'zh-Hant'));
 }
-function sixtyCandidates(){return rankedUniverse().filter(c=>rankingScore(c)!==null).slice(0,60);}
+function strengthCandidates(){return rankedUniverse().filter(isStrengthCandidate)}
+function sixtyCandidates(){return strengthCandidates().slice(0,60)}
 function previousSixty(){try{return JSON.parse(localStorage.getItem(sixtyKey)||'null')}catch(e){return null}}
 function sixtyChanges(current){
  const previous=previousSixty(), codes=current.map(x=>x.code);
@@ -79,7 +120,7 @@ function sixtyChanges(current){
 }
 function exportSixty(){
  const records=sixtyCandidates();if(!records.length){toast('目前尚無可匯出的股票');return}
- const cols=['全市場研究排名','統一觀察分數','發動階段','首次發動','突破類型','參考大量K日期','預備條件','日期','股票代號','股票名稱','市場','收盤價','技術訊號強度','操盤品質分數','趨勢延續分數','買點品質分數','風險狀態','成長品質分數','投資優先度','資料完整度','營收年增百分比','累計營收年增百分比','EPS','毛利率','本益比','股價淨值比','股息殖利率','財報期別','營收期別','官方產業','產業20日相對強度','成交量張','量比','大量K頸線','距離頸線百分比','20日漲停次數','20日報酬百分比','60日報酬百分比','MA20','RSI14','標籤'];
+ const cols=['全市場強勢排名','強勢分數','發動階段','首次發動','突破類型','參考大量K日期','預備條件','日期','股票代號','股票名稱','市場','收盤價','技術訊號強度','操盤品質分數','趨勢延續分數','買點品質分數','風險狀態','成長品質分數','投資優先度','資料完整度','營收年增百分比','累計營收年增百分比','EPS','毛利率','本益比','股價淨值比','股息殖利率','財報期別','營收期別','官方產業','產業20日相對強度','成交量張','量比','大量K頸線','距離頸線百分比','20日漲停次數','20日報酬百分比','60日報酬百分比','MA20','RSI14','標籤'];
  const rows=[cols,...records.map((c,index)=>{
   const k=techMetrics(c);
   const f=c.fundamentals||{}, i=c.investment||{};return [index+1,rankingScore(c),c.launchStage||'未分類',c.priceConfirmed?'是':'否',c.onePriceLimit?'一字漲停':'一般',c.neckDate,c.preLaunch?'是':'否',c.date,c.code,c.name,c.market,c.close,c.score,c.trading?.score,c.trading?.trend,c.trading?.entryQuality,c.trading?.status,i.growth,i.overall,i.coverage,f.revenueYoY,f.revenueCumYoY,f.eps,f.grossMargin,f.pe,f.pb,f.dividendYield,f.epsPeriod,f.revenuePeriod,f.industry,c.trading?.sectorRelative20Pct,c.lots,c.volumeRatio,c.neck,c.distancePct,c.limit20,k.ret20?.toFixed(2),k.ret60?.toFixed(2),k.ma20?.toFixed(2),k.rsi14?.toFixed(1),(c.tags||[]).map(t=>TAGS[t]).join('|')];
@@ -96,9 +137,9 @@ async function copySixty(){
 }
 function showSixty(){
  const records=sixtyCandidates(),changed=sixtyChanges(records);
- const rows=records.map((c,i)=>`<button type="button" class="rank-modal-row" data-rank-stock="${esc(rowId(c))}"><strong>#${i+1} ${esc(c.code)} ${esc(c.name)}</strong><span>觀察分 ${rankingScore(c)??'—'}｜${esc(c.unifiedStage||'待資料')}｜觸發 ${price(c.intradayPlan?.crossPrice)}</span></button>`).join('');
+ const rows=records.map((c,i)=>`<button type="button" class="rank-modal-row" data-rank-stock="${esc(rowId(c))}"><strong>#${i+1} ${esc(c.code)} ${esc(c.name)}</strong><span>強勢分 ${rankingScore(c)??'—'}｜${esc(c.unifiedStage||'待資料')}｜觸發 ${price(c.intradayPlan?.crossPrice)}</span></button>`).join('');
  const delta=changed?`<p style="font-size:13px">相較上次資料日：新進 ${changed.add.length} 檔，移出 ${changed.drop.length} 檔</p>`:'<p style="font-size:13px">首次開啟或同資料日期，尚無可比對的昨日名單。</p>';
- $('#modalContent').innerHTML=`<div class="eyebrow">ONE CONSISTENT RANK / TOP 60</div><h2 id="modalTitle">全市場前60名觀察</h2><p>盤後資料：${esc(state.payload?.asOf||'—')}｜首頁、此表與CSV採相同排序；高風險降權、資料不足置後。不代表未來績效或實際可買入。</p>${delta}<div class="action-row"><button id="sixtyCsv" class="primary-action">下載前60名 CSV</button><button id="sixtyCopy" class="secondary-action">複製股票代號</button></div><div class="rank-modal-list">${rows||'<p>尚無候選股票</p>'}</div>`;
+ $('#modalContent').innerHTML=`<div class="eyebrow">STRENGTH RANK / TOP 60</div><h2 id="modalTitle">全市場強勢前60名</h2><p>盤後資料：${esc(state.payload?.asOf||'—')}｜首頁、此表與CSV使用同一強勢度排序；高風險與資料不足不列入強勢名單，仍可搜尋。不代表未來績效或實際可買入。</p>${delta}<div class="action-row"><button id="sixtyCsv" class="primary-action">下載前60名 CSV</button><button id="sixtyCopy" class="secondary-action">複製股票代號</button></div><div class="rank-modal-list">${rows||'<p>尚無候選股票</p>'}</div>`;
  $('#sixtyCsv').onclick=exportSixty;$('#sixtyCopy').onclick=copySixty;
  $$('#modalContent [data-rank-stock]').forEach(btn=>btn.onclick=()=>showDetails(btn.dataset.rankStock));
  $('#modalOverlay').hidden=false;document.body.style.overflow='hidden';
@@ -106,7 +147,7 @@ function showSixty(){
 function setupSixtyToolbar(){
  if($('#sixtyToolbar'))return;
  const wrap=document.createElement('div');wrap.id='sixtyToolbar';wrap.className='action-row';wrap.style.margin='10px 0 15px';
- wrap.innerHTML='<button id="sixtyOpen" class="secondary-action">前60名一覽・可點股票</button><button id="sixtyExport" class="secondary-action">下載排行 CSV</button>';
+ wrap.innerHTML='<button id="sixtyOpen" class="secondary-action">強勢前60名・可點股票</button><button id="sixtyExport" class="secondary-action">下載排行 CSV</button>';
  const anchor=$('#infoBanner');anchor.parentNode.insertBefore(wrap,anchor);
  $('#sixtyOpen').onclick=showSixty;$('#sixtyExport').onclick=exportSixty;
 }
@@ -154,7 +195,7 @@ async function demoMode(){
 function render(){
   const x=state.payload||{candidates:[],counts:{}};
   $('#marketDate').textContent=(x.asOf||'—')+(state.mode==='demo'?' · 範例':'');
-  $('#dataStatus').textContent=modeName()+(x.rulesVersion==='eod-v2.6-next-session'?' · V2.7排行／V2.6盤中策略資料':x.rulesVersion==='eod-v2.5-cycle'?' · V2.5事件追蹤':' · 需重新執行新版盤後掃描');
+  $('#dataStatus').textContent=modeName()+(x.rulesVersion==='eod-v2.6-next-session'?' · V2.8強勢排行／V2.6盤中策略資料':x.rulesVersion==='eod-v2.5-cycle'?' · V2.5事件追蹤':' · 需重新執行新版盤後掃描');
   const counts=x.counts||{};
   // Legacy independent tab counts removed in v2.4. Only unified scan is visible.
   $('#coverageText').textContent=state.mode==='demo'?'示意畫面':`${integer(x.eligibleCount||0)} 檔具足夠歷史 / ${integer(x.stockCount||0)} 檔已收錄`;
@@ -200,26 +241,28 @@ function renderList(){
    list.innerHTML=`<div class="empty-state"><h3>${ready?'暫無候選資料':'雷達等待首次資料啟用'}</h3><p>${ready?'請檢查雷達資料日期與全市場資料是否同步。':'部署並完成盤後資料回補才有真實全市場排行。'}</p></div>`;
    more.hidden=true;$('#rankSummary').textContent='等待盤後資料';return;
  }
- const cards=filtered();
+ const normal=filtered();
+ const strong=strengthCandidates();
+ const showAll=Boolean(state.query.trim()||state.tab==='star'||state.rankView==='all');
+ const cards=showAll?normal:normal.filter(isStrengthCandidate);
  const rawRank=rankedUniverse();
  const rankById=new Map(rawRank.map((c,i)=>[rowId(c),i+1]));
- const showAll=state.query.trim()||state.tab==='star'||state.rankView==='all';
  const cap=showAll?state.visible:Number(state.rankView);
  const shown=cards.slice(0,cap);
  $('#rankSummary').textContent=state.query.trim()?`搜尋 ${cards.length} 檔｜保留全市場名次`:
   state.tab==='star'?`自選追蹤 ${cards.length} 檔`:
-  `依同一排序顯示前 ${Math.min(cap,cards.length)} 名｜${state.universe?'全市場':'目前可讀'} ${rawRank.length} 檔（含風險與資料不足）`;
+  `強勢前 ${Math.min(cap,cards.length)} 名｜合格強勢候選 ${strong.length} 檔／${state.universe?'全市場':'目前可讀'} ${rawRank.length} 檔；不足名額不補弱勢`;
  $$('.rank-scope').forEach(b=>{b.classList.toggle('active',b.dataset.scope===state.rankView);b.setAttribute('aria-pressed',b.dataset.scope===state.rankView?'true':'false')});
- if(!cards.length){list.innerHTML='<div class="empty-state"><h3>沒有符合的股票</h3><p>可更換股票名稱／代號或返回全部排行。</p></div>';more.hidden=true;return;}
+ if(!cards.length){const metricsReady=rawRank.some(c=>numeric(c.trading?.trend)!==null);const note=!metricsReady?'強勢資料尚未載入；請檢查data/universe.json與GitHub Actions是否已產生V2.6以上盤後資料。':'行情偏弱時不硬湊20檔。可切換「全部股票」或搜尋指定股票。';list.innerHTML='<div class="empty-state"><h3>目前沒有符合強勢門檻的股票</h3><p>'+esc(note)+'</p></div>';more.hidden=true;return;}
  list.innerHTML=shown.map(c=>{
    const id=esc(rowId(c)),cls=c.changePct>0?'rising':c.changePct<0?'falling':'neutral';
    const riskTag=c.riskLevel==='high'||c.riskFirst?'<span class="signal-tag risk-high">高風險・已降權</span>':c.riskLevel==='medium'?'<span class="signal-tag risk">轉弱風險・已降權</span>':'<span class="signal-tag risk-low">無高風險組合</span>';
-   const tags=riskTag+(c.priceConfirmed?'<span class="signal-tag confirmed">首破待驗證</span>':'')+(c.followStatus==='假突破警戒'?'<span class="signal-tag risk">假突破警戒</span>':'')+(c.possiblePriceAdjustment?'<span class="signal-tag risk">股價需核對</span>':'')+(c.unifiedStage==='資料不足'?'<span class="signal-tag risk">資料不足</span>':'');
+   const tags=(isStrengthCandidate(c)?'<span class="signal-tag confirmed">強勢候選</span>':'<span class="signal-tag risk">非強勢候選・可追蹤</span>')+riskTag+(c.priceConfirmed?'<span class="signal-tag confirmed">首破待驗證</span>':'')+(c.followStatus==='假突破警戒'?'<span class="signal-tag risk">假突破警戒</span>':'')+(c.possiblePriceAdjustment?'<span class="signal-tag risk">股價需核對</span>':'')+(c.unifiedStage==='資料不足'?'<span class="signal-tag risk">資料不足</span>':'');
    const trigger=c.intradayPlan?.crossPrice;
    const quick=trigger!=null?`<button type="button" class="quick-intraday" data-intraday-id="${id}">✎ 盤中輸入價量・立即試算 <span>→</span></button>`:
      `<button type="button" class="quick-intraday unavailable" data-intraday-id="${id}">查看個股・盤中關卡待資料 →</button>`;
    return `<div class="ranked-stock"><button type="button" class="stock-card" data-id="${id}" aria-label="查看第${rankById.get(rowId(c))}名 ${esc(c.name)} 詳情">
-     <div class="rank-head"><span class="rank-number">#${rankById.get(rowId(c))} 全市場觀察排名</span><span class="rank-score">觀察分 ${rankingScore(c)??'待資料'}/100（非勝率）</span></div>
+     <div class="rank-head"><span class="rank-number">#${rankById.get(rowId(c))} 全市場強勢排名</span><span class="rank-score">強勢分 ${rankingScore(c)??'待資料'}/100（非勝率）</span></div>
      <div class="stock-head"><div><span class="ticker">${esc(c.code)}</span><span class="ticker-name">${esc(c.name)}</span><span class="market-chip">${esc(c.market)}</span><span class="market-chip">${esc(c.industry||c.fundamentals?.industry||'產業待資料')}</span></div><div class="right-value"><div class="stock-price">${price(c.close)}</div><span class="stock-change ${cls}">${pct(c.changePct)}</span></div></div>
      <div class="tagrow">${tags}</div><div class="rank-stage">${esc(c.unifiedStage||'待新版資料')} · ${esc(c.entryReadiness||'等待判斷')}</div>
      <div class="stock-bottom"><span class="metric">近期頸線 <strong>${price(latestNeck(c))}</strong></span><span class="metric">盤中觸發 <strong>${price(trigger)}</strong></span><span class="metric">日量比 <strong>${Number.isFinite(Number(c.volumeRatio))?Number(c.volumeRatio).toFixed(1)+'×':'—'}</strong></span></div>

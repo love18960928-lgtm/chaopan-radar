@@ -135,3 +135,6 @@
 .intraday-shortcut button{background:#4ed4bb;color:#082b26;font-weight:800;text-align:center;padding:13px;border-radius:9px}
 .intraday-shortcut small{color:#a6c7cc;font-size:11px}
 @media(min-width:800px){.ranked-stock{height:100%}}
+
+/* V2.8 strength result emphasis */
+.rank-score{font-variant-numeric:tabular-nums}
