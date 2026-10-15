@@ -3,14 +3,21 @@ on:
   workflow_dispatch:
     inputs:
       backfill_days:
-        description: '初次回補輸入 220，平常留 0'
+        description: '僅首次回補輸入220，平常留0'
         required: false
         default: '0'
   schedule:
-    - cron: '30 6 * * 1-5'   # 台灣時間 14:30（UTC 06:30）
-    - cron: '0 15 * * 1-5'    # 台灣時間 23:00（UTC 15:00）
+    - cron: '30 5 * * 1-5'   # 臺灣週一至五 13:30：收盤後檢查
+    - cron: '30 6 * * 1-5'   # 臺灣週一至五 14:30：盤後行情
+    - cron: '30 10 * * 1-5'  # 臺灣週一至五 18:30：行情補抓，法人未串接
+    - cron: '0 15 * * 1-5'   # 臺灣週一至五 23:00：盤後最終補抓
+    - cron: '0 22 * * 0-5'   # 臺灣週一至六 06:00：舊資料補查，國際指數未串接
+    - cron: '30 0 * * 1-6'   # 臺灣週一至六 08:30：開盤前補查，國際指數未串接
 permissions:
   contents: write
+concurrency:
+  group: eod-radar-updater
+  cancel-in-progress: false
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -25,15 +32,15 @@ jobs:
           BACKFILL: ${{ github.event.inputs.backfill_days || '0' }}
         run: |
           python scripts/collector.py --backfill "$BACKFILL" --delay 1.1
-          python -m unittest discover -s scripts -p 'test_*.py'
+          python -m unittest discover -s scripts -p 'test_*.py' -v
       - name: Commit updated market data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add storage/history.json data/radar.json
+          git add storage/history.json data/radar.json data/universe.json
           if ! git diff --cached --quiet; then
-            git commit -m "data: update end-of-day TWSE TPEx radar"
+            git commit -m "data: update V2.2 unified radar"
             git push
           else
-            echo "No market data changes"
+            echo "No data changes; existing published snapshot retained"
           fi
