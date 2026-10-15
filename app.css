@@ -77,3 +77,9 @@
 .tech-chips strong{display:block;font-size:12px;margin-top:8px;line-height:1.5;overflow-wrap:anywhere}
 .chart-legend{flex-wrap:wrap;row-gap:4px}
 @media(max-width:390px){.conclusion-card,.visual-fin,.visual-tech{padding:12px}.fin-stat b{font-size:12px}.panel-head{font-size:12px}.ladder-line{padding:9px 8px}.ladder-line b,.ladder-line strong{font-size:13px}.finance-scores{gap:6px}}
+
+/* V2.3 independent main historical defense and dated volume/neckline evidence */
+.ladder-line.defense{border-color:#a58ad1;background:rgba(132,92,182,.10)}
+.ladder-line.defense>span{color:#d4b9ef}
+.structure-chips{display:flex;flex-wrap:wrap;gap:7px;padding:10px 0 15px}
+.structure-pill{display:inline-block;padding:6px 9px;border-radius:8px;line-height:1.5;border:1px solid #365063;color:#b9d7e2;background:rgba(19,42,58,.6);font-size:11px}

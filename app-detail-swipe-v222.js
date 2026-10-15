@@ -119,7 +119,9 @@ async function loadData(){
         u.rows=u.rows.map(row=>{
           const match=candidates.get(row.market+'-'+row.code);
           return match?{...row,...match,riskLevel:row.riskLevel,riskStatus:row.riskStatus,
-             riskReasons:row.riskReasons,riskEvidence:row.riskEvidence,supportEvidence:row.supportEvidence,relMarket5Pct:row.relMarket5Pct,
+             riskReasons:row.riskReasons,riskEvidence:row.riskEvidence,supportEvidence:row.supportEvidence,structureV23:row.structureV23,
+             neck:match.priceConfirmed?match.neck:row.neck,neckDate:match.priceConfirmed?match.neckDate:row.neckDate,
+             distancePct:match.priceConfirmed?match.distancePct:row.distancePct,relMarket5Pct:row.relMarket5Pct,
              relSector5Pct:row.relSector5Pct,marketProxyNote:row.marketProxyNote,
              opportunityScore:row.opportunityScore,decision:row.decision,industry:row.industry}:row;
         });
@@ -136,7 +138,7 @@ async function demoMode(){
 function render(){
   const x=state.payload||{candidates:[],counts:{}};
   $('#marketDate').textContent=(x.asOf||'—')+(state.mode==='demo'?' · 範例':'');
-  $('#dataStatus').textContent=modeName()+(x.rulesVersion==='eod-v2.2-risk'?' · V2.2規則':x.rulesVersion==='eod-v2.1-core'?' · 待重算V2.2':' · 規則待更新');
+  $('#dataStatus').textContent=modeName()+(x.rulesVersion==='eod-v2.3-structure'?' · V2.3演算法':x.rulesVersion==='eod-v2.2-risk'?' · 待重算V2.3':' · 規則待更新');
   const counts=x.counts||{};
   [['firstCount','first'],['prepCount','prep'],['nearCount','near'],['volCount','volume'],['limitCount','limit'],['followCount','follow']].forEach(([el,key])=>$('#'+el).textContent=counts[key]??0);
   $('#coverageText').textContent=state.mode==='demo'?'示意畫面':`${integer(x.eligibleCount||0)} 檔具足夠歷史 / ${integer(x.stockCount||0)} 檔已收錄`;
@@ -157,7 +159,7 @@ function render(){
   const coverage=$('#universeHealth');
   if(coverage){
    if(state.universe){coverage.hidden=false;coverage.textContent=`全市場診斷已載入：${integer(state.universe.coverage)} 檔，同一交易日 ${state.universe.asOf}。包含未入選大量K股票；高風險股票會降級但仍可搜尋。疑似出貨只表示量價警訊，不代表已查得主力真實持股。`}
-   else {coverage.hidden=false;coverage.textContent='⚠ 全市場個股診斷資料未取得、日期不一致或未完成重算。目前只顯示舊版候選股，不能視為已完成V2.2全市場風險掃描。請確認GitHub Actions執行及data/universe.json已發布。'}
+   else {coverage.hidden=false;coverage.textContent='⚠ 全市場個股診斷資料未取得、日期不一致或未完成重算。目前只顯示舊版候選股，不能視為已完成V2.3全市場結構掃描。請確認GitHub Actions執行及data/universe.json已發布。'}
   }
   updateSectors();
   renderList();
@@ -219,7 +221,7 @@ function renderList(){
          (c.supportEvidence?.broken?.length?'<span class="signal-tag risk">歷史支撐跌破</span>':'')+
          (c.possiblePriceAdjustment?'<span class="signal-tag risk">歷史價格需核對</span>':'')+
          (!c.complete120?'<span class="signal-tag risk">歷史不足120日</span>':'');
-    return `<button class="stock-card" data-id="${esc(c.market+'-'+c.code)}" aria-label="查看 ${esc(c.name)} 詳情"><div class="stock-head"><div><span class="ticker">${esc(c.code)}</span><span class="ticker-name">${esc(c.name)}</span><span class="market-chip">${esc(c.market)}</span><span class="market-chip" title="官方產業分類">${esc(c.industry||c.fundamentals?.industry||'產業待資料')}</span></div><div class="right-value"><div class="stock-price">${price(c.close)}</div><span class="stock-change ${cls}">${pct(c.changePct)}</span></div></div><div class="tagrow">${tags}</div><div class="stock-bottom"><span class="metric">發動<strong>${esc(c.launchStage||'未入選突破訊號')}</strong></span><span class="metric">頸線<strong>${price(c.neck)}</strong></span><span class="metric">量比<strong>${Number.isFinite(Number(c.volumeRatio))?Number(c.volumeRatio).toFixed(1)+'×':'—'}</strong></span><span class="metric">20日漲停<strong>${integer(c.limit20)}次</strong></span><span class="score">${esc(c.decision||'候選觀察')} · 綜合 ${c.opportunityScore??'待資料'} · 買點 ${c.trading?.entryQuality??'待資料'}</span></div></button>`;
+    return `<button class="stock-card" data-id="${esc(c.market+'-'+c.code)}" aria-label="查看 ${esc(c.name)} 詳情"><div class="stock-head"><div><span class="ticker">${esc(c.code)}</span><span class="ticker-name">${esc(c.name)}</span><span class="market-chip">${esc(c.market)}</span><span class="market-chip" title="官方產業分類">${esc(c.industry||c.fundamentals?.industry||'產業待資料')}</span></div><div class="right-value"><div class="stock-price">${price(c.close)}</div><span class="stock-change ${cls}">${pct(c.changePct)}</span></div></div><div class="tagrow">${tags}</div><div class="stock-bottom"><span class="metric">發動<strong>${esc(c.launchStage||'未入選突破訊號')}</strong></span><span class="metric">頸線<strong>${price(latestNeck(c))}</strong></span><span class="metric">量比<strong>${Number.isFinite(Number(c.volumeRatio))?Number(c.volumeRatio).toFixed(1)+'×':'—'}</strong></span><span class="metric">20日漲停<strong>${integer(c.limit20)}次</strong></span><span class="score">${esc(c.decision||'候選觀察')} · 綜合 ${c.opportunityScore??'待資料'} · 買點 ${c.trading?.entryQuality??'待資料'}</span></div></button>`;
   }).join('');
   $$('.stock-card').forEach(c=>c.onclick=()=>showDetails(c.dataset.id));
   more.hidden=cards.length<=state.visible;more.textContent=`再顯示 ${Math.min(30,cards.length-state.visible)} 檔 ↓（共 ${cards.length} 檔）`;
@@ -228,9 +230,10 @@ function renderList(){
 
 // V2.2: Structure summary is evidence-based, not an institutional-position claim.
 const numeric=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v):null;
+const latestNeck=c=>numeric(c.structureV23?.neckline)??numeric(c.neck);
 function supportLines(c){
  const now=numeric(c.close);if(now===null)return [];
- const raw=c.supportEvidence?.levels||[];
+ const raw=c.structureV23?.supports?.length?c.structureV23.supports:(c.supportEvidence?.levels||[]);
  // Only unbroken zones below/near the current price qualify as forward support.
  // Broken zones may become resistance; never label them guaranteed support.
  const unique=[];
@@ -240,13 +243,13 @@ function supportLines(c){
    if(unique.some(x=>Math.abs(x.lower-lo)/now<.014))continue;
    unique.push({...v,lower:lo,upper:hi});
  }
- return unique.sort((a,b)=>b.upper-a.upper).slice(0,2);
+ return unique.sort((a,b)=>b.upper-a.upper).slice(0,3);
 }
 function structureInsight(c){
- const close=numeric(c.close),neck=numeric(c.neck),bands=supportLines(c),risk=c.riskLevel;
+ const close=numeric(c.close),neck=latestNeck(c),bands=supportLines(c),risk=c.riskLevel;
  const broken=(c.supportEvidence?.levels||[]).filter(v=>v.oneDayBreak||v.confirmedBreak);
  const latestBroken=broken.some(v=>v.confirmedBreak);
- const first=bands[0],second=bands[1];
+ const first=bands[0],second=bands[1],defense=c.structureV23?.mainDefense||null;
  let status='資料不足',tone='neutral';
  if(close!==null){
    if(latestBroken){status='支撐確認破位／轉弱';tone='danger'}
@@ -263,7 +266,7 @@ function structureInsight(c){
  if(neck!==null)reasons.push(`大量K頸線 ${price(neck)} 元`);
  if(broken.length)reasons.push('有歷史支撐出現近期收盤破位訊號');
  const levelText=first?`收盤跌破 ${price(first.lower)} 元應重新檢查支撐；連續跌破風險加重`:'尚無可確認的鄰近有效支撐，不可憑均線假設安全';
- return {status,tone,first,second,bands,neck,close,levelText,reasons,latestBroken};
+ return {status,tone,first,second,defense,bands,neck,close,levelText,reasons,latestBroken};
 }
 function indicatorSnapshot(c){
  const b=(c.bars||[]).filter(x=>[2,3,4,5].every(j=>numeric(x[j])!==null));
@@ -285,12 +288,13 @@ function summaryPanel(c){
    <div class="panel-head"><span>◎ 操盤結論｜${esc(c.date||'資料待補')}</span><b>${esc(riskText)}</b></div>
    <h3>${esc(x.status)}</h3><p class="conclusion-short">${esc(c.decision||'等待完整資料')}。${esc(x.levelText)}。</p>
    <div class="price-ladder" aria-label="頸線、現價、支撐結構">
-    <div class="ladder-line neck"><span>大量K頸線｜突破參考</span><b>${price(x.neck)}</b></div>
+    <div class="ladder-line neck"><span>最新大量K頸線｜${esc(c.structureV23?.necklineState||'突破參考')}</span><b>${price(x.neck)}</b></div>
     <div class="ladder-line current"><span>● 收盤價 ${neckDist===null?'':`｜相對頸線 ${pct(neckDist)}`}</span><b>${price(x.close)}</b></div>
     <div class="ladder-line support"><span>第一支撐</span><div>${chartLabel(s[0])}</div></div>
     <div class="ladder-line secondary"><span>第二支撐</span><div>${chartLabel(s[1])}</div></div>
+    <div class="ladder-line defense"><span>最後結構防守｜獨立保留</span><div>${chartLabel(x.defense)}</div></div>
    </div>
-   <p class="conclusion-foot">綜合價格結構、相對強弱及量能；「疑似出貨」並非已證實有特定主力賣出。支撐不等於保證停損價。</p>
+   <p class="conclusion-foot">已取得 ${integer(c.structureV23?.historyDays??c.bars?.length)} 個交易日K線${c.structureV23&&!c.structureV23.historyComplete24m?'，未達24個月，長期關卡僅供暫時判讀':''}。頸線更新不會讓舊防守自動上移；僅實際突破並二次回測才新增支撐。支撐不等於停損保證。</p>
  </section>`;
 }
 function financialPanel(c){
@@ -394,16 +398,19 @@ function riskPanel(c){
  const level=c.riskLevel||'unknown';const cls=level==='high'?'danger':level==='medium'?'warning':'neutral';
  const reasons=(c.riskReasons||['全市場診斷待重新掃描']).map(x=>'<li>'+esc(x)+'</li>').join('');
  const evidence=c.supportEvidence||{};
- const support=(evidence.levels||[]);
+ const support=c.structureV23?.supports?.length?c.structureV23.supports:(evidence.levels||[]);
  const levels=support.slice(0,6).map(v=>`<div class="support-level"><strong>${esc(v.label)}：${price(v.lower)}～${price(v.upper)}元</strong><br><small>形成日 ${esc(v.date)}　${esc(v.state)}${v.touches>1?'　回測點 '+integer(v.touches)+' 處':''}</small></div>`).join('');
- const broken=(evidence.broken||[]).length;
+ const broken=(c.structureV23?.brokenSupport||evidence.broken||[]).length;
  const title=broken?`<strong style="color:#ffc3bd">⚠ ${broken}組歷史支撐出現連續兩日收盤跌破</strong>`:evidence.nearest?`最近歷史支撐：${price(evidence.nearest.lower)}～${price(evidence.nearest.upper)}元`:'未辨識到有效的鄰近歷史支撐；不代表沒有下跌風險';
- return `<section class="risk-report risk-${cls}"><h3>V2.2｜個股風險反向診斷</h3>
+ const multi=(c.structureV23?.necklines||[]).slice(0,8).map(v=>`<span class="structure-pill">${price(v.price)}｜${esc(v.date)}｜${esc(v.status)}</span>`).join('');
+ const volumeKeys=(c.structureV23?.volumeKeyLevels||[]).slice(0,12).map(v=>`<span class="structure-pill">${esc(v.date.slice(5))} 收 ${price(v.close)}／低 ${price(v.low)}</span>`).join('');
+ return `<section class="risk-report risk-${cls}"><h3>V2.3｜個股風險及歷史價量結構</h3>
  <p><strong>${esc(c.riskStatus||'資料待補')}</strong>｜${esc(c.decision||'待綜合評估')}｜綜合排序 ${c.opportunityScore??'待資料'}</p>
  <p>近5日相對同市場 ${pct(c.relMarket5Pct)} ／ 相對官方同業 ${pct(c.relSector5Pct)}<br>
  <small>比較基準：同市場股票等權5日報酬中位數，並非加權／櫃買指數；資料不足顯示—。</small></p>
  <ul>${reasons}</ul>
  <p>⚠ 疑似出貨是量價結構的風險標籤，不代表查到主力真實賣單或持股。評分不是獲利機率；資料截止 ${esc(c.date||'—')}。</p>
+ <div class="settings-card"><strong>多層歷史頸線｜每筆保留大量K形成日期</strong><div class="structure-chips">${multi||'目前可用歷史不足'}</div><strong>歷史大量K收盤與低點｜不因新頸線被覆蓋</strong><div class="structure-chips">${volumeKeys||'尚無可核對大量K'}</div></div>
  <div class="settings-card"><strong>價格支撐三重檢查｜前波低點、大量K、跳空缺口</strong>
  <p>${title}</p>${levels||'<p>歷史資料不足或尚無有效型態，不能推定支撐價。</p>'}
  <p><small>⚠ ${esc(evidence.note||'尚待新版行情重新掃描。')} 股價僅盤中觸及支撐不算確認跌破；此分析不是自動賣出建議。</small></p></div>
@@ -413,27 +420,31 @@ function detailNav(){
  const idx=state.detailIds.indexOf(rowId(state.detail));
  return `<nav id="detailSwitcher" class="detail-switcher" aria-label="切換個股詳情">
  <button type="button" id="detailPrev" ${idx<=0?'disabled':''}>‹ 上一檔</button>
- <span>${idx+1} / ${state.detailIds.length} 檔<br><small>左右切換已啟用 v2.2.1｜上下滑閱讀</small></span>
+ <span>${idx+1} / ${state.detailIds.length} 檔<br><small>左右切換已啟用 v2.3｜上下滑閱讀</small></span>
  <button type="button" id="detailNext" ${idx>=state.detailIds.length-1?'disabled':''}>下一檔 ›</button>
  </nav>`;
 }
 
 function renderDetail(){const c=state.detail;if(!c)return;const starred=state.watch.has(c.market+'-'+c.code),cls=c.changePct>0?'rising':c.changePct<0?'falling':'neutral';
-  $('#modalContent').innerHTML=`${detailNav()}<div class="detail-title"><div><div class="eyebrow">STOCK ANALYSIS / ${esc(c.market)}</div><h2 id="modalTitle">${esc(c.code)} ${esc(c.name)}</h2><div class="detail-sub">${esc(c.date)} 盤後資料${state.mode==='demo'?' · 示範':''}</div></div><div class="detail-price"><strong>${price(c.close)}</strong><div class="${cls}">${pct(c.changePct)}</div></div></div><div class="tagrow">${(c.tags||[]).map(t=>`<span class="signal-tag ${t}">${esc(TAGS[t]||t)}</span>`).join('')}${c.priceConfirmed?'<span class="signal-tag confirmed">價格收盤確認</span>':c.confirmed?'<span class="signal-tag confirmed">量能確認</span>':''}</div><div class="detail-grid"><div class="detail-metric"><div class="small">大量K壓力／頸線</div><strong>${price(c.neck)} 元</strong><div class="small">${esc(c.neckDate||'尚無壓力點')}</div></div><div class="detail-metric"><div class="small">距離頸線</div><strong>${pct(c.distancePct)}</strong><div class="small">正值代表已突破</div></div><div class="detail-metric"><div class="small">當日成交量</div><strong>${integer(c.lots)} 張</strong><div class="small">前10日均量 ${Number(c.volumeRatio).toFixed(2)} 倍</div></div><div class="detail-metric"><div class="small">近20日漲停估算</div><strong>${integer(c.limit20)} 次</strong><div class="small">含今天，依收盤價近似判定</div></div><div class="detail-metric"><div class="small">前120日最大量</div><strong>${integer(c.oldMaxLots)} 張</strong><div class="small">${esc(c.oldMaxDate||'—')}</div></div><div class="detail-metric"><div class="small">突破確認</div><strong>${c.priceConfirmed?'價格已突破':c.confirmed?'量價確認':'尚未突破'}</strong><div class="small">低量一字漲停也可價格確認；大量另計</div></div></div>${summaryPanel(c)}<div class="chart-area"><div class="chart-top"><strong>歷史K線／成交量</strong><div class="chart-range"><button class="range-btn ${state.chartDays===20?'active':''}" data-days="20">20日</button><button class="range-btn ${state.chartDays===60?'active':''}" data-days="60">60日</button><button class="range-btn ${state.chartDays===120?'active':''}" data-days="120">可用日K</button></div></div><div id="chartSvg">${makeChart(c.bars||[],c.neck,state.chartDays,supportLines(c))}</div><div class="chart-legend"><span>━━ 橘色：大量K頸線</span><span style="color:#3dd9ba">━━ 第一支撐</span><span style="color:#76abfa">━━ 第二支撐</span><span>紅漲綠跌</span></div></div>${financialPanel(c)}${technicalVisual(c)}${riskPanel(c)}<details class="fin-notes secondary-details"><summary>展開大量K突破、操盤品質與法人詳情</summary>${launchSummary(c)}${traderPanel(c)}${extraTechnical(c)}</details><div class="detail-note">${c.tags?.includes('volume')?'✓ 今日成交量大於前120個交易日最大量，且收盤高於舊最大量K最高價。':''} ${c.tags?.includes('first')?'✓ 今日收盤首次突破仍有效的大量K高點。':''} ${c.overextended?'⚠ 收盤距頸線已逾8%，應留意追高風險。':''}<br>盤後訊號僅供觀察，不代表次日買點；除權息可能導致假突破。</div><div class="detail-actions"><button class="primary-action" id="starButton">${starred?'★ 移出自選':'☆ 加入自選'}</button><button class="secondary-action" id="shareButton">分享股票資訊</button></div>`;
+  $('#modalContent').innerHTML=`${detailNav()}<div class="detail-title"><div><div class="eyebrow">STOCK ANALYSIS / ${esc(c.market)}</div><h2 id="modalTitle">${esc(c.code)} ${esc(c.name)}</h2><div class="detail-sub">${esc(c.date)} 盤後資料${state.mode==='demo'?' · 示範':''}</div></div><div class="detail-price"><strong>${price(c.close)}</strong><div class="${cls}">${pct(c.changePct)}</div></div></div><div class="tagrow">${(c.tags||[]).map(t=>`<span class="signal-tag ${t}">${esc(TAGS[t]||t)}</span>`).join('')}${c.priceConfirmed?'<span class="signal-tag confirmed">價格收盤確認</span>':c.confirmed?'<span class="signal-tag confirmed">量能確認</span>':''}</div><div class="detail-grid"><div class="detail-metric"><div class="small">最新大量K頸線</div><strong>${price(latestNeck(c))} 元</strong><div class="small">${esc(c.structureV23?.necklineDate||c.neckDate||'尚無壓力點')}${c.priceConfirmed&&c.neck!==latestNeck(c)?'／突破當日參考 '+price(c.neck):''}</div></div><div class="detail-metric"><div class="small">距離最新頸線</div><strong>${pct(latestNeck(c)>0?100*(Number(c.close)/latestNeck(c)-1):null)}</strong><div class="small">正值代表已突破</div></div><div class="detail-metric"><div class="small">當日成交量</div><strong>${integer(c.lots)} 張</strong><div class="small">前10日均量 ${Number(c.volumeRatio).toFixed(2)} 倍</div></div><div class="detail-metric"><div class="small">近20日漲停估算</div><strong>${integer(c.limit20)} 次</strong><div class="small">含今天，依收盤價近似判定</div></div><div class="detail-metric"><div class="small">前120日最大量</div><strong>${integer(c.oldMaxLots)} 張</strong><div class="small">${esc(c.oldMaxDate||'—')}</div></div><div class="detail-metric"><div class="small">突破確認</div><strong>${c.priceConfirmed?'價格已突破':c.confirmed?'量價確認':'尚未突破'}</strong><div class="small">低量一字漲停也可價格確認；大量另計</div></div></div>${summaryPanel(c)}<div class="chart-area"><div class="chart-top"><strong>歷史K線／成交量</strong><div class="chart-range"><button class="range-btn ${state.chartDays===20?'active':''}" data-days="20">20日</button><button class="range-btn ${state.chartDays===60?'active':''}" data-days="60">60日</button><button class="range-btn ${state.chartDays===120?'active':''}" data-days="120">可用日K</button></div></div><div id="chartSvg">${makeChart(c.bars||[],latestNeck(c),state.chartDays,supportLines(c),c.structureV23?.necklines||[],c.structureV23?.mainDefense)}</div><div class="chart-legend"><span>━━ 橘色：最新頸線</span><span style="color:#c8a5e8">┄┄ 淺紫：其他頸線／最後防守</span><span style="color:#3dd9ba">━━ 第一支撐</span><span style="color:#76abfa">━━ 第二支撐</span><span>紅漲綠跌</span></div></div>${financialPanel(c)}${technicalVisual(c)}${riskPanel(c)}<details class="fin-notes secondary-details"><summary>展開大量K突破、操盤品質與法人詳情</summary>${launchSummary(c)}${traderPanel(c)}${extraTechnical(c)}</details><div class="detail-note">${c.tags?.includes('volume')?'✓ 今日成交量大於前120個交易日最大量，且收盤高於舊最大量K最高價。':''} ${c.tags?.includes('first')?'✓ 今日收盤首次突破仍有效的大量K高點。':''} ${c.overextended?'⚠ 收盤距頸線已逾8%，應留意追高風險。':''}<br>盤後訊號僅供觀察，不代表次日買點；除權息可能導致假突破。</div><div class="detail-actions"><button class="primary-action" id="starButton">${starred?'★ 移出自選':'☆ 加入自選'}</button><button class="secondary-action" id="shareButton">分享股票資訊</button></div>`;
   $('#detailPrev').onclick=()=>nextDetail(-1);$('#detailNext').onclick=()=>nextDetail(1);
   $$('.range-btn').forEach(b=>b.onclick=()=>{state.chartDays=b.dataset.days==='120'?120:Number(b.dataset.days);renderDetail()});
   $('#starButton').onclick=()=>{const key=c.market+'-'+c.code;if(state.watch.has(key))state.watch.delete(key);else state.watch.add(key);saveWatch();renderDetail();toast('已更新自選清單')};
-  $('#shareButton').onclick=async()=>{const info=`超盤手大量K雷達｜${c.code} ${c.name}\n${c.date} 收盤 ${price(c.close)}\n大量K頸線 ${price(c.neck)}\n量比 ${c.volumeRatio} 倍｜20日漲停估算 ${c.limit20} 次\n資料非即時，僅供研究。`;try{await navigator.clipboard.writeText(info);toast('已複製資訊')}catch(e){toast('請用手機內建分享功能')}};
+  $('#shareButton').onclick=async()=>{const info=`超盤手大量K雷達｜${c.code} ${c.name}\n${c.date} 收盤 ${price(c.close)}\n最新大量K頸線 ${price(latestNeck(c))}\n量比 ${c.volumeRatio} 倍｜20日漲停估算 ${c.limit20} 次\n資料非即時，僅供研究。`;try{await navigator.clipboard.writeText(info);toast('已複製資訊')}catch(e){toast('請用手機內建分享功能')}};
 }
-function makeChart(bars,neck,days,supports=[]){let data=bars.slice(-days).filter(b=>[1,2,3,4,5].every(i=>Number.isFinite(Number(b[i]))));if(!data.length)return '<div class="empty-state">沒有歷史K線可顯示</div>';
+function makeChart(bars,neck,days,supports=[],necklines=[],mainDefense=null){let data=bars.slice(-days).filter(b=>[1,2,3,4,5].every(i=>Number.isFinite(Number(b[i]))));if(!data.length)return '<div class="empty-state">沒有歷史K線可顯示</div>';
   const W=600,H=289,P=33,plotW=W-P-36,top=20,kHeight=186,volTop=225,volHeight=42;
   const included=(supports||[]).map(s=>numeric(s.lower)).filter(v=>v!==null&&v>0);
+  if(mainDefense?.lower>0)included.push(Number(mainDefense.lower));
   const maxP=Math.max(...data.map(b=>Number(b[2])),Number(neck)||0)*1.02,minP=Math.min(...data.map(b=>Number(b[3])),Number(neck)||Infinity,...included)*.98;
   let lo=Number.isFinite(minP)?minP:0,hi=maxP;if(hi<=lo)hi=lo+1;
   const py=n=>top+(hi-n)/(hi-lo)*kHeight,step=plotW/data.length,barW=Math.max(1.5,Math.min(8,step*.62));const maxV=Math.max(...data.map(b=>Number(b[5])),1);
   let svg=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="近${data.length}日收盤K線、成交量及大量K壓力線">`;
   for(let i=0;i<=4;i++){const y=top+kHeight*i/4,v=hi-(hi-lo)*i/4;svg+=`<line x1="${P}" x2="${W-36}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#284057" stroke-width="1" opacity=".65"/><text x="${W-32}" y="${y+4}" fill="#8198aa" font-size="10">${v.toFixed(1)}</text>`}
   const annotations=[];
+  const secondaryNecks=necklines.filter(v=>Number.isFinite(Number(v.price)) && Math.abs(Number(v.price)-Number(neck))>.0001 && v.price>=Number(data[data.length-1][4])*.97).slice(0,3);
+  for(const v of secondaryNecks){const val=Number(v.price);if(val<lo||val>hi)continue;const y=py(val);svg+=`<line x1="${P}" x2="${W-36}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#b49acf" stroke-width="1" stroke-dasharray="2 5" opacity=".8"/>`;annotations.push({y:y-5,color:'#b49acf',label:`歷史頸線 ${price(val)}`})}
+  if(mainDefense && Number.isFinite(Number(mainDefense.keyPrice??mainDefense.lower)) && (mainDefense.keyPrice??mainDefense.lower)>=lo && (mainDefense.keyPrice??mainDefense.lower)<=hi){const y=py(Number(mainDefense.keyPrice??mainDefense.lower));svg+=`<line x1="${P}" x2="${W-36}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#c8a5e8" stroke-width="2" stroke-dasharray="9 4"/>`;annotations.push({y:y-5,color:'#c8a5e8',label:`最後防守 ${price(mainDefense.keyPrice??mainDefense.lower)}`})}
   if(Number.isFinite(Number(neck))&&Number(neck)>=lo&&Number(neck)<=hi){const y=py(Number(neck));svg+=`<line x1="${P}" x2="${W-36}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#e7b365" stroke-width="1.4" stroke-dasharray="5 5"/>`;annotations.push({y:y-5,color:'#e7b365',label:`頸線 ${price(neck)}`})}
   const lineColors=['#3dd9ba','#76abfa'];
   (supports||[]).slice(0,2).forEach((v,idx)=>{
