@@ -112,3 +112,26 @@
 .intraday-hold{display:flex;align-items:flex-start;gap:9px;margin:11px 0 0;font-size:12px;color:#cadce5;line-height:1.7}
 .intraday-hold input{accent-color:#5adbc9;flex:0 0 auto;width:16px;height:16px;margin-top:4px}
 .intraday-small{font-size:11px;line-height:1.7;color:#abc5d5}
+
+/* V2.7: one rank, first20-first60-all and direct manual price/volume entry */
+.rank-toolbar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:13px 0 7px}
+.rank-scope{background:#1b3044;color:#c0d8e7;border:1px solid #385164;padding:12px 5px;border-radius:10px;font-size:13px;font-weight:700}
+.rank-scope.active{background:#267768;color:#fff;border-color:#4dd5bf}
+.rank-summary{margin:9px 0;color:#d6e2ec;font-size:12px;line-height:1.55}
+.rank-tip{margin:9px 0 15px;padding:10px 12px;border:1px solid #355b65;border-radius:9px;background:#142938;color:#aed3d1;font-size:12px;line-height:1.65}
+.ranked-stock{min-width:0}
+.ranked-stock .stock-card{border-radius:15px 15px 0 0;border-bottom:0}
+.rank-head{display:flex;justify-content:space-between;gap:7px;margin-bottom:10px;font-size:12px;align-items:center;flex-wrap:wrap}
+.rank-number{color:#f5d4a2;font-weight:800}
+.rank-score{font-size:11px;color:#95dbc9}
+.rank-stage{font-weight:750;color:#bff0e4;font-size:12px;line-height:1.55;margin:5px 0 10px}
+.quick-intraday{display:flex;width:100%;align-items:center;justify-content:space-between;text-align:left;font-size:13px;font-weight:800;padding:13px 17px;border-radius:0 0 15px 15px;color:#07281f;background:#4ed4bb}
+.quick-intraday.unavailable{background:#254156;color:#d2e5e8}
+.quick-intraday:focus-visible{outline-offset:-3px}
+.rank-modal-list{max-height:48vh;overflow:auto;display:grid;gap:7px;margin-top:10px}
+.rank-modal-row{display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:left;padding:11px;border:1px solid #2d485d;border-radius:10px;background:#112b3d;color:#e2eff5}
+.rank-modal-row span{font-size:11px;color:#a5d1c4;line-height:1.5}
+.intraday-shortcut{display:flex;flex-direction:column;gap:5px;padding:8px 0}
+.intraday-shortcut button{background:#4ed4bb;color:#082b26;font-weight:800;text-align:center;padding:13px;border-radius:9px}
+.intraday-shortcut small{color:#a6c7cc;font-size:11px}
+@media(min-width:800px){.ranked-stock{height:100%}}
