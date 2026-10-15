@@ -22,6 +22,8 @@ import urllib.request
 from pathlib import Path
 from html import unescape
 from rules import build_snapshot
+from trader import trader_overlay,apply_sector_relative_strength
+from performance import update_diary
 
 ROOT = Path(__file__).resolve().parents[1]
 HISTORY = ROOT / 'storage' / 'history.json'
@@ -363,6 +365,8 @@ def score_company(stock, candidate):
 def run(days,delay,as_of=None):
     now=(dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()) if as_of is None else dt.date.fromisoformat(as_of)
     allstocks=read_existing()
+    # Keep prospective signal diary when rebuilding/updating history.
+    historical_signals=(json.loads(HISTORY.read_text('utf-8')).get('signalEvents',[]) if HISTORY.exists() else [])
     known={(s['market'],row[0]) for s in allstocks.values() for row in s.get('bars',[])}
     if days>0:
         dates=[now-dt.timedelta(days=i) for i in range(days-1,-1,-1)]
@@ -396,18 +400,29 @@ def run(days,delay,as_of=None):
         LOG.warning('No history acquired; keep APP in empty setup state')
         return
     financial_sources=enrich_financials(allstocks)
-    atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values())})
     snapshot=build_snapshot(allstocks)
     for c in snapshot['candidates']:
         st=allstocks.get(c['market']+c['code'],{})
         c['fundamentals']=st.get('fundamentals',{})
         c['investment']=score_company(st,c)
+        c['trading']=trader_overlay(c)
+    apply_sector_relative_strength(allstocks,snapshot['candidates'],snapshot['asOf'])
     snapshot['fundamentalFeeds']=financial_sources
     snapshot['financeRulesVersion']='finance-v1.3'
-    snapshot['rankMethod']='V1.4 first-launch priority; finance score is secondary, requires monthly revenue YoY and cumulative YoY; missing remains null; not buy advice'
+    snapshot['traderRulesVersion']='trader-v1.6'
+    snapshot['performance'],updated_signals=update_diary(historical_signals,allstocks,snapshot['candidates'],snapshot['asOf'])
+    snapshot['rankMethod']='V1.6 first-launch plus technical tradeability and forward-only outcome diary; non-calibrated scores, never buy probabilities'
     snapshot['launchRulesVersion']='launch-v1.4'
-    snapshot['priorityTop60']=[{'code':c['code'],'market':c['market'],'priority':c['investment']['overall']} for c in sorted(snapshot['candidates'],key=lambda c:(c.get('launchRank',0),(c['investment']['overall'] is not None),c['investment']['overall'] or -1,c['score']),reverse=True)[:60]]
+    def rank_trade(c):
+        t=c.get('trading',{});s=t.get('score')
+        riskpenalty=35 if t.get('status')=='不宜追價' else 20 if c.get('followStatus')=='假突破警戒' else 0
+        growth=c.get('investment',{}).get('growth')
+        return (s if s is not None else -100)+(12 if c.get('priceConfirmed') else 8 if c.get('followStatus')=='突破續強' else 4 if c.get('preLaunch') else 0)+(min(10,growth*.1) if growth is not None else 0)-riskpenalty
+    snapshot['priorityTop60']=[{'code':c['code'],'market':c['market'],'priority':c['investment']['overall'],
+                                'tradeScore':c['trading']['score'],'status':c['trading'].get('status')}
+                               for c in sorted(snapshot['candidates'],key=rank_trade,reverse=True)[:60]]
     snapshot['generatedAt']=dt.datetime.now(dt.timezone.utc).isoformat()
+    atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values()),'signalEvents':updated_signals})
     atomic_json(SNAPSHOT,snapshot)
     LOG.info('Wrote %s records, %s eligible stocks, %s candidates on %s',modified,snapshot['eligibleCount'],snapshot['candidateCount'],snapshot['asOf'])
 

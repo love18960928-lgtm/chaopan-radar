@@ -53,7 +53,7 @@ def _five_day_change(history, close):
     return 100 * (close / float(history[-5][4]) - 1)
 
 
-def scan_stock(stock):
+def scan_stock(stock, detect_follow=True):
     """V1.4: completed day K only; priority is FIRST price crossing, regardless of volume.
 
     A lock-limit candle with low turnover still qualifies. Prelaunch is a speculative
@@ -124,7 +124,33 @@ def scan_stock(stock):
     price_confirmed=first
     volume_confirmed=bool(first and vol_ratio>=1.5 and close_in_top>=.7)
     confirmed=volume_confirmed  # backward-compatible V1.3 meaning
-    valid=first or prep or near or new_volume or limit20>=2
+    # Follow breakout events recorded 1-5 actual trading sessions earlier.
+    # Replay only the historical prefix, never inspect any future candle.
+    recent_event=None
+    if detect_follow and not first:
+        for lag in range(1,min(6,len(bars)-54)):
+            older=dict(stock,bars=bars[:-lag])
+            old_signal=scan_stock(older, detect_follow=False)
+            if old_signal and old_signal.get('priceConfirmed'):
+                recent_event=(lag,old_signal)
+                break
+    follow_status=None
+    if recent_event:
+        lag,old_signal=recent_event
+        old_neck=old_signal['neck']; breakout_close=old_signal['close']
+        breakout_vol=old_signal['lots']
+        if close < old_neck*.99:
+            follow_status='假突破警戒'
+        elif close>=breakout_close and close>=sma10:
+            follow_status='突破續強'
+        elif close>=old_neck*.985 and vol<=breakout_vol*.75:
+            follow_status='縮量回測'
+        else:
+            follow_status='突破後觀察'
+        if anchor is None:
+            anchor={'high':old_neck,'date':old_signal['neckDate'],'vol':old_signal['neckLots']}
+            neck=old_neck;dist=round(100*(close/neck-1),2)
+    valid=first or prep or near or new_volume or limit20>=2 or bool(recent_event)
     if not valid:return None
     tags=[]
     if first:tags.append('first')
@@ -132,6 +158,7 @@ def scan_stock(stock):
     if near:tags.append('near')
     if new_volume:tags.append('volume')
     if limit20>=2:tags.append('limit')
+    if recent_event:tags.append('follow')
     points=(70 if first else 0)+(49 if prep else 0)+(32 if near else 0)+ (28 if new_volume else 0)+min(limit20,5)*7
     points+=min(vol_ratio,5)*6 if first or new_volume else min(vol_ratio,3)*2
     if volume_confirmed:points+=12
@@ -140,9 +167,13 @@ def scan_stock(stock):
     if new_volume and not broke_old_high:points-=5
     if near and dist is not None:points+=6-max(0,abs(dist))*2
     if prep:points+=max(0,min(10,price_change5))
-    launch_stage='首次發動' if first else '發動前預備' if prep else '接近頸線' if near else '大量確認' if new_volume else '漲停動能'
-    launch_rank=5 if first else 4 if prep else 3 if new_volume else 2 if near else 1
-    launch_reason=( '一字漲停突破大量K高點；成交量非必要條件' if locked_limit else
+    if follow_status=='突破續強':points+=35
+    elif follow_status=='縮量回測':points+=22
+    elif follow_status=='假突破警戒':points-=45
+    launch_stage='首次發動' if first else '突破後追蹤' if recent_event else '發動前預備' if prep else '接近頸線' if near else '大量確認' if new_volume else '漲停動能'
+    launch_rank=5 if first else 4 if recent_event else 4 if prep else 3 if new_volume else 2 if near else 1
+    launch_reason=( ('突破後第%d個交易日：%s' % (recent_event[0],follow_status)) if recent_event and not first else
+                    '一字漲停突破大量K高點；成交量非必要條件' if locked_limit else
                     '今天收盤首次站上有效歷史大量K高點' if first else
                     '尚未突破：位於大量K高點下3%～10%，且短期價量改善' if prep else
                     '距歷史大量K高點3%以內，尚未正式突破' if near else
@@ -160,6 +191,9 @@ def scan_stock(stock):
         'newVolumeAboveOldHigh':broke_old_high,'confirmed':confirmed,
         'priceConfirmed':price_confirmed,'volumeConfirmed':volume_confirmed,
         'onePriceLimit':locked_limit,'preLaunch':prep,'launchStage':launch_stage,
+        'followStatus':follow_status,'followDay':recent_event[0] if recent_event else None,
+        'breakoutDate':recent_event[1]['date'] if recent_event else t[0] if first else None,
+        'breakoutClose':recent_event[1]['close'] if recent_event else close if first else None,
         'launchReason':launch_reason,'launchRank':launch_rank,
         'momentum5Pct':round(price_change5,2),'overextended':bool(first and dist>8),
         'tags':tags,'score':round(points),
@@ -192,9 +226,12 @@ def build_snapshot(stocks):
             'marketAsOf':market_dates,'marketCount':by_market,'stockCount':len(stocks),
             'eligibleCount':eligible,'candidateCount':len(candidates),
             'counts':{k:sum(k in c['tags'] for c in candidates)
-                      for k in ('first','prep','near','volume','limit')},
-            'rulesVersion':'eod-v1.4-launch',
-            'notes':['僅盤後資料，無法在漲停當下預警',
+                      for k in ('first','prep','near','volume','limit','follow')},
+            'rulesVersion':'eod-v1.6-trade-quality',
+            'notes':['V1.6補充突破後5日追蹤，不使用即時行情',
+                     '主力洗盤或出貨只能推估，不能直接辨識交易主體',
+                     '分數是規則式排序，不是統計上的勝率或報酬承諾',
+                     '僅盤後資料，無法在漲停當下預警',
                      '首次突破不要求新成交量超過舊大量K',
                      '發動前預備是機率不明的候選觀察，不能推論隔日必漲',
                      '漲停次數為價格估算，除權息或特殊交易可能誤判',
