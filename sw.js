@@ -1,5 +1,5 @@
 'use strict';
-const STATIC='chaopan-static-v2.5-cycle-1';
+const STATIC='chaopan-static-v2.6-intraday-1';
 const SHELL=['./','./index.html','./app.css','./app-detail-swipe-v222.js','./manifest.webmanifest'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(STATIC).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(Promise.all([

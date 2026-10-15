@@ -96,3 +96,19 @@
 .cycle-indicators{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:12px 0}
 .cycle-indicators span{padding:8px;background:#1c384a;border-radius:9px;font-size:12px;display:flex;justify-content:space-between;gap:5px}
 .cycle-indicators b{font-variant-numeric:tabular-nums;color:#b8f8e6}
+/* V2.6 next-session intraday conditional worksheet; manual inputs, no quote feed */
+.intraday-panel{margin:14px 0;padding:15px;border:1px solid #598c8c;border-radius:16px;background:#12283a}
+.intraday-panel h3{font-size:17px;margin:0 0 8px;color:#d5fff5}
+.intraday-panel .muted{color:#adc6d2;font-size:11px;line-height:1.65}
+.intraday-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:12px 0}
+.intraday-kpis > div{background:#0b1d2d;border:1px solid #31516a;border-radius:10px;padding:10px}
+.intraday-kpis small{display:block;font-size:11px;color:#a2bed0}
+.intraday-kpis strong{display:block;margin-top:3px;font-size:22px;color:#fbd096}
+.intraday-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:13px}
+.intraday-fields label{color:#cadce5;font-size:12px;display:flex;flex-direction:column;gap:5px}
+.intraday-fields input,.intraday-fields select{width:100%;border:1px solid #3b6273;border-radius:9px;background:#0a1b2a;color:#f4fbff;padding:10px;font-size:16px;min-width:0}
+.intraday-status{padding:10px;border:1px solid #41566b;border-radius:9px;background:#0d1c2a;line-height:1.7;margin-top:13px;font-size:12px;min-height:40px}
+.intraday-status.good{border-color:#3eaf91;color:#c6ffed}.intraday-status.warn{border-color:#b9854f;color:#ffe2b6}.intraday-status.danger{border-color:#d46872;color:#ffe1e3}
+.intraday-hold{display:flex;align-items:flex-start;gap:9px;margin:11px 0 0;font-size:12px;color:#cadce5;line-height:1.7}
+.intraday-hold input{accent-color:#5adbc9;flex:0 0 auto;width:16px;height:16px;margin-top:4px}
+.intraday-small{font-size:11px;line-height:1.7;color:#abc5d5}
