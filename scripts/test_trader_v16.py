@@ -76,6 +76,6 @@ class TraderV16(unittest.TestCase):
 
     def test_rules_snapshot_has_trader_version(self):
         snap=build_snapshot({'上市8039':taihong_fixture()})
-        self.assertEqual(snap['rulesVersion'],'eod-v1.6-trade-quality')
+        self.assertEqual(snap['rulesVersion'],'eod-v2.0-core')
 
 if __name__=='__main__':unittest.main()

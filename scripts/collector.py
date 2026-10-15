@@ -24,6 +24,7 @@ from html import unescape
 from rules import build_snapshot
 from trader import trader_overlay,apply_sector_relative_strength
 from performance import update_diary
+from market_quality import breadth
 
 ROOT = Path(__file__).resolve().parents[1]
 HISTORY = ROOT / 'storage' / 'history.json'
@@ -312,10 +313,13 @@ def score_company(stock, candidate):
     """Transparent rule-based scores, not forecasts or probabilities. None if source missing."""
     f=dict(stock.get('fundamentals') or {})
     trade_date=candidate.get('date','')
+    # Date parsing is independent of monthly revenue presence; EPS-only data remains valid.
+    try: td=dt.date.fromisoformat(trade_date)
+    except (TypeError,ValueError):td=None
     # Explicit freshness gates. Do not score a company using stale last-known facts.
     try:
         rd=dt.date.fromisoformat(str(f.get('revenuePeriod',''))+'-01')
-        td=dt.date.fromisoformat(trade_date)
+        if td is None:raise ValueError('Invalid trade date')
         month_age=(td.year-rd.year)*12+td.month-rd.month
         if month_age<0 or month_age>3:
             f.pop('revenueYoY',None);f.pop('revenueCumYoY',None)
@@ -325,6 +329,17 @@ def score_company(stock, candidate):
         vd=dt.date.fromisoformat(str(f.get('valuationDate','')))
         if abs((dt.date.fromisoformat(trade_date)-vd).days)>20:f.pop('pe',None)
     except (ValueError,TypeError):f.pop('pe',None)
+    # Quarterly EPS is not evergreen. Never allow a stale/future report into ranking.
+    try:
+        period=str(f.get('epsPeriod',''))
+        yr,q=int(period[:4]),int(period[-1])
+        if len(period)!=6 or period[4]!='Q' or q not in (1,2,3,4):raise ValueError
+        nextyear,nextmonth=(yr+1,1) if q==4 else (yr,q*3+1)
+        quarter_end=dt.date(nextyear,nextmonth,1)-dt.timedelta(days=1)
+        if td is None or (td-quarter_end).days < 0 or (td-quarter_end).days > 245:
+            f.pop('eps',None);f.pop('grossMargin',None)
+    except (ValueError,TypeError,UnboundLocalError):
+        f.pop('eps',None);f.pop('grossMargin',None)
     def scaled(value,tiers):
         if value is None:return None
         for minv,points in tiers:
@@ -356,11 +371,15 @@ def score_company(stock, candidate):
         overall=None
         label='待基本面資料'
     else:
-        overall=max(0,min(100,round(.40*tech+.45*growth*(.7+.3*c_coverage/100)+.15*((pe_score or 0)/15*100)-penalties)))
+        weights=.40+.45+(.15 if pe_score is not None else 0)
+        weighted_sum=.40*tech+.45*growth*(.7+.3*c_coverage/100)
+        if pe_score is not None:weighted_sum+=.15*(pe_score/15*100)
+        overall=max(0,min(100,round(weighted_sum/weights-penalties)))
         label='優先研究' if overall>=75 and c_coverage>=75 else '持續觀察' if overall>=60 and c_coverage>=60 else '謹慎追蹤'
     return {'technical':tech,'growth':growth,'overall':overall,'grade':label,
             'coverage':c_coverage,'valuation':None if pe_score is None else round(pe_score/15*100),
-            'overheatPenalty':penalties,'return20Pct':ret20}
+            'overheatPenalty':penalties,'return20Pct':ret20,
+            'valuationMissing':pe_score is None,'valuationScored':pe_score is not None}
 
 def run(days,delay,as_of=None):
     now=(dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()) if as_of is None else dt.date.fromisoformat(as_of)
@@ -401,27 +420,45 @@ def run(days,delay,as_of=None):
         return
     financial_sources=enrich_financials(allstocks)
     snapshot=build_snapshot(allstocks)
+    # Unvalidated external institutional endpoints are deliberately disabled.
+    # No claims about foreign/trust buying can be made without a source check.
     for c in snapshot['candidates']:
         st=allstocks.get(c['market']+c['code'],{})
         c['fundamentals']=st.get('fundamentals',{})
         c['investment']=score_company(st,c)
         c['trading']=trader_overlay(c)
+        c['institutional']=None
     apply_sector_relative_strength(allstocks,snapshot['candidates'],snapshot['asOf'])
+    snapshot['marketBreadth']=breadth(allstocks,snapshot['asOf'])
+    snapshot['institutionalCoverage']={
+        'date':snapshot['asOf'], 'markets':{}, 'matchedToStockCount':0,
+        'policy':'未經實際連線驗證的法人資料來源停用；不參與評分，不將缺資料當零。'
+    }
     snapshot['fundamentalFeeds']=financial_sources
+    snapshot['dataCoverage']={'officialIndustry':sum(bool((s.get('fundamentals') or {}).get('industry')) for s in allstocks.values()),
+       'financialFeedTypes':list(financial_sources.keys()),'foreignInstitutional':'未接入；不參與評分',
+       'investmentTrust':'未接入；不參與評分','internationalIndices':'未接入；不參與評分',
+       'marketBreadth':'現有日K計算；非指數行情'}
     snapshot['financeRulesVersion']='finance-v1.3'
     snapshot['traderRulesVersion']='trader-v1.6'
     snapshot['performance'],updated_signals=update_diary(historical_signals,allstocks,snapshot['candidates'],snapshot['asOf'])
-    snapshot['rankMethod']='V1.6 first-launch plus technical tradeability and forward-only outcome diary; non-calibrated scores, never buy probabilities'
+    snapshot['rankMethod']='V2.0 core: strict new-volume, price/sector/tradability and as-of validation; external feeds excluded'
     snapshot['launchRulesVersion']='launch-v1.4'
     def rank_trade(c):
         t=c.get('trading',{});s=t.get('score')
-        riskpenalty=35 if t.get('status')=='不宜追價' else 20 if c.get('followStatus')=='假突破警戒' else 0
+        riskpenalty=100 if t.get('status')=='資料需核對' else 35 if t.get('status')=='不宜追價' else 20 if c.get('followStatus')=='假突破警戒' else 0
         growth=c.get('investment',{}).get('growth')
         return (s if s is not None else -100)+(12 if c.get('priceConfirmed') else 8 if c.get('followStatus')=='突破續強' else 4 if c.get('preLaunch') else 0)+(min(10,growth*.1) if growth is not None else 0)-riskpenalty
     snapshot['priorityTop60']=[{'code':c['code'],'market':c['market'],'priority':c['investment']['overall'],
                                 'tradeScore':c['trading']['score'],'status':c['trading'].get('status')}
                                for c in sorted(snapshot['candidates'],key=rank_trade,reverse=True)[:60]]
     snapshot['generatedAt']=dt.datetime.now(dt.timezone.utc).isoformat()
+    # Safety: don't replace the public radar with partial market/insufficient history.
+    # Keep raw observations for later recovery, but only write new public snapshot if healthy.
+    if snapshot['mode']!='live':
+        atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values()),'signalEvents':historical_signals})
+        LOG.warning('BLOCKED public snapshot: market coverage/date inconsistent: %s',snapshot['marketAsOf'])
+        return
     atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values()),'signalEvents':updated_signals})
     atomic_json(SNAPSHOT,snapshot)
     LOG.info('Wrote %s records, %s eligible stocks, %s candidates on %s',modified,snapshot['eligibleCount'],snapshot['candidateCount'],snapshot['asOf'])

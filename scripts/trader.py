@@ -70,7 +70,10 @@ def trader_overlay(candidate):
     if r20 is not None and r20>45:entry-=20
     if candidate.get('followStatus')=='假突破警戒':entry-=40
     entry=max(0,min(100,entry))
-    avg_vol20=mean(volumes[-21:-1]);liquid=100 if avg_vol20>=5000 else 80 if avg_vol20>=2000 else 55 if avg_vol20>=1000 else 20
+    avg_vol20=mean(volumes[-21:-1])
+    cash20_m=mean(closes[j]*volumes[j]/1000 for j in range(n-21,n-1))
+    # OHLCV is in lots; close*lots/1000 = NT$ millions. Liquidity should track cash value.
+    liquid=100 if cash20_m>=300 else 80 if cash20_m>=100 else 55 if cash20_m>=30 else 20
     if one_price:liquid-=35
     liquid=max(0,liquid)
     score=round(.45*trend+.40*entry+.15*liquid)
@@ -81,12 +84,16 @@ def trader_overlay(candidate):
     if atr_pct is not None and atr_pct>7:risks.append('14日波動幅度偏高')
     if candidate.get('followStatus')=='假突破警戒':risks.append('跌回前波大量K頸線下方')
     if trend<45:risks.append('多頭趨勢尚未確認')
-    tradability='不宜追價' if one_price or (downside is not None and downside>8) or (r20 is not None and r20>60) else '先觀察轉強' if candidate.get('followStatus')=='假突破警戒' or trend<45 else '關注回測' if candidate.get('followStatus')=='縮量回測' else '等待觸發／觀察'
+    if not candidate.get('complete120',True):risks.append('歷史日K未滿120根，頸線可信度較低')
+    if candidate.get('possiblePriceAdjustment'):risks.append('歷史價差異常，可能有除權息／減資或特殊交易，須核對')
+    tradability='資料需核對' if candidate.get('possiblePriceAdjustment') else '不宜追價' if one_price or (downside is not None and downside>8) or (r20 is not None and r20>60) else '先觀察轉強' if candidate.get('followStatus')=='假突破警戒' or trend<45 else '關注回測' if candidate.get('followStatus')=='縮量回測' else '等待觸發／觀察'
     return {'score':score,'grade':'技術優先追蹤' if score>=75 and not risks else '持續觀察' if score>=55 else '風險偏高',
             'trend':trend,'entryQuality':entry,'liquidity':liquid,'atr14':round(atr,3) if atr else None,
             'atrPct':round(atr_pct,2) if atr_pct else None,'ma5':round(ma5,2),'ma20':round(ma20,2),'ma60':round(ma60,2),
             'return5Pct':round(r5,2),'return20Pct':round(r20,2),'return60Pct':round(r60,2),
-            'upDays10':up_days,'upDownVolumeRatio':round(accumulation,2) if accumulation else None,
+            'upDays10':up_days,'avgTurnover20Millions':round(cash20_m,2),
+            'holdQuality':trend,'newEntryQuality':entry,
+            'upDownVolumeRatio':round(accumulation,2) if accumulation else None,
             'structureInvalidation':stop,'structureDistancePct':downside,'illustrativeTwoR':hypothetical_2r,
             'status':tradability,'risks':risks,
             'dataNotes':['技術評分不是上漲機率','結構價與2R只是假設情境，非未來目標或實際成交價','未納入大盤、法人即時籌碼、公司新聞及除權息調整']}
@@ -111,12 +118,13 @@ def apply_sector_relative_strength(stocks, candidates, asof):
         t=c.get('trading',{})
         peers=groups.get(industry,[])
         if len(peers)<8 or t.get('return20Pct') is None:
-            t['sectorRelative20Pct']=None;t['sectorPeerCount']=len(peers)
+            t['sectorRelative20Pct']=None;t['sectorPeerCount']=len(peers);t['sectorPriceRank']=None
             t['sectorLabel']='產業同業資料不足';continue
         r=t['return20Pct']
         median=sorted(peers)[len(peers)//2] if len(peers)%2 else (sorted(peers)[len(peers)//2-1]+sorted(peers)[len(peers)//2])/2
         excess=r-median
         t['sectorRelative20Pct']=round(excess,2);t['sectorPeerCount']=len(peers)
+        t['sectorPriceRank']=1+sum(q>r for q in peers)
         t['sectorLabel']='強於產業中位數' if excess>=5 else '弱於產業中位數' if excess<=-5 else '接近產業中位數'
         if excess>=5:t['score']=min(100,t['score']+4)
         elif excess<=-5:t['score']=max(0,t['score']-4)

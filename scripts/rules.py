@@ -111,8 +111,9 @@ def scan_stock(stock, detect_follow=True):
     momentum=bool(close>=sma10 and (price_change5>=2 or vol_ratio>=1.3 or close>recent_high))
     prep=bool(anchor and dist is not None and -10 <= dist < -3 and momentum)
     old_max=max(history,key=lambda b:float(b[5]))
-    new_volume=bool(vol>float(old_max[5]) and close>float(old_max[4]))
+    volume_over_old_close=bool(vol>float(old_max[5]) and close>float(old_max[4]))
     broke_old_high=close>float(old_max[2])
+    new_volume=bool(vol>float(old_max[5]) and broke_old_high)  # strict, separate from old close
     limit20=limit_up_count(bars)
     close_in_top=(close-low)/(high-low) if high>low else 1.
     one_price=abs(opn-high)<.011 and abs(opn-low)<.011 and abs(opn-close)<.011
@@ -177,7 +178,7 @@ def scan_stock(stock, detect_follow=True):
                     '今天收盤首次站上有效歷史大量K高點' if first else
                     '尚未突破：位於大量K高點下3%～10%，且短期價量改善' if prep else
                     '距歷史大量K高點3%以內，尚未正式突破' if near else
-                    '今日成交量大於前120日最大量' if new_volume else
+                    '今日成交量與收盤價均突破前120日最大量K' if new_volume else
                     '20日內有多次漲停，但不能代替突破')
     return {
         'code':stock['code'],'name':stock['name'],'market':stock['market'],
@@ -188,7 +189,10 @@ def scan_stock(stock, detect_follow=True):
         'volumeRatio':vol_ratio,'limit20':limit20,
         'oldMaxLots':round(float(old_max[5])),'oldMaxDate':old_max[0],
         'oldMaxClose':float(old_max[4]),'oldMaxHigh':float(old_max[2]),
-        'newVolumeAboveOldHigh':broke_old_high,'confirmed':confirmed,
+        'newVolumeAboveOldHigh':broke_old_high,'volumeOverOldClose':volume_over_old_close,
+        'historicalSessions':len(history),'complete120':len(history)>=LOOKBACK,
+        'possiblePriceAdjustment':any((float(bars[k-1][4])>0 and (float(bars[k][4])/float(bars[k-1][4])>1.24 or float(bars[k][4])/float(bars[k-1][4])<.76)) for k in range(max(1,len(bars)-121),len(bars))),
+        'confirmed':confirmed,
         'priceConfirmed':price_confirmed,'volumeConfirmed':volume_confirmed,
         'onePriceLimit':locked_limit,'preLaunch':prep,'launchStage':launch_stage,
         'followStatus':follow_status,'followDay':recent_event[0] if recent_event else None,
@@ -215,20 +219,24 @@ def build_snapshot(stocks):
     market_dates={m:max((x['bars'][-1][0] for x in stocks.values()
                          if x.get('market')==m and x.get('bars')),default=None)
                   for m in ('上市','上櫃')}
+    # Do not publish a mixed / incomplete exchange day as a full-market ranking.
+    active_by_market={m:sum(stock.get('market')==m and len(stock.get('bars',[]))>=MIN_SESSIONS
+                            and stock['bars'][-1][0]==lastdate for stock in stocks.values())
+                      for m in ('上市','上櫃')}
     if market_dates['上市']!=market_dates['上櫃']:
         readiness='partial'
+    elif eligible>=500 and (active_by_market['上市']<700 or active_by_market['上櫃']<450):
+        readiness='partial'
     else:
-        readiness='live' if eligible>=500 and all(
-            sum(stock.get('market')==m and len(stock.get('bars',[]))>=MIN_SESSIONS
-                for stock in stocks.values())>=250 for m in ('上市','上櫃')) else 'warming'
+        readiness='live' if eligible>=500 and all(active_by_market[m]>=250 for m in ('上市','上櫃')) else 'warming'
     candidates=[c for c in candidates if c['date']==lastdate]
     return {'mode':readiness,'asOf':lastdate,'tradingDate':lastdate,
-            'marketAsOf':market_dates,'marketCount':by_market,'stockCount':len(stocks),
+            'marketAsOf':market_dates,'activeMarketCount':active_by_market,'marketCount':by_market,'stockCount':len(stocks),
             'eligibleCount':eligible,'candidateCount':len(candidates),
             'counts':{k:sum(k in c['tags'] for c in candidates)
                       for k in ('first','prep','near','volume','limit','follow')},
-            'rulesVersion':'eod-v1.6-trade-quality',
-            'notes':['V1.6補充突破後5日追蹤，不使用即時行情',
+            'rulesVersion':'eod-v2.0-core',
+            'notes':['V2.0精簡版：未接入法人與國際指數，不使用即時行情',
                      '主力洗盤或出貨只能推估，不能直接辨識交易主體',
                      '分數是規則式排序，不是統計上的勝率或報酬承諾',
                      '僅盤後資料，無法在漲停當下預警',
