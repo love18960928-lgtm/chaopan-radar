@@ -11,6 +11,7 @@ from trader import trader_overlay
 from support_v22 import support_evidence
 from intraday_plan_v26 import build_intraday_plan
 from structure_v25 import cycle_judgement
+from ma_strength_v30 import moving_average_context
 
 
 def _ret(bars,days):
@@ -64,6 +65,7 @@ def assess_stock(st, snapshot_row, context, asof):
         c['priceConfirmed']=False;c['confirmed']=False;c['tags']=[]
         for key in ('cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview'):
             c[key]=short.get(key)
+        c['lineContext']=moving_average_context(b,short.get('cycle'))
         c['intradayPlan']=build_intraday_plan(b,short,asof=asof)
         c.update({'riskLevel':'unknown','riskStatus':'資料不足','riskReasons':['不足61根交易日K線'],
                   'opportunityScore':None,'decision':'資料不足','relMarket5Pct':None,'relSector5Pct':None})
@@ -79,6 +81,7 @@ def assess_stock(st, snapshot_row, context, asof):
     levels=support_evidence(b)
     structure=cycle_judgement(b,market_breadth=context.get('breadthMa20',{}).get(st['market']))
     c['structureV23']=structure
+    c['lineContext']=moving_average_context(b,structure.get('cycle'))
     # One recent-structure engine for EVERY stock (including non-candidates).
     # Preserve historical old logic only as the supporting volume reference;
     # do not let priceConfirmed/candidate override this as-of structural level.
@@ -205,7 +208,7 @@ def build_universe(stocks, snapshot, asof):
           'distancePct','volumeRatio','oldMaxLots','oldMaxDate','oldMaxHigh','oldMaxClose','limit20','tags','priceConfirmed','preLaunch','followStatus',
           'launchStage','score','complete120','possiblePriceAdjustment','onePriceLimit',
           'riskLevel','riskStatus','riskReasons','riskEvidence','supportEvidence','structureV23','unifiedStage','unifiedScore','unifiedReasons','legacyNeck','relMarket5Pct','relSector5Pct',
-          'marketProxyNote','decision','opportunityScore','industry','trading','intradayPlan',
+          'marketProxyNote','decision','opportunityScore','industry','trading','intradayPlan','lineContext',
           'cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview')}
         slim['fundamentals']={'industry':record['industry']}
         slim['bars']=record['bars']
@@ -216,9 +219,9 @@ def build_universe(stocks, snapshot, asof):
         if matching:
             for key in ('riskLevel','riskStatus','riskReasons','riskEvidence','supportEvidence','structureV23','relMarket5Pct',
                         'relSector5Pct','marketProxyNote','decision','opportunityScore',
-                        'cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview','intradayPlan'):
+                        'cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview','intradayPlan','lineContext'):
                 c[key]=matching.get(key)
-    return {'schema':3,'rulesVersion':'eod-v2.9-breakout-sequence','asOf':asof,'marketAsOf':snapshot.get('marketAsOf'),
+    return {'schema':3,'rulesVersion':'eod-v3.0-ma-neck-hold','asOf':asof,'marketAsOf':snapshot.get('marketAsOf'),
             'marketCount':snapshot.get('activeMarketCount'), 'coverage':len(rows),
             'notes':['全市場盤後掃描；不等於個股主力持股紀錄','同市場比較以股票等權中位數估計，非加權指數',
                      '前波低點／大量K／缺口支撐為價量參考，非主力成本或保證價','公開日K未還原權值，異常價差須核對','外資投信若無經日期驗證的可靠來源，不假造法人資料'],
