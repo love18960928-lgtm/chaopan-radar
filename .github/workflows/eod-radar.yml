@@ -6,9 +6,9 @@ on:
         description: '初次回補輸入 220，平常留 0'
         required: false
         default: '0'
-    schedule:
-    - cron: '30 6 * * 1-5'
-    - cron: '0 15 * * 1-5'
+  schedule:
+    - cron: '30 6 * * 1-5'   # 台灣時間 14:30（UTC 06:30）
+    - cron: '0 15 * * 1-5'    # 台灣時間 23:00（UTC 15:00）
 permissions:
   contents: write
 jobs:
