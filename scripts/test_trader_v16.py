@@ -44,7 +44,7 @@ class TraderV16(unittest.TestCase):
         c=scan_stock(taihong_fixture());tr=trader_overlay(c)
         self.assertTrue(0<=tr['score']<=100)
         self.assertIn('trend',tr);self.assertIn('entryQuality',tr)
-        self.assertEqual(tr['status'],'不宜追價')
+        self.assertEqual(tr['status'],'資料需核對')  # too few historical K for trustworthy 120-day signal
         self.assertIn('一字漲停，可能無法買到',tr['risks'])
         self.assertNotIn('winRate',tr)
 
@@ -76,6 +76,6 @@ class TraderV16(unittest.TestCase):
 
     def test_rules_snapshot_has_trader_version(self):
         snap=build_snapshot({'上市8039':taihong_fixture()})
-        self.assertEqual(snap['rulesVersion'],'eod-v2.0-core')
+        self.assertEqual(snap['rulesVersion'],'eod-v2.1-core')
 
 if __name__=='__main__':unittest.main()

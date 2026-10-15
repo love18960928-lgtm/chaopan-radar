@@ -66,6 +66,10 @@ def trader_overlay(candidate):
     if downside is not None:
         entry+=25 if downside<=5 else 12 if downside<=8 else 0
     if atr_pct is not None:entry+=20 if atr_pct<=4.5 else 10 if atr_pct<=7 else 0
+    overhead=candidate.get('historicalPeakGapPct')
+    if overhead is not None and 0<overhead<=8:entry-=15
+    elif overhead is not None and 8<overhead<=15:entry-=8
+    if not candidate.get('complete120',False):entry-=20
     if one_price:entry-=30
     if r20 is not None and r20>45:entry-=20
     if candidate.get('followStatus')=='假突破警戒':entry-=40
@@ -79,6 +83,8 @@ def trader_overlay(candidate):
     score=round(.45*trend+.40*entry+.15*liquid)
     risks=[]
     if one_price:risks.append('一字漲停，可能無法買到')
+    if overhead is not None and 0<overhead<=8:
+        risks.append('距過去可得歷史高點8%內，留意上方價格壓力；不是實際套牢成本')
     if downside is not None and downside>8:risks.append('距結構參考防守價過遠')
     if r20 is not None and r20>45:risks.append('20日漲幅大，追高風險')
     if atr_pct is not None and atr_pct>7:risks.append('14日波動幅度偏高')
@@ -86,17 +92,21 @@ def trader_overlay(candidate):
     if trend<45:risks.append('多頭趨勢尚未確認')
     if not candidate.get('complete120',True):risks.append('歷史日K未滿120根，頸線可信度較低')
     if candidate.get('possiblePriceAdjustment'):risks.append('歷史價差異常，可能有除權息／減資或特殊交易，須核對')
-    tradability='資料需核對' if candidate.get('possiblePriceAdjustment') else '不宜追價' if one_price or (downside is not None and downside>8) or (r20 is not None and r20>60) else '先觀察轉強' if candidate.get('followStatus')=='假突破警戒' or trend<45 else '關注回測' if candidate.get('followStatus')=='縮量回測' else '等待觸發／觀察'
+    tradability='資料需核對' if candidate.get('possiblePriceAdjustment') or not candidate.get('complete120',False) else '不宜追價' if one_price or (downside is not None and downside>8) or (r20 is not None and r20>60) else '先觀察轉強' if candidate.get('followStatus')=='假突破警戒' or trend<45 else '關注回測' if candidate.get('followStatus')=='縮量回測' else '等待觸發／觀察'
     return {'score':score,'grade':'技術優先追蹤' if score>=75 and not risks else '持續觀察' if score>=55 else '風險偏高',
             'trend':trend,'entryQuality':entry,'liquidity':liquid,'atr14':round(atr,3) if atr else None,
             'atrPct':round(atr_pct,2) if atr_pct else None,'ma5':round(ma5,2),'ma20':round(ma20,2),'ma60':round(ma60,2),
             'return5Pct':round(r5,2),'return20Pct':round(r20,2),'return60Pct':round(r60,2),
             'upDays10':up_days,'avgTurnover20Millions':round(cash20_m,2),
             'holdQuality':trend,'newEntryQuality':entry,
+            'historicalPeakHigh':candidate.get('historicalPeakHigh'),
+            'historicalPeakGapPct':overhead,
+            'historicalPeakSessions':candidate.get('historicalPeakSessions'),
+            'complete250':candidate.get('complete250',False),
             'upDownVolumeRatio':round(accumulation,2) if accumulation else None,
             'structureInvalidation':stop,'structureDistancePct':downside,'illustrativeTwoR':hypothetical_2r,
             'status':tradability,'risks':risks,
-            'dataNotes':['技術評分不是上漲機率','結構價與2R只是假設情境，非未來目標或實際成交價','未納入大盤、法人即時籌碼、公司新聞及除權息調整']}
+            'dataNotes':['技術評分不是上漲機率','結構價與2R只是假設情境，非未來目標或實際成交價','過去高點僅為可取得日K的未還原價參考；未納入真實套牢量', '未納入大盤、法人籌碼、公司新聞及除權息調整']}
 
 
 def apply_sector_relative_strength(stocks, candidates, asof):

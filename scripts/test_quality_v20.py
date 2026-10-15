@@ -49,7 +49,7 @@ class CandidateDataSafety(unittest.TestCase):
 
     def test_missing_pe_does_not_act_like_pe_zero(self):
         st=make_series()
-        st['fundamentals']={'revenuePeriod':'2026-09','revenueYoY':35,'revenueCumYoY':28,
+        st['fundamentals']={'revenuePeriod':'2026-08','revenueYoY':35,'revenueCumYoY':28,
                            'epsPeriod':'2026Q2','eps':3,'grossMargin':30}
         x=scan_stock(st)
         a=score_company(st,x)
@@ -70,7 +70,7 @@ class CandidateDataSafety(unittest.TestCase):
 
     def test_future_or_stale_eps_not_used(self):
         st=make_series();x=scan_stock(st)
-        st['fundamentals']={'revenuePeriod':'2026-09','revenueYoY':35,'revenueCumYoY':28,
+        st['fundamentals']={'revenuePeriod':'2026-08','revenueYoY':35,'revenueCumYoY':28,
                             'epsPeriod':'2027Q2','eps':20,'grossMargin':50}
         forward=score_company(st,x)
         st['fundamentals']['epsPeriod']='2024Q1'

@@ -321,13 +321,19 @@ def score_company(stock, candidate):
         rd=dt.date.fromisoformat(str(f.get('revenuePeriod',''))+'-01')
         if td is None:raise ValueError('Invalid trade date')
         month_age=(td.year-rd.year)*12+td.month-rd.month
-        if month_age<0 or month_age>3:
+        # A prior month's public revenue is conservatively usable only from the 11th
+        # of the following calendar month (not from month-end). This is an
+        # availability assumption, NOT the company's exact announcement time.
+        available_yr=rd.year + (1 if rd.month==12 else 0)
+        available_mo=1 if rd.month==12 else rd.month+1
+        public_from=dt.date(available_yr,available_mo,11)
+        if td<public_from or month_age>3:
             f.pop('revenueYoY',None);f.pop('revenueCumYoY',None)
     except (ValueError,TypeError):
         f.pop('revenueYoY',None);f.pop('revenueCumYoY',None)
     try:
         vd=dt.date.fromisoformat(str(f.get('valuationDate','')))
-        if abs((dt.date.fromisoformat(trade_date)-vd).days)>20:f.pop('pe',None)
+        if td is None or (td-vd).days<0 or (td-vd).days>20:f.pop('pe',None)
     except (ValueError,TypeError):f.pop('pe',None)
     # Quarterly EPS is not evergreen. Never allow a stale/future report into ranking.
     try:
@@ -336,7 +342,13 @@ def score_company(stock, candidate):
         if len(period)!=6 or period[4]!='Q' or q not in (1,2,3,4):raise ValueError
         nextyear,nextmonth=(yr+1,1) if q==4 else (yr,q*3+1)
         quarter_end=dt.date(nextyear,nextmonth,1)-dt.timedelta(days=1)
-        if td is None or (td-quarter_end).days < 0 or (td-quarter_end).days > 245:
+        # Conservative regulatory-publication windows; no published-at timestamp
+        # is available in the feed. Never use a quarter before this cutoff.
+        if q==1: published_from=dt.date(yr,5,16)
+        elif q==2: published_from=dt.date(yr,8,16)
+        elif q==3: published_from=dt.date(yr,11,16)
+        else: published_from=dt.date(yr+1,4,1)
+        if td is None or td<published_from or (td-quarter_end).days > 245:
             f.pop('eps',None);f.pop('grossMargin',None)
     except (ValueError,TypeError,UnboundLocalError):
         f.pop('eps',None);f.pop('grossMargin',None)
@@ -347,9 +359,11 @@ def score_company(stock, candidate):
         return 0
     r1=scaled(f.get('revenueYoY'),[(40,25),(25,22),(15,18),(8,14),(0,9),(-10,4),(-1e9,0)])
     r2=scaled(f.get('revenueCumYoY'),[(30,25),(20,22),(12,18),(5,14),(0,9),(-10,4),(-1e9,0)])
-    eps=scaled(f.get('eps'),[(5,20),(2,17),(.01,13),(0,4),(-1e9,0)])
-    gm=scaled(f.get('grossMargin'),[(40,15),(25,12),(15,9),(5,6),(-1e9,2)])
-    weighted=[(25,r1),(25,r2),(20,eps),(15,gm)]
+    # EPS absolute amount and gross margin are not comparable across industries.
+    # EPS is only a positive/breakeven/loss indicator until as-of YoY EPS exists.
+    eps_value=f.get('eps')
+    eps_quality=None if eps_value is None else 15 if eps_value>0 else 5 if eps_value==0 else 0
+    weighted=[(25,r1),(25,r2),(15,eps_quality)]
     avail=sum(w for w,v in weighted if v is not None)
     earned=sum(v for w,v in weighted if v is not None)
     growth=round(earned / avail * 100) if avail>=50 and r1 is not None and r2 is not None else None
@@ -358,7 +372,7 @@ def score_company(stock, candidate):
     if pe is not None and pe>0:
         pe_score=15 if pe<=12 else 12 if pe<=22 else 9 if pe<=35 else 5 if pe<=55 else 0
     tech=min(100,max(0,round(float(candidate.get('score') or 0)/1.45)))
-    c_coverage=round(avail/85*100)
+    c_coverage=round(avail/65*100)
     if f.get('pe') is not None: c_coverage=min(100,c_coverage+12)
     bars=candidate.get('bars',[])
     ret20=round((bars[-1][4]/bars[-21][4]-1)*100,2) if len(bars)>20 and bars[-21][4]>0 else None
@@ -379,7 +393,9 @@ def score_company(stock, candidate):
     return {'technical':tech,'growth':growth,'overall':overall,'grade':label,
             'coverage':c_coverage,'valuation':None if pe_score is None else round(pe_score/15*100),
             'overheatPenalty':penalties,'return20Pct':ret20,
-            'valuationMissing':pe_score is None,'valuationScored':pe_score is not None}
+            'valuationMissing':pe_score is None,'valuationScored':pe_score is not None,
+            'methodNote':'月營收年增與累計年增為主；EPS僅區分正負，不以EPS金額跨產業加分；毛利率僅展示',
+            'datePolicy':'月營收至少次月11日、季報依保守揭露期限、本益比不得使用未來日期（並非實際公告時刻）'}
 
 def run(days,delay,as_of=None):
     now=(dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()) if as_of is None else dt.date.fromisoformat(as_of)
@@ -411,7 +427,7 @@ def run(days,delay,as_of=None):
                 stock=allstocks.setdefault(key,{'code':it['code'],'name':it['name'],'market':market,'bars':[]})
                 stock['name']=it['name']
                 stock['bars']=[b for b in stock['bars'] if b[0]!=stamp]
-                stock['bars'].append(it['bar']);stock['bars'].sort(key=lambda b:b[0]);stock['bars']=stock['bars'][-190:]
+                stock['bars'].append(it['bar']);stock['bars'].sort(key=lambda b:b[0]);stock['bars']=stock['bars'][-320:]
             modified+=len(rows);known.add((market,stamp))
         LOG.info('%s TWSE/OTC records: %s/%s',stamp,len(fetched.get('上市',{})),len(fetched.get('上櫃',{})))
     # Preserve prior valid snapshot if no adequate history updated.
@@ -439,10 +455,10 @@ def run(days,delay,as_of=None):
        'financialFeedTypes':list(financial_sources.keys()),'foreignInstitutional':'未接入；不參與評分',
        'investmentTrust':'未接入；不參與評分','internationalIndices':'未接入；不參與評分',
        'marketBreadth':'現有日K計算；非指數行情'}
-    snapshot['financeRulesVersion']='finance-v1.3'
-    snapshot['traderRulesVersion']='trader-v1.6'
+    snapshot['financeRulesVersion']='finance-v2.1-date-safe'
+    snapshot['traderRulesVersion']='trader-v2.1-risk'
     snapshot['performance'],updated_signals=update_diary(historical_signals,allstocks,snapshot['candidates'],snapshot['asOf'])
-    snapshot['rankMethod']='V2.0 core: strict new-volume, price/sector/tradability and as-of validation; external feeds excluded'
+    snapshot['rankMethod']='V2.1: date-safe public fundamentals, historical overhead context, and separate entry/hold quality; external feeds excluded'
     snapshot['launchRulesVersion']='launch-v1.4'
     def rank_trade(c):
         t=c.get('trading',{});s=t.get('score')

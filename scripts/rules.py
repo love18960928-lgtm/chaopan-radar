@@ -110,6 +110,13 @@ def scan_stock(stock, detect_follow=True):
     recent_high=max(float(b[4]) for b in history[-10:])
     momentum=bool(close>=sma10 and (price_change5>=2 or vol_ratio>=1.3 or close>recent_high))
     prep=bool(anchor and dist is not None and -10 <= dist < -3 and momentum)
+    # Historical price-high context up to 250 *available* previous sessions.
+    # Raw/unadjusted highs can be distorted by corporate actions; this is NOT
+    # an actual supply level or institution entry cost.
+    longer_history=bars[:-1][-250:]
+    older_peak=max(float(b[2]) for b in longer_history) if longer_history else None
+    overhead_gap=(round(100*(older_peak/close-1),2)
+                  if older_peak is not None and older_peak>close else None)
     old_max=max(history,key=lambda b:float(b[5]))
     volume_over_old_close=bool(vol>float(old_max[5]) and close>float(old_max[4]))
     broke_old_high=close>float(old_max[2])
@@ -191,6 +198,9 @@ def scan_stock(stock, detect_follow=True):
         'oldMaxClose':float(old_max[4]),'oldMaxHigh':float(old_max[2]),
         'newVolumeAboveOldHigh':broke_old_high,'volumeOverOldClose':volume_over_old_close,
         'historicalSessions':len(history),'complete120':len(history)>=LOOKBACK,
+        'historicalPeakHigh':round(older_peak,2) if older_peak is not None else None,
+        'historicalPeakGapPct':overhead_gap,
+        'historicalPeakSessions':len(longer_history),'complete250':len(longer_history)>=250,
         'possiblePriceAdjustment':any((float(bars[k-1][4])>0 and (float(bars[k][4])/float(bars[k-1][4])>1.24 or float(bars[k][4])/float(bars[k-1][4])<.76)) for k in range(max(1,len(bars)-121),len(bars))),
         'confirmed':confirmed,
         'priceConfirmed':price_confirmed,'volumeConfirmed':volume_confirmed,
@@ -235,13 +245,13 @@ def build_snapshot(stocks):
             'eligibleCount':eligible,'candidateCount':len(candidates),
             'counts':{k:sum(k in c['tags'] for c in candidates)
                       for k in ('first','prep','near','volume','limit','follow')},
-            'rulesVersion':'eod-v2.0-core',
-            'notes':['V2.0精簡版：未接入法人與國際指數，不使用即時行情',
+            'rulesVersion':'eod-v2.1-core',
+            'notes':['V2.1可信資料版：不接入未驗證法人及國際指數，無即時行情',
                      '主力洗盤或出貨只能推估，不能直接辨識交易主體',
                      '分數是規則式排序，不是統計上的勝率或報酬承諾',
                      '僅盤後資料，無法在漲停當下預警',
                      '首次突破不要求新成交量超過舊大量K',
                      '發動前預備是機率不明的候選觀察，不能推論隔日必漲',
                      '漲停次數為價格估算，除權息或特殊交易可能誤判',
-                     '價量未經除權息還原，異常跳空須額外驗證'],
+                     '價量未經除權息還原，歷史高點僅參考而非套牢成本，異常跳空須另核對'],
             'candidates':candidates[:600]}
