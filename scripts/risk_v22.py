@@ -62,7 +62,7 @@ def assess_stock(st, snapshot_row, context, asof):
         c['unifiedScore']=short.get('unifiedScore');c['unifiedReasons']=short.get('unifiedReasons',[])
         c['neck']=short.get('primaryNeckline');c['neckDate']=short.get('primaryNecklineDate')
         c['priceConfirmed']=False;c['confirmed']=False;c['tags']=[]
-        for key in ('cycle','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview'):
+        for key in ('cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview'):
             c[key]=short.get(key)
         c['intradayPlan']=build_intraday_plan(b,short,asof=asof)
         c.update({'riskLevel':'unknown','riskStatus':'資料不足','riskReasons':['不足61根交易日K線'],
@@ -90,17 +90,17 @@ def assess_stock(st, snapshot_row, context, asof):
     c['unifiedStage']=structure.get('unifiedStage')
     c['unifiedScore']=structure.get('unifiedScore')
     c['unifiedReasons']=structure.get('unifiedReasons')
-    for key in ('cycle','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview'):
+    for key in ('cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview'):
         c[key]=structure.get(key)
     c['priceConfirmed']=bool(structure.get('priceBreakout'))
     c['confirmed']=bool(structure.get('volumeBreakout'))
-    c['preLaunch']=(c['unifiedStage']=='發動前觀察')
+    c['preLaunch']=(c.get('breakoutSequence') or {}).get('phase')=='ready'
     c['launchStage']=c['unifiedStage']
     c['followStatus']=('突破續強' if '續強' in c['unifiedStage'] else
                        '假突破警戒' if c['unifiedStage'].startswith('突破失敗') else None)
     # These are descriptive badges, not eligibility gates.
     c['tags']=([('first' if c['priceConfirmed'] else '')] if c['priceConfirmed'] else [])
-    if c['unifiedStage']=='接近近期頸線': c['tags'].append('near')
+    if c['preLaunch'] or c['unifiedStage']=='接近近期頸線': c['tags'].append('near')
     if c['preLaunch']: c['tags'].append('prep')
     if c['followStatus']: c['tags'].append('follow')
     if structure.get('volumeBreakout'): c['tags'].append('volume')
@@ -206,7 +206,7 @@ def build_universe(stocks, snapshot, asof):
           'launchStage','score','complete120','possiblePriceAdjustment','onePriceLimit',
           'riskLevel','riskStatus','riskReasons','riskEvidence','supportEvidence','structureV23','unifiedStage','unifiedScore','unifiedReasons','legacyNeck','relMarket5Pct','relSector5Pct',
           'marketProxyNote','decision','opportunityScore','industry','trading','intradayPlan',
-          'cycle','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview')}
+          'cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview')}
         slim['fundamentals']={'industry':record['industry']}
         slim['bars']=record['bars']
         rows.append(slim)
@@ -216,9 +216,9 @@ def build_universe(stocks, snapshot, asof):
         if matching:
             for key in ('riskLevel','riskStatus','riskReasons','riskEvidence','supportEvidence','structureV23','relMarket5Pct',
                         'relSector5Pct','marketProxyNote','decision','opportunityScore',
-                        'cycle','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview','intradayPlan'):
+                        'cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview','intradayPlan'):
                 c[key]=matching.get(key)
-    return {'schema':3,'rulesVersion':'eod-v2.6-next-session','asOf':asof,'marketAsOf':snapshot.get('marketAsOf'),
+    return {'schema':3,'rulesVersion':'eod-v2.9-breakout-sequence','asOf':asof,'marketAsOf':snapshot.get('marketAsOf'),
             'marketCount':snapshot.get('activeMarketCount'), 'coverage':len(rows),
             'notes':['全市場盤後掃描；不等於個股主力持股紀錄','同市場比較以股票等權中位數估計，非加權指數',
                      '前波低點／大量K／缺口支撐為價量參考，非主力成本或保證價','公開日K未還原權值，異常價差須核對','外資投信若無經日期驗證的可靠來源，不假造法人資料'],

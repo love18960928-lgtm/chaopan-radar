@@ -94,14 +94,78 @@ def _events_from_levels(b,structure,lookback=45):
             'initialAlreadyCrossed':begin['previouslyCrossed']}
 
 
+
+def breakout_sequence(b, event, neck, risk_first=False):
+    """Explain pre-cross / first / next trading bar using only this as-of prefix.
+
+    A second candle means the NEXT trading day, not the second positive candle.
+    Selling pressure is never proof of institutional distribution.
+    """
+    if len(b)<61:
+        return {'phase':'insufficient','label':'資料不足','assessment':'需要至少61根有效日K','tone':'neutral','reasons':[]}
+    today=b[-1];close=today[4]
+    if event is None:
+        if neck and 0 <= 100*(neck/close-1) <= 3 and close < neck:
+            near=round(100*(neck/close-1),2)
+            return {'phase':'ready','label':'接近頸線｜第一根預備','assessment':'尚未突破；下一交易日觀察是否形成第一根實體突破K',
+                    'tone':'warn' if risk_first else 'watch','level':neck,'distancePct':near,
+                    'reasons':[f'距目前頸線約{near}%','盤中觸價僅預警，須核對紅K、收盤位置與量能'],
+                    'next':'盤中守住預設突破價；收盤站穩才算第一根確認'}
+        return {'phase':'none','label':'尚未進入突破觀察區','assessment':'等待價格接近可靠近期頸線','tone':'neutral','level':neck,'reasons':[]}
+    initial=event['initialIdx'];lvl=event['level'];since=len(b)-1-initial
+    first=b[initial]
+    first_vol=float(first[5]);now_vol=float(today[5]);ratio=round(now_vol/first_vol,2) if first_vol>0 else None
+    common={'level':lvl,'initialDate':event['initialDate'],'firstClose':first[4],
+            'firstVolumeLots':first_vol,'daysSinceFirst':since,'secondVsFirstVolumeRatio':ratio}
+    if since==0:
+        rng=first[2]-first[3];loc=(first[4]-first[3])/rng if rng>0 else 1
+        upper=(first[2]-max(first[1],first[4]))/rng if rng>0 else 0
+        gap_fade=first[1]>lvl*1.02 and first[4]<first[1] and loc<.65
+        weak=upper>.4 or loc<.5 or gap_fade or risk_first
+        red_warning=bool(first[4]<first[1] and (upper>.35 or loc<.55))
+        return {**common,'phase':'first','label':('第一根收盤突破但遇賣壓｜警戒' if red_warning else '突破頸線｜第一根'),
+                'assessment':('第一根雖收在頸線之上，但紅綠實體／上影顯示賣壓，需比較第二根，不能直接稱為出貨' if red_warning else '突破K品質偏弱／等待第二根驗證' if weak else '第一根已收盤跨越原頸線／第二根尚未出現'),
+                'tone':'danger' if risk_first else ('warn' if weak else 'good'),
+                'reasons':[f'第一根收盤 {first[4]:g} 元；固定原頸線 {lvl:g} 元',f'收盤位置 {loc:.0%}；上影比例 {upper:.0%}'],
+                'next':'次交易日比較是否守住原頸線、量能是否異常及上影線是否擴大'}
+    if since==1:
+        rng=today[2]-today[3];loc=(close-today[3])/rng if rng>0 else 1
+        wick=(today[2]-max(today[1],close))/rng if rng>0 else 0
+        above=close>=lvl*.997
+        down=close<first[4]
+        heavy=ratio is not None and ratio>=1.25
+        contracted=ratio is not None and ratio<=.80
+        selling=heavy and (loc<.45 or wick>=.38) and (down or close<today[1])
+        if not above:
+            label='第二根跌回頸線｜假突破警戒';desc='第二天失守原頸線，先列結構轉弱，不能直接稱為洗盤';tone='danger'
+        elif selling:
+            label='第二根放量回落｜疑似賣壓';desc='量比第一根放大，卻收低或留下較長上影；可能換手／賣壓，無法證實出貨';tone='danger'
+        elif contracted and (down or abs(close/first[4]-1)<=.016):
+            label='第二根量縮整理｜守頸線';desc='量縮且仍守原頸線，較像整理，下一根需驗證是否重新轉強';tone='watch'
+        elif close>first[4] and loc>=.65 and not risk_first:
+            label='第二根續強｜初步確認';desc='收盤高於第一根、接近當日上緣，原頸線尚未失守';tone='good'
+        else:
+            label='第二根震盪｜等待第三根';desc='尚不能判為出貨或續強，觀察原頸線回測與量能';tone='warn'
+        if risk_first:label='第二根風險優先｜結構警戒';desc+='；另有重大結構／量價風險';tone='danger'
+        return {**common,'phase':'second','label':label,'assessment':desc,'tone':tone,
+                'secondDate':today[0],'secondClose':close,'secondVolumeLots':now_vol,
+                'reasons':[f'第一根收盤 {first[4]:g} → 第二根 {close:g} 元',
+                           f'第二根／第一根量比 {ratio if ratio is not None else "待資料"} 倍',
+                           f'第二根收盤位置 {loc:.0%}、上影比例 {wick:.0%}'],
+                'next':'第三根觀察是否守住原頸線；高檔放量回落要先守風險'}
+    return {**common,'phase':'follow','label':'突破後續追蹤',
+            'assessment':'已超過第二交易日，繼續以原頸線追蹤續強、量縮整理或跌回',
+            'tone':'watch','reasons':[f'追蹤第 {since+1} 個交易日'],
+            'next':'重新站回不是新的第一根；注意原頸線、支撐與量價風險'}
+
 def cycle_judgement(b, structure=None, market_breadth=None):
     b=_valid_bars(b);base=structure if structure is not None else unified_structure(b)
     r={**base,'rules':'recent-cycle-v2.5','cycle':None,'signalQuality':None,
        'entryReadiness':'資料不足','holdGuidance':'不適用','regime':'資料不足',
        'marketBreadthAboveMA20Pct':market_breadth,'setupEvidence':{},
-       'riskFlags':[], 'riskFirst':False,'profitReview':'資料不足'}
+       'riskFlags':[], 'riskFirst':False,'profitReview':'資料不足','breakoutSequence':None}
     if len(b)<61:
-        r.update({'unifiedStage':'資料不足','unifiedScore':None,'unifiedReasons':['少於61個交易日，無法認定第一根或趨勢'],'priceBreakout':False,'volumeBreakout':False})
+        r.update({'unifiedStage':'資料不足','unifiedScore':None,'unifiedReasons':['少於61個交易日，無法認定第一根或趨勢'],'priceBreakout':False,'volumeBreakout':False,'breakoutSequence':breakout_sequence(b,None,None)})
         return r
     n=len(b);now=b[-1];close=now[4];previous=b[-2][4]
     vol20=mean(x[5] for x in b[-21:-1]);volume_ratio=now[5]/vol20 if vol20 else 0
@@ -240,10 +304,18 @@ def cycle_judgement(b, structure=None, market_breadth=None):
     else:
         entry='觀察／資料不足以判定買點'
         hold='持續追蹤價格結構，無法推知主力成本或意圖'
+    # One readable first/second-bar interpretation, with the original dated
+    # neckline pinned. Independently computed per as-of date, never future-aware.
+    sequence=breakout_sequence(b,event,base.get('primaryNeckline'),risk_first)
+    if sequence['phase']=='first' and quality=='突破K有疑慮' and sequence['tone']!='danger':
+        sequence['tone']='warn'
+        sequence['assessment']='第一根突破但量價品質有疑慮；不得當成隔天必漲'
+    if sequence['phase']=='second' and '第二根放量回落' in sequence['label']:
+        risk.append('第二根相對首日放量但收低／上影較長：可能賣壓，不能宣稱主力出貨')
     reasons=base.get('unifiedReasons',[])[:]
     reasons.extend(risk[:3]);
     if cycle:reasons.append('事件錨點：'+cycle['initialDate']+'／'+str(cycle['level'])+'元；'+quality)
-    r.update({'cycle':cycle,'signalQuality':quality,'profitReview':profit_review,'unifiedStage':stage,
+    r.update({'cycle':cycle,'breakoutSequence':sequence,'signalQuality':quality,'profitReview':profit_review,'unifiedStage':stage,
               'unifiedScore':round(max(0,min(100,score)),1),'unifiedReasons':reasons[:7],
               'entryReadiness':entry,'holdGuidance':hold,'riskFlags':risk[:7],
               'riskFirst':risk_first,'regime':regime,'marketBreadthAboveMA20Pct':market_breadth,
