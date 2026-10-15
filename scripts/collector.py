@@ -403,7 +403,9 @@ def run(days,delay,as_of=None):
     now=(dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()) if as_of is None else dt.date.fromisoformat(as_of)
     allstocks=read_existing()
     # Keep prospective signal diary when rebuilding/updating history.
-    historical_signals=(json.loads(HISTORY.read_text('utf-8')).get('signalEvents',[]) if HISTORY.exists() else [])
+    prior_history=json.loads(HISTORY.read_text('utf-8')) if HISTORY.exists() else {}
+    historical_signals=prior_history.get('signalEvents',[])
+    structure_journal=prior_history.get('structureJournal',{})
     known={(s['market'],row[0]) for s in allstocks.values() for row in s.get('bars',[])}
     if days>0:
         dates=[now-dt.timedelta(days=i) for i in range(days-1,-1,-1)]
@@ -429,7 +431,7 @@ def run(days,delay,as_of=None):
                 stock=allstocks.setdefault(key,{'code':it['code'],'name':it['name'],'market':market,'bars':[]})
                 stock['name']=it['name']
                 stock['bars']=[b for b in stock['bars'] if b[0]!=stamp]
-                stock['bars'].append(it['bar']);stock['bars'].sort(key=lambda b:b[0]);stock['bars']=stock['bars'][-320:]
+                stock['bars'].append(it['bar']);stock['bars'].sort(key=lambda b:b[0]);stock['bars']=stock['bars'][-780:]
             modified+=len(rows);known.add((market,stamp))
         LOG.info('%s TWSE/OTC records: %s/%s',stamp,len(fetched.get('上市',{})),len(fetched.get('上櫃',{})))
     # Preserve prior valid snapshot if no adequate history updated.
@@ -472,16 +474,37 @@ def run(days,delay,as_of=None):
                                for c in sorted(snapshot['candidates'],key=rank_trade,reverse=True)[:60]]
     snapshot['generatedAt']=dt.datetime.now(dt.timezone.utc).isoformat()
     universe=build_universe(allstocks,snapshot,snapshot['asOf'])
-    snapshot['rulesVersion']='eod-v2.2-risk'
-    snapshot['rankMethod']='V2.2: unified full-universe risk/opportunity; prices-as-of only; institutional/global sources NOT enabled'
+    snapshot['rulesVersion']='eod-v2.5-cycle'
+    snapshot['rankMethod']='V2.5: one as-of recent neckline/support event cycle, risk-first validation, no independent AND gates; old unadjusted EOD'
+    snapshot['performanceCaveat']='歷史績效日誌仍為舊版候選股規則，不能用來宣稱V2.5有獲利優勢；需另做樣本外、含交易成本回測'
     snapshot['universeCount']=universe['coverage']
+    snapshot['unifiedCandidatesCount']=sum(x.get('unifiedStage') not in ('一般觀察','資料不足') for x in universe['rows'])
+    snapshot['priorityTop60']=[{'code':x['code'],'market':x['market'],
+      'tradeScore':x.get('unifiedScore'),'status':x.get('unifiedStage')}
+      for x in sorted(universe['rows'],key=lambda x: (x.get('unifiedScore') if x.get('unifiedScore') is not None else -1), reverse=True)[:60]]
     # Safety: don't replace the public radar with partial market/insufficient history.
     # Keep raw observations for later recovery, but only write new public snapshot if healthy.
     if snapshot['mode']!='live':
-        atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values()),'signalEvents':historical_signals})
+        atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values()),'signalEvents':historical_signals,'structureJournal':structure_journal})
         LOG.warning('BLOCKED public snapshot: market coverage/date inconsistent: %s',snapshot['marketAsOf'])
         return
-    atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values()),'signalEvents':updated_signals})
+    # Track stage CHANGES prospectively in source history (up to 90 events).
+    # Do not manufacture observations for missed dates or recompute old results
+    # with today's newer algorithm. A restart without history simply starts fresh.
+    for row in universe['rows']:
+        key=row['market']+row['code']
+        record={'date':row['date'],'stage':row.get('unifiedStage'),
+                'neck':row.get('neck'),'risk':row.get('riskLevel'),
+                'score':row.get('unifiedScore'),
+                'origin':(row.get('cycle') or {}).get('initialDate')}
+        events=structure_journal.setdefault(key,[])
+        if events and events[-1]['date']==record['date']:
+            events[-1]=record
+        elif not events or events[-1].get('stage')!=record['stage'] or events[-1].get('neck')!=record['neck']:
+            events.append(record)
+        if len(events)>90:del events[:-90]
+        row['stageHistory']=events[-12:]
+    atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values()),'signalEvents':updated_signals,'structureJournal':structure_journal})
     atomic_json(UNIVERSE,universe)
     atomic_json(SNAPSHOT,snapshot)
     LOG.info('Wrote %s records, %s eligible stocks, %s candidates on %s',modified,snapshot['eligibleCount'],snapshot['candidateCount'],snapshot['asOf'])
