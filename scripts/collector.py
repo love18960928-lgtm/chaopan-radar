@@ -474,8 +474,8 @@ def run(days,delay,as_of=None):
                                for c in sorted(snapshot['candidates'],key=rank_trade,reverse=True)[:60]]
     snapshot['generatedAt']=dt.datetime.now(dt.timezone.utc).isoformat()
     universe=build_universe(allstocks,snapshot,snapshot['asOf'])
-    snapshot['rulesVersion']='eod-v2.5-cycle'
-    snapshot['rankMethod']='V2.5: one as-of recent neckline/support event cycle, risk-first validation, no independent AND gates; old unadjusted EOD'
+    snapshot['rulesVersion']='eod-v2.6-next-session'
+    snapshot['rankMethod']='V2.6: one as-of recent neckline/support event cycle, risk-first validation, no independent AND gates; old unadjusted EOD'
     snapshot['performanceCaveat']='歷史績效日誌仍為舊版候選股規則，不能用來宣稱V2.5有獲利優勢；需另做樣本外、含交易成本回測'
     snapshot['universeCount']=universe['coverage']
     snapshot['unifiedCandidatesCount']=sum(x.get('unifiedStage') not in ('一般觀察','資料不足') for x in universe['rows'])

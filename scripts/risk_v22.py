@@ -9,6 +9,7 @@ from collections import defaultdict
 from rules import scan_stock
 from trader import trader_overlay
 from support_v22 import support_evidence
+from intraday_plan_v26 import build_intraday_plan
 from structure_v25 import cycle_judgement
 
 
@@ -63,6 +64,7 @@ def assess_stock(st, snapshot_row, context, asof):
         c['priceConfirmed']=False;c['confirmed']=False;c['tags']=[]
         for key in ('cycle','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview'):
             c[key]=short.get(key)
+        c['intradayPlan']=build_intraday_plan(b,short,asof=asof)
         c.update({'riskLevel':'unknown','riskStatus':'資料不足','riskReasons':['不足61根交易日K線'],
                   'opportunityScore':None,'decision':'資料不足','relMarket5Pct':None,'relSector5Pct':None})
         return c
@@ -186,6 +188,7 @@ def assess_stock(st, snapshot_row, context, asof):
     elif c['opportunityScore']>=65 and (c.get('priceConfirmed') or trend>=75):c['decision']='優先研究（非買進建議）'
     elif trend>=65:c['decision']='強勢觀察（留意買點）'
     else:c['decision']='一般觀察'
+    c['intradayPlan']=build_intraday_plan(b,structure,risk_level=c.get('riskLevel'),asof=asof)
     return c
 
 
@@ -202,7 +205,7 @@ def build_universe(stocks, snapshot, asof):
           'distancePct','volumeRatio','oldMaxLots','oldMaxDate','oldMaxHigh','oldMaxClose','limit20','tags','priceConfirmed','preLaunch','followStatus',
           'launchStage','score','complete120','possiblePriceAdjustment','onePriceLimit',
           'riskLevel','riskStatus','riskReasons','riskEvidence','supportEvidence','structureV23','unifiedStage','unifiedScore','unifiedReasons','legacyNeck','relMarket5Pct','relSector5Pct',
-          'marketProxyNote','decision','opportunityScore','industry','trading',
+          'marketProxyNote','decision','opportunityScore','industry','trading','intradayPlan',
           'cycle','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview')}
         slim['fundamentals']={'industry':record['industry']}
         slim['bars']=record['bars']
@@ -213,9 +216,9 @@ def build_universe(stocks, snapshot, asof):
         if matching:
             for key in ('riskLevel','riskStatus','riskReasons','riskEvidence','supportEvidence','structureV23','relMarket5Pct',
                         'relSector5Pct','marketProxyNote','decision','opportunityScore',
-                        'cycle','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview'):
+                        'cycle','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview','intradayPlan'):
                 c[key]=matching.get(key)
-    return {'schema':3,'rulesVersion':'eod-v2.5-cycle','asOf':asof,'marketAsOf':snapshot.get('marketAsOf'),
+    return {'schema':3,'rulesVersion':'eod-v2.6-next-session','asOf':asof,'marketAsOf':snapshot.get('marketAsOf'),
             'marketCount':snapshot.get('activeMarketCount'), 'coverage':len(rows),
             'notes':['全市場盤後掃描；不等於個股主力持股紀錄','同市場比較以股票等權中位數估計，非加權指數',
                      '前波低點／大量K／缺口支撐為價量參考，非主力成本或保證價','公開日K未還原權值，異常價差須核對','外資投信若無經日期驗證的可靠來源，不假造法人資料'],
