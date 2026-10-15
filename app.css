@@ -12,3 +12,9 @@
 .launch-summary{border-color:#3b806f!important;background:linear-gradient(120deg,#183d3f,#10273b)!important}
 @media(max-width:740px){.stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:460px){.stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.stat-card{min-height:104px;padding:12px 10px}.stat-num{font-size:28px}.stat-icon{right:8px;top:9px}.stat-label{font-size:11px}}
+
+.signal-tag.follow{background:#283954;color:#9fd4ff}
+.trade-card{border:1px solid #355a63;background:#102e38;border-radius:13px;padding:14px;margin:14px 0}
+.trade-card p{margin:8px 0;color:#aec8d8;font-size:12px;line-height:1.9}
+.trade-pill{display:inline-block;margin-left:7px;color:#b4f5dc;font-size:11px;background:#21443e;border-radius:7px;padding:3px 7px}
+.stock-bottom .trade-score{color:#b6ecdf;font-weight:800}
