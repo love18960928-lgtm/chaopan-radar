@@ -361,9 +361,21 @@ function traderPanel(c){
  突破後追蹤 ${c.followDay?esc(c.followDay+'個交易日／'+c.followStatus):'尚無5日追蹤事件'}<br>
  ${risk}<br>⚠ 盤後資料，不能視為目前買得到的股價；不含大盤、法人即時買賣、除權息還原及新聞。</p></div>`;
 }
+function detailNavigationIds(id){
+ // Stay in the visible ranked list whenever it contains adjacent stocks.
+ const ids=filtered().map(rowId);
+ if(ids.length>1&&ids.includes(id))return ids;
+ // An exact-code search normally shows only one result.  Keep previous/next
+ // usable by falling back to the full universe in ticker-code order.
+ const ordered=allRows().slice().sort((a,b)=>
+   String(a.code).localeCompare(String(b.code),'zh-Hant',{numeric:true})||
+   String(a.market).localeCompare(String(b.market),'zh-Hant'));
+ const universeIds=[...new Set(ordered.map(rowId))];
+ return universeIds.includes(id)?universeIds:[id];
+}
 function showDetails(id){
  const c=allRows().find(x=>rowId(x)===id);if(!c)return;
- state.detailIds=filtered().map(rowId); if(!state.detailIds.includes(id))state.detailIds=[id];
+ state.detailIds=detailNavigationIds(id);
  state.detail=c;state.chartDays=60;
  if($('#modalOverlay').hidden){history.pushState({chaopanDetail:true},'',location.href);state.detailHistory=true;}
  renderDetail();$('#modalOverlay').hidden=false;document.body.style.overflow='hidden';
@@ -401,7 +413,7 @@ function detailNav(){
  const idx=state.detailIds.indexOf(rowId(state.detail));
  return `<nav id="detailSwitcher" class="detail-switcher" aria-label="切換個股詳情">
  <button type="button" id="detailPrev" ${idx<=0?'disabled':''}>‹ 上一檔</button>
- <span>${idx+1} / ${state.detailIds.length} 檔<br><small>左右滑切換｜上下滑閱讀</small></span>
+ <span>${idx+1} / ${state.detailIds.length} 檔<br><small>詳情左右滑切換｜上下滑閱讀</small></span>
  <button type="button" id="detailNext" ${idx>=state.detailIds.length-1?'disabled':''}>下一檔 ›</button>
  </nav>`;
 }
@@ -409,10 +421,6 @@ function detailNav(){
 function renderDetail(){const c=state.detail;if(!c)return;const starred=state.watch.has(c.market+'-'+c.code),cls=c.changePct>0?'rising':c.changePct<0?'falling':'neutral';
   $('#modalContent').innerHTML=`${detailNav()}<div class="detail-title"><div><div class="eyebrow">STOCK ANALYSIS / ${esc(c.market)}</div><h2 id="modalTitle">${esc(c.code)} ${esc(c.name)}</h2><div class="detail-sub">${esc(c.date)} 盤後資料${state.mode==='demo'?' · 示範':''}</div></div><div class="detail-price"><strong>${price(c.close)}</strong><div class="${cls}">${pct(c.changePct)}</div></div></div><div class="tagrow">${(c.tags||[]).map(t=>`<span class="signal-tag ${t}">${esc(TAGS[t]||t)}</span>`).join('')}${c.priceConfirmed?'<span class="signal-tag confirmed">價格收盤確認</span>':c.confirmed?'<span class="signal-tag confirmed">量能確認</span>':''}</div><div class="detail-grid"><div class="detail-metric"><div class="small">大量K壓力／頸線</div><strong>${price(c.neck)} 元</strong><div class="small">${esc(c.neckDate||'尚無壓力點')}</div></div><div class="detail-metric"><div class="small">距離頸線</div><strong>${pct(c.distancePct)}</strong><div class="small">正值代表已突破</div></div><div class="detail-metric"><div class="small">當日成交量</div><strong>${integer(c.lots)} 張</strong><div class="small">前10日均量 ${Number(c.volumeRatio).toFixed(2)} 倍</div></div><div class="detail-metric"><div class="small">近20日漲停估算</div><strong>${integer(c.limit20)} 次</strong><div class="small">含今天，依收盤價近似判定</div></div><div class="detail-metric"><div class="small">前120日最大量</div><strong>${integer(c.oldMaxLots)} 張</strong><div class="small">${esc(c.oldMaxDate||'—')}</div></div><div class="detail-metric"><div class="small">突破確認</div><strong>${c.priceConfirmed?'價格已突破':c.confirmed?'量價確認':'尚未突破'}</strong><div class="small">低量一字漲停也可價格確認；大量另計</div></div></div>${summaryPanel(c)}<div class="chart-area"><div class="chart-top"><strong>歷史K線／成交量</strong><div class="chart-range"><button class="range-btn ${state.chartDays===20?'active':''}" data-days="20">20日</button><button class="range-btn ${state.chartDays===60?'active':''}" data-days="60">60日</button><button class="range-btn ${state.chartDays===120?'active':''}" data-days="120">可用日K</button></div></div><div id="chartSvg">${makeChart(c.bars||[],c.neck,state.chartDays,supportLines(c))}</div><div class="chart-legend"><span>━━ 橘色：大量K頸線</span><span style="color:#3dd9ba">━━ 第一支撐</span><span style="color:#76abfa">━━ 第二支撐</span><span>紅漲綠跌</span></div></div>${financialPanel(c)}${technicalVisual(c)}${riskPanel(c)}<details class="fin-notes secondary-details"><summary>展開大量K突破、操盤品質與法人詳情</summary>${launchSummary(c)}${traderPanel(c)}${extraTechnical(c)}</details><div class="detail-note">${c.tags?.includes('volume')?'✓ 今日成交量大於前120個交易日最大量，且收盤高於舊最大量K最高價。':''} ${c.tags?.includes('first')?'✓ 今日收盤首次突破仍有效的大量K高點。':''} ${c.overextended?'⚠ 收盤距頸線已逾8%，應留意追高風險。':''}<br>盤後訊號僅供觀察，不代表次日買點；除權息可能導致假突破。</div><div class="detail-actions"><button class="primary-action" id="starButton">${starred?'★ 移出自選':'☆ 加入自選'}</button><button class="secondary-action" id="shareButton">分享股票資訊</button></div>`;
   $('#detailPrev').onclick=()=>nextDetail(-1);$('#detailNext').onclick=()=>nextDetail(1);
-  // Only the dedicated switcher accepts horizontal swipes; the chart and sheet remain vertically scrollable.
-  const switcher=$('#detailSwitcher');let swipeStart=null;
-  switcher.addEventListener('touchstart',e=>{const t=e.changedTouches[0];if(t.clientX<28||t.clientX>innerWidth-28)return;swipeStart={x:t.clientX,y:t.clientY};},{passive:true});
-  switcher.addEventListener('touchend',e=>{if(!swipeStart)return;const t=e.changedTouches[0],dx=t.clientX-swipeStart.x,dy=t.clientY-swipeStart.y;swipeStart=null;if(Math.abs(dx)>65&&Math.abs(dx)>Math.abs(dy)*1.6)nextDetail(dx<0?1:-1);},{passive:true});
   $$('.range-btn').forEach(b=>b.onclick=()=>{state.chartDays=b.dataset.days==='120'?120:Number(b.dataset.days);renderDetail()});
   $('#starButton').onclick=()=>{const key=c.market+'-'+c.code;if(state.watch.has(key))state.watch.delete(key);else state.watch.add(key);saveWatch();renderDetail();toast('已更新自選清單')};
   $('#shareButton').onclick=async()=>{const info=`超盤手大量K雷達｜${c.code} ${c.name}\n${c.date} 收盤 ${price(c.close)}\n大量K頸線 ${price(c.neck)}\n量比 ${c.volumeRatio} 倍｜20日漲停估算 ${c.limit20} 次\n資料非即時，僅供研究。`;try{await navigator.clipboard.writeText(info);toast('已複製資訊')}catch(e){toast('請用手機內建分享功能')}};
@@ -444,7 +452,34 @@ function makeChart(bars,neck,days,supports=[]){let data=bars.slice(-days).filter
   data.forEach((b,i)=>{const x=P+step*(i+.5),[date,o,h,l,c,v]=[b[0],Number(b[1]),Number(b[2]),Number(b[3]),Number(b[4]),Number(b[5])];const color=c>=o?'#ff777f':'#3bd1b4';let yo=py(o),yc=py(c),yh=py(h),yl=py(l);svg+=`<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${yh.toFixed(1)}" y2="${yl.toFixed(1)}" stroke="${color}" stroke-width="1.1"/><rect x="${(x-barW/2).toFixed(1)}" y="${Math.min(yo,yc).toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(1.6,Math.abs(yo-yc)).toFixed(1)}" fill="${color}" rx=".5"/><rect x="${(x-barW/2).toFixed(1)}" y="${(volTop+volHeight*(1-v/maxV)).toFixed(1)}" width="${barW.toFixed(1)}" height="${(volHeight*v/maxV).toFixed(1)}" fill="${color}" opacity=".7"/>`;if(i===0||i===Math.floor(data.length/2)||i===data.length-1){svg+=`<text x="${x.toFixed(1)}" y="${H-6}" text-anchor="${i===0?'start':i===data.length-1?'end':'middle'}" font-size="9" fill="#91aabd">${esc(date.slice(5))}</text>`}});
   return svg+'</svg>';
 }
+// V2.2 swipe fix: listen on the whole detail sheet, not only its tiny top navigator.
+// Ignore UI controls and edge gestures, and keep native vertical scrolling.
+function setupDetailSwipe(){
+ const sheet=$('#modalOverlay .sheet');if(!sheet)return;
+ sheet.style.touchAction='pan-y';
+ let start=null;
+ sheet.addEventListener('touchstart',e=>{
+   start=null;
+   if(!state.detail||e.touches.length!==1)return;
+   if(e.target.closest('button,input,select,textarea,a,summary,[contenteditable="true"]'))return;
+   const t=e.touches[0];
+   // Reserve the extreme edges for Android's system-back gesture.
+   if(t.clientX<32||t.clientX>window.innerWidth-32)return;
+   start={x:t.clientX,y:t.clientY,at:Date.now(),id:t.identifier};
+ },{passive:true});
+ sheet.addEventListener('touchend',e=>{
+   if(!start||!state.detail)return;
+   const begin=start;start=null;
+   const t=Array.from(e.changedTouches).find(x=>x.identifier===begin.id);
+   if(!t)return;
+   const dx=t.clientX-begin.x,dy=t.clientY-begin.y;
+   if(Date.now()-begin.at>1300)return;
+   if(Math.abs(dx)<65||Math.abs(dx)<Math.abs(dy)*1.5)return;
+   nextDetail(dx<0?1:-1);
+ },{passive:true});
+ sheet.addEventListener('touchcancel',()=>{start=null;},{passive:true});
+}
 function openSettings(){const isReady=state.mode==='live';$('#modalContent').innerHTML=`<div class="eyebrow">APP STATUS / SETTINGS</div><h2 id="modalTitle">資料與安裝設定</h2><div class="settings-card"><strong>目前：${modeName()}</strong><p>最近盤後日期：${esc(state.payload?.asOf||'尚無')}<br>掃描歷史完整股票：${integer(state.payload?.eligibleCount||0)} 檔<br>已記錄股票：${integer(state.payload?.stockCount||0)} 檔</p></div><div class="settings-card"><strong>如何使用免費版？</strong><p>把本程式上傳 GitHub 公開 Repository，啟用 Actions，先手動執行「初次回補約220天」，設定 Pages 從 main /root 發布，再以 Android Chrome 的「新增至主畫面」安裝。GitHub Actions 依排程在13:30、14:30、18:30、23:00以及隔日06:00、08:30嘗試核對盤後資料（實際排程可能延遲），若交易所阻擋雲端 IP，需改用在台灣網路執行的收集主機。</p></div><div class="settings-card"><strong>即時版升級狀態</strong><p>目前沒有盤中報價或推播。未來串接授權即時行情、雲端首次突破判斷及 Firebase 推播後升級；不會使用盤後資料假裝盤中訊號。</p></div><div class="action-row"><button id="reloadData" class="primary-action">重新檢查盤後資料</button>${isReady?'':'<button id="demoModeBtn" class="secondary-action">開啟示範畫面</button>'}</div>`;$('#reloadData').onclick=()=>{hideDetails();loadData()};if($('#demoModeBtn'))$('#demoModeBtn').onclick=()=>{hideDetails();demoMode()};$('#modalOverlay').hidden=false;document.body.style.overflow='hidden'}
 function navTo(page){$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(page==='list'){setTab('all');$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='star'){state.tab='star';$$('.tab').forEach(x=>x.classList.remove('active'));renderList();$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='guide')$('#guide').scrollIntoView({behavior:'smooth'});else openSettings()}
-function wire(){loadWatch();setupSixtyToolbar();const sort=$('#sortFilter');if(sort){sort.insertAdjacentHTML('afterbegin','<option value="trade">操盤品質與追高風險（預設）</option><option value="launch">第一根發動優先</option><option value="priority">基本面投資優先度</option>');sort.value='trade';state.sort='trade';}$$('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.stat-card').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.nav-item').forEach(b=>b.onclick=()=>navTo(b.dataset.page));$('#searchBox').oninput=e=>{state.query=e.target.value;state.visible=30;renderList()};$('#marketFilter').onchange=e=>{state.market=e.target.value;renderList()};$('#sectorFilter').onchange=e=>{state.sector=e.target.value;renderList()};$('#sortFilter').onchange=e=>{state.sort=e.target.value;renderList()};$('#confirmedOnly').onchange=e=>{state.confirmed=e.target.checked;renderList()};$('#limitMin').onchange=e=>{state.limitMin=e.target.checked;renderList()};$('#showMore').onclick=()=>{state.visible+=30;renderList()};$('#refreshBtn').onclick=()=>loadData();$('#closeModal').onclick=()=>hideDetails();$('#modalOverlay').onclick=e=>{if(e.target===$('#modalOverlay'))hideDetails()};window.onkeydown=e=>{if(e.key==='Escape')hideDetails()};window.addEventListener('popstate',()=>{if(state.detail)hideDetails(true)});loadData();if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(console.warn)}}
+function wire(){loadWatch();setupSixtyToolbar();setupDetailSwipe();const sort=$('#sortFilter');if(sort){sort.insertAdjacentHTML('afterbegin','<option value="trade">操盤品質與追高風險（預設）</option><option value="launch">第一根發動優先</option><option value="priority">基本面投資優先度</option>');sort.value='trade';state.sort='trade';}$$('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.stat-card').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.nav-item').forEach(b=>b.onclick=()=>navTo(b.dataset.page));$('#searchBox').oninput=e=>{state.query=e.target.value;state.visible=30;renderList()};$('#marketFilter').onchange=e=>{state.market=e.target.value;renderList()};$('#sectorFilter').onchange=e=>{state.sector=e.target.value;renderList()};$('#sortFilter').onchange=e=>{state.sort=e.target.value;renderList()};$('#confirmedOnly').onchange=e=>{state.confirmed=e.target.checked;renderList()};$('#limitMin').onchange=e=>{state.limitMin=e.target.checked;renderList()};$('#showMore').onclick=()=>{state.visible+=30;renderList()};$('#refreshBtn').onclick=()=>loadData();$('#closeModal').onclick=()=>hideDetails();$('#modalOverlay').onclick=e=>{if(e.target===$('#modalOverlay'))hideDetails()};window.onkeydown=e=>{if(e.key==='Escape')hideDetails()};window.addEventListener('popstate',()=>{if(state.detail)hideDetails(true)});loadData();if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(console.warn)}}
 document.addEventListener('DOMContentLoaded',wire);
