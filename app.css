@@ -18,3 +18,62 @@
 .trade-card p{margin:8px 0;color:#aec8d8;font-size:12px;line-height:1.9}
 .trade-pill{display:inline-block;margin-left:7px;color:#b4f5dc;font-size:11px;background:#21443e;border-radius:7px;padding:3px 7px}
 .stock-bottom .trade-score{color:#b6ecdf;font-weight:800}
+
+/* V2.2 unified risk & one-by-one mobile browsing */
+.risk-report{border:1px solid #315866;border-radius:13px;background:#152b39;padding:14px;margin:13px 0;font-size:12px;line-height:1.8}
+.risk-report h3{font-size:15px;margin:0 0 6px}.risk-report p{margin:7px 0}.risk-report ul{margin:5px 0;padding-left:20px}
+.risk-danger{border-color:#ab5962;background:#452a32}.risk-warning{border-color:#aa8757;background:#362c28}
+.risk-report small{color:#bad1da}.signal-tag.risk-high{background:#632f3c;color:#ffd4dc}.signal-tag.risk-low{background:#183d39;color:#ade8d4}
+.detail-switcher{position:sticky;top:-21px;z-index:4;display:flex;justify-content:space-between;align-items:center;gap:7px;background:#142e3b;border:1px solid #315868;border-radius:12px;padding:8px 9px;margin:5px 28px 16px 0;touch-action:pan-y}
+.detail-switcher button{flex:0 0 auto;background:#285262;color:#e2f8f8;border-radius:8px;padding:10px 10px;font-weight:700;font-size:12px}
+.detail-switcher button:disabled{opacity:.3}.detail-switcher span{font-size:12px;text-align:center}.detail-switcher small{font-size:9px;color:#9fbbc7}
+@media(max-width:420px){.detail-switcher{margin-right:34px}.detail-switcher button{font-size:11px;padding:9px 7px}.detail-switcher span{font-size:11px}.detail-switcher small{font-size:8px}}
+
+/* V2.2 support-zone evidence in risk panel */
+.support-level{border-top:1px solid #345268;padding:8px 0;line-height:1.65}.support-level strong{font-size:12px;color:#dceef4}.support-level small{font-size:10px;color:#afc8d8}
+
+/* V2.2 visual integration: structure first; finance and signals concise */
+.conclusion-card,.visual-fin,.visual-tech{margin:14px 0;padding:16px;border:1px solid #375568;border-radius:15px;background:#12283a}
+.conclusion-card.tone-danger{border-color:#c07376;background:linear-gradient(145deg,#402933,#1b293a)}
+.conclusion-card.tone-warn{border-color:#bb985a;background:linear-gradient(145deg,#40362e,#182a3b)}
+.conclusion-card.tone-good{border-color:#42a995;background:linear-gradient(145deg,#16443f,#112b3c)}
+.conclusion-card.tone-watch{border-color:#508da5;background:linear-gradient(145deg,#193846,#14283b)}
+.panel-head{display:flex;justify-content:space-between;align-items:center;gap:9px;color:#d7e8f1;font-weight:750;font-size:13px}
+.panel-head b{padding:5px 9px;background:#0003;border-radius:8px;font-size:11px;white-space:nowrap}
+.panel-head small{font-size:10px;color:#9db6c6}
+.conclusion-card h3{font-size:21px;line-height:1.35;margin:12px 0 5px;color:#f3f8ff}
+.conclusion-short{font-size:12px;line-height:1.7;color:#bed7e4;margin:0 0 12px}
+.price-ladder{display:grid;gap:7px}
+.ladder-line{display:flex;align-items:center;justify-content:space-between;gap:12px;border-radius:9px;padding:10px 12px;background:#0b2030;border-left:4px solid #728da0;font-size:12px}
+.ladder-line b,.ladder-line strong{font-size:15px;font-variant-numeric:tabular-nums}
+.ladder-line div{text-align:right}.ladder-line small{display:block;font-size:9px;color:#aac0d0;line-height:1.4}
+.ladder-line.neck{border-color:#e7b365}.ladder-line.neck b{color:#ffd18c}
+.ladder-line.current{border-color:#edf6fb;background:#24394e}.ladder-line.current b{color:#fff}
+.ladder-line.support{border-color:#3dd9ba}.ladder-line.support strong{color:#75f3d8}
+.ladder-line.secondary{border-color:#76abfa}.ladder-line.secondary strong{color:#b1ceff}
+.conclusion-foot{margin:12px 0 0;font-size:10px;line-height:1.6;color:#a9c0cd}
+.finance-scores{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:15px 0 19px}
+.fin-score{padding:10px 9px;background:#1c3747;border-radius:10px;min-width:0}
+.fin-score small,.fin-stat small{font-size:10px;color:#a4bdcc;display:block}
+.fin-score b{display:block;font-size:24px;line-height:1.2;margin:6px 0;color:#e5faf3}
+.score-track{height:5px;background:#0a1c2a;border-radius:15px;overflow:hidden}
+.score-track i{display:block;height:100%;background:#50d5b7;border-radius:15px}
+.fin-subhead{font-size:13px;font-weight:750;color:#d7ebf4;margin:17px 0 10px;display:flex;justify-content:space-between;gap:5px}
+.fin-subhead small{font-size:9px;color:#92acbc;font-weight:400}
+.fin-trend-row{margin:8px 0 14px}.fin-trend-row>div:first-child{display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px}.fin-trend-row strong{font-size:16px}
+.fin-up{color:#ff979d}.fin-down{color:#6fd8b7}
+.fin-bar-track{height:9px;background:#243d4a;border-radius:6px;overflow:hidden}
+.fin-bar-track i{display:block;height:100%;border-radius:6px}.fin-bar-track i.pos{background:#f18a91}.fin-bar-track i.neg{background:#49bfa6}
+.fin-trend-row small{font-size:10px;color:#9db3c2}
+.fin-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.fin-stat{background:#1c3546;padding:10px 9px;border-radius:9px;min-width:0}
+.fin-stat b{display:block;font-size:14px;margin-top:5px;font-variant-numeric:tabular-nums;word-break:break-word}
+.fin-notes{margin:12px 0;padding:11px 13px;border:1px solid #375469;border-radius:11px;background:#102538;font-size:12px;color:#adcad8}
+.fin-notes summary{cursor:pointer;font-size:12px;color:#c6e8df;font-weight:750}
+.fin-notes p{color:#abc3cf;line-height:1.8;font-size:11px}
+.tech-chips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px}
+.tech-chips>div{padding:12px 8px;border-radius:9px;background:#1c3443;min-width:0}
+.tech-chips small{display:block;font-size:10px;color:#a9bcc8}
+.tech-chips strong{display:block;font-size:12px;margin-top:8px;line-height:1.5;overflow-wrap:anywhere}
+.chart-legend{flex-wrap:wrap;row-gap:4px}
+@media(max-width:390px){.conclusion-card,.visual-fin,.visual-tech{padding:12px}.fin-stat b{font-size:12px}.panel-head{font-size:12px}.ladder-line{padding:9px 8px}.ladder-line b,.ladder-line strong{font-size:13px}.finance-scores{gap:6px}}

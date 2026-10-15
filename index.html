@@ -4,13 +4,13 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#081222"><meta name="description" content="超盤手大量K突破雷達。上市櫃免費盤後掃描、歷史大量K壓力、20日漲停次數與成交量確認。">
 <link rel="icon" href="assets/icon-192.png"><link rel="apple-touch-icon" href="assets/icon-192.png"><link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="app.css?v=2.1"><title>超盤手 V2.1 精簡版｜大量K雷達</title>
+<link rel="stylesheet" href="app.css?v=2.2-integrated-1"><title>超盤手 V2.2 整合驗證版｜大量K雷達</title>
 </head>
 <body>
 <div class="app-shell">
 <header class="topbar">
   <div class="brandmark"><span class="logo-pulse">◉</span></div>
-  <div class="brandtext"><div class="brandname">超盤手 <span>RADAR</span> <b aria-label="正式版 V2.1 精簡" style="display:inline-block;vertical-align:middle;font-size:12px;line-height:1.3;letter-spacing:0;color:#a6f3df;background:#204c46;border:1px solid #3b9c8c;border-radius:8px;padding:3px 7px;margin-left:5px">V2.1</b></div><div class="branddesc">量價突破追蹤系統 <span class="tinysep">/</span> EOD 盤後版</div></div>
+  <div class="brandtext"><div class="brandname">超盤手 <span>RADAR</span> <b aria-label="正式版 V2.2 精簡" style="display:inline-block;vertical-align:middle;font-size:12px;line-height:1.3;letter-spacing:0;color:#a6f3df;background:#204c46;border:1px solid #3b9c8c;border-radius:8px;padding:3px 7px;margin-left:5px">V2.2</b></div><div class="branddesc">全市場起漲＋風險診斷 <span class="tinysep">/</span> EOD 盤後版</div></div>
   <button id="refreshBtn" class="icon-button" aria-label="重新載入資料" title="重新載入資料"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 1 0-2.7 6M20 4v7h-7"/></svg></button>
 </header>
 <main>
@@ -18,7 +18,8 @@
     <div class="hero-top"><span class="section-eyebrow"><span class="dot"></span> TAIWAN MARKET SCANNER</span><span class="session-badge">盤後版 · 非即時</span></div>
     <h1>找到<span>起漲前</span>的那一根。</h1>
     <p>鎖定歷史大量K高點，優先抓大量K第一根發動；前一天動能預備列為觀察，突破後追蹤五天，並加入買點風險與趨勢延續評級。</p>
-    <div class="sessionline"><div><span class="muted">資料日期</span> <strong id="marketDate">—</strong></div><div class="line-divider"></div><div><span class="muted">資料狀態</span> <strong id="dataStatus">載入中</strong></div></div><p style="font-size:11px;color:#9fb9c7;margin-top:8px;line-height:1.6">V2.1 精簡版｜選股資料日期以上方「資料日期」為準｜評分非上漲機率；法人及國際數據尚未接入</p>
+    <div class="sessionline"><div><span class="muted">資料日期</span> <strong id="marketDate">—</strong></div><div class="line-divider"></div><div><span class="muted">資料狀態</span> <strong id="dataStatus">載入中</strong></div></div><p style="font-size:11px;color:#9fb9c7;margin-top:8px;line-height:1.6">V2.2 整合版｜全市場風險資料依當日掃描，選股資料日期以上方「資料日期」為準｜評分非上漲機率；法人及國際數據尚未接入</p>
+    <p style="font-size:12px;margin-top:9px;color:#b5e8dc">製作者：<b>Jimmy Chnag</b></p>
   </section>
 
   <section class="stats" aria-label="市場掃描統計">
@@ -31,21 +32,21 @@
   </section>
 
   <section class="content-area">
-    <div class="section-header"><div><div class="eyebrow">WATCHLIST / SCAN RESULTS</div><h2>候選股雷達</h2></div><div class="coverage" id="coverageText">—</div></div>
-    <div class="tabrow" id="tabs" role="tablist" aria-label="候選分類"><button class="tab active" data-tab="all">全部候選</button><button class="tab" data-tab="first">首次突破</button><button class="tab" data-tab="prep">發動前預備</button><button class="tab" data-tab="follow">突破後追蹤</button><button class="tab" data-tab="near">接近頸線</button><button class="tab" data-tab="volume">爆量創高</button><button class="tab" data-tab="limit">20日漲停</button></div>
-    <div class="filters"><div class="search-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg><input id="searchBox" inputmode="search" autocomplete="off" placeholder="搜尋代號或名稱" aria-label="搜尋股票"></div><select id="sectorFilter" aria-label="產業族群篩選"><option value="all">所有產業</option></select><select id="marketFilter" aria-label="市場篩選"><option value="all">上市＋上櫃</option><option value="上市">上市</option><option value="上櫃">上櫃</option></select><select id="sortFilter" aria-label="排序方式"><option value="score">訊號強度</option><option value="neck">離頸線最近</option><option value="limit">漲停最多</option><option value="volume">量比最高</option></select></div>
+    <div class="section-header"><div><div class="eyebrow">WATCHLIST / SCAN RESULTS</div><h2>全市場綜合雷達</h2></div><div class="coverage" id="coverageText">—</div></div>
+    <div class="tabrow" id="tabs" role="tablist" aria-label="快捷檢視，同一份全市場資料"><button class="tab active" data-tab="all">綜合排名</button><button class="tab" data-tab="first">首次突破</button><button class="tab" data-tab="follow">續漲追蹤</button><button class="tab" data-tab="risk">風險警戒</button><button class="tab" data-tab="star">我的自選</button></div>
+    <div class="filters"><div class="search-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg><input id="searchBox" inputmode="search" autocomplete="off" placeholder="搜尋全部上市櫃代號、名稱（包含未入選）" aria-label="搜尋股票"></div><select id="sectorFilter" aria-label="產業族群篩選"><option value="all">所有產業</option></select><select id="marketFilter" aria-label="市場篩選"><option value="all">上市＋上櫃</option><option value="上市">上市</option><option value="上櫃">上櫃</option></select><select id="sortFilter" aria-label="排序方式"><option value="score">訊號強度</option><option value="neck">離頸線最近</option><option value="limit">漲停最多</option><option value="volume">量比最高</option></select></div>
     <div class="filter-meta"><label class="toggle-check"><input id="confirmedOnly" type="checkbox"><span>只看收盤確認突破</span></label><label class="toggle-check"><input id="limitMin" type="checkbox"><span>20日漲停 ≥2 次</span></label></div>
-    <div id="infoBanner" class="info-banner" hidden></div><div id="marketHealth" class="info-banner" hidden></div>
+    <div id="infoBanner" class="info-banner" hidden></div><div id="marketHealth" class="info-banner" hidden></div><div id="universeHealth" class="info-banner"></div>
     <div id="candidateList" class="candidate-list" aria-live="polite"></div>
     <button id="showMore" class="show-more" hidden>再顯示 30 檔 ↓</button>
   </section>
 
-  <section class="guide" id="guide"><div class="guide-head"><div class="eyebrow">SCAN METHODOLOGY</div><h2>如何判斷突破？</h2></div><div class="guide-items"><div><span class="stepno">01</span><strong>歷史大量K</strong><p>120日內篩出前20日均量1.8倍、且量能位於前10%的K棒，取其最高價為頸線。</p></div><div><span class="stepno">02</span><strong>關鍵頸線</strong><p>收盤第一次突破有效大量K最高價，優先列第一根發動；不強迫新量超過前量。</p></div><div><span class="stepno">03</span><strong>強勢加分</strong><p>發動前3%～10%須搭配價量改善；一字漲停也能辨識，並標註追價風險。</p></div></div><p class="disclaimer">資料用途為個人研究，並非投資建議。漲停次數為估算，未充分考慮除權息、特殊漲跌幅制度；買賣前請核對官方行情。股票價格未做還原權值調整。</p></section>
-  <footer>超盤手 · 大量K雷達 <span>WEBSITE V2.1 · EOD / NO LIVE QUOTES</span><div>資料來源：臺灣證券交易所、櫃買中心公開盤後行情</div></footer>
+  <section class="guide" id="guide"><div class="guide-head"><div class="eyebrow">SCAN METHODOLOGY</div><h2>如何判斷突破？</h2></div><div class="guide-items"><div><span class="stepno">01</span><strong>歷史大量K</strong><p>120日內篩出前20日均量1.8倍、且量能位於前10%的K棒，取其最高價為頸線。</p></div><div><span class="stepno">02</span><strong>關鍵頸線</strong><p>收盤第一次突破有效大量K最高價，優先列第一根發動；不強迫新量超過前量。</p></div><div><span class="stepno">03</span><strong>強勢加分</strong><p>發動前3%～10%須搭配價量改善；一字漲停也能辨識，並標註追價風險。</p></div></div><p class="disclaimer">V2.2 每檔另追蹤前波反覆低點、歷史大量K低點／收盤區與未回補向上缺口；支撐並非主力成本或保證價位，收盤破位須結合同業及大盤。資料用途為個人研究，並非投資建議。漲停次數為估算，未充分考慮除權息、特殊漲跌幅制度；買賣前請核對官方行情。股票價格未做還原權值調整。</p></section>
+  <footer>超盤手 · 大量K雷達 <span>WEBSITE V2.2 · EOD / NO LIVE QUOTES</span><div>資料來源：臺灣證券交易所、櫃買中心公開盤後行情</div></footer>
 </main>
 <nav class="bottom-nav" aria-label="頁面導覽"><button class="nav-item active" data-page="list"><span>▦</span>候選雷達</button><button class="nav-item" data-page="star"><span>☆</span>自選追蹤</button><button class="nav-item" data-page="guide"><span>◈</span>規則說明</button><button class="nav-item" data-page="setting"><span>⚙</span>狀態設定</button></nav>
 </div>
 <div id="modalOverlay" class="modal-overlay" hidden><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="handle"></div><button id="closeModal" class="close-modal" aria-label="關閉詳情">×</button><div id="modalContent"></div></section></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<script src="app.js?v=2.1" defer></script>
+<script src="app.js?v=2.2-integrated-1" defer></script>
 </body></html>

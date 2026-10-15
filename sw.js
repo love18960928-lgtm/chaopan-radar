@@ -1,5 +1,5 @@
 'use strict';
-const STATIC='chaopan-static-v2.1';
+const STATIC='chaopan-static-v2.2-integrated-1';
 const SHELL=['./','./index.html','./app.css','./app.js','./manifest.webmanifest'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(STATIC).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(Promise.all([
@@ -10,7 +10,7 @@ self.addEventListener('fetch',e=>{
   const u=new URL(e.request.url);
   if(e.request.method!=='GET'||u.origin!==self.location.origin)return;
   const path=u.pathname;
-  const dynamic=path.endsWith('/data/radar.json');
+  const dynamic=(path.endsWith('/data/radar.json')||path.endsWith('/data/universe.json'));
   const asset=dynamic||/\/(app\.js|app\.css|index\.html|sw\.js)$/.test(path)||e.request.mode==='navigate';
   if(asset){
     e.respondWith(fetch(e.request,{cache:'no-store'}).then(r=>{
