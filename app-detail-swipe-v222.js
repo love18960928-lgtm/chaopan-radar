@@ -426,6 +426,63 @@ function sectorDirectory(){
  }).join('')}</div></details>`).join('');
  $$('#sectorDirectory [data-sector-stock]').forEach(b=>b.onclick=()=>showDetails(b.dataset.sectorStock));
 }
+/* r7: Each chart is rendered from the selected stock's dated OHLCV rows. */
+function annotatedBattleChart(c,g){
+ const num=v=>v===null||v===undefined||v===''||!Number.isFinite(Number(v))?null:Number(v);
+ const rows=(Array.isArray(c?.bars)?c.bars:[]).filter(b=>Array.isArray(b)&&b.length>=6&&[1,2,3,4,5].every(k=>num(b[k])!==null)&&Number(b[2])>=Number(b[3]));
+ if(rows.length<10||String(rows.at(-1)[0])!==String(c?.date))return `<div class="battle-chart-empty">K線資料不足或日期不一致，暫不繪製作戰圖；不能把舊K線當今天行情。</div>`;
+ const data=rows.slice(-35), W=390,H=277, l=20,r=260,t=26,b=208,volY=221,volH=28;
+ const close=num(g.close), closeInChart=close!==null&&Math.abs(close-Number(data.at(-1)[4]))<.0001;
+ if(!closeInChart)return `<div class="battle-chart-empty">價量資料尚未核對一致，暫不繪製買賣關卡。</div>`;
+ const levels=[
+  {name:'突破',v:num(g.breakoutLevel),color:'#ffbc68',key:'breakout'},
+  {name:'大量K頸線',v:num(latestNeck(c)),color:'#d6a8ef',key:'neck'},
+  {name:'MA5',v:num(g.ma5),color:'#f3d55d',key:'ma5'},
+  {name:'MA10',v:num(g.ma10),color:'#85c5ff',key:'ma10'},
+  {name:'結構支撐',v:num(g.support),color:'#5bdfbf',key:'support'},
+  {name:'移動停利',v:num(g.trailingStop),color:'#f58f9f',key:'trail'}
+ ].filter(x=>x.v!==null&&x.v>0);
+ const uniq=[];
+ for(const lev of levels){const same=uniq.find(a=>Math.abs(a.v-lev.v)<=Math.max(.001,lev.v*.0003));
+   if(same){if(same.name==='突破'&&lev.key==='neck')same.name='突破／頸線';}
+   else uniq.push({...lev});
+ }
+ const high=Math.max(...data.map(x=>Number(x[2]))),low=Math.min(...data.map(x=>Number(x[3])));
+ const scoped=uniq.filter(v=>v.v>=close*.75&&v.v<=close*1.30);
+ let max=Math.max(high,close,...scoped.map(v=>v.v)),min=Math.min(low,close,...scoped.map(v=>v.v));
+ const pad=(max-min)*.075||Math.max(close*.012,.1);max+=pad;min-=pad;
+ const y=p=>t+(max-p)/(max-min)*(b-t),dx=(r-l)/data.length;
+ const f=n=>Number(n).toLocaleString('zh-TW',{minimumFractionDigits:2,maximumFractionDigits:2});
+ let svg=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(c.name||c.code||'個股')} ${esc(c.date)} 日K走勢與買賣價位圖解"><rect x="0.5" y="0.5" width="389" height="276" rx="10" fill="#091928" stroke="#34516a"/>`;
+ for(let i=0;i<=4;i++){const yy=t+(b-t)*i/4;svg+=`<line x1="${l}" x2="${r}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="#3e576a" opacity=".38" stroke-dasharray="3 5"/>`;}
+ if(Array.isArray(g.pullbackZone)&&g.pullbackZone.every(v=>num(v)!==null)){
+   const upper=Math.max(...g.pullbackZone),lower=Math.min(...g.pullbackZone);
+   const upperY=Math.max(t,y(upper)),lowerY=Math.min(b,y(lower));
+   if(lowerY>=upperY)svg+=`<rect x="${l}" y="${upperY.toFixed(1)}" width="${r-l}" height="${Math.max(2,lowerY-upperY).toFixed(1)}" fill="#44bfa3" opacity=".12"/>`;
+ }
+ const closes=rows.map(x=>Number(x[4])),offset=rows.length-data.length;
+ [[5,'#f5d260'],[10,'#87c4f6']].forEach(([n,color])=>{const pts=[];data.forEach((row,i)=>{const j=offset+i;if(j+1<n)return;const a=closes.slice(j+1-n,j+1).reduce((x,v)=>x+v,0)/n;pts.push(`${(l+dx*(i+.5)).toFixed(1)},${y(a).toFixed(1)}`)});if(pts.length>1)svg+=`<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="1.6"/>`;});
+ const mv=Math.max(1,...data.map(v=>Math.max(0,Number(v[5]))));
+ data.forEach((row,i)=>{
+  const op=Number(row[1]),hi=Number(row[2]),lo=Number(row[3]),cl=Number(row[4]),v=Math.max(0,Number(row[5]));
+  const x=l+dx*(i+.5),color=cl>=op?'#ff777f':'#39d9ad',wide=Math.max(2,dx*.6);
+  svg+=`<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${y(hi).toFixed(1)}" y2="${y(lo).toFixed(1)}" stroke="${color}" stroke-width="1.1"/>`;
+  svg+=`<rect x="${(x-wide/2).toFixed(1)}" y="${Math.min(y(op),y(cl)).toFixed(1)}" width="${wide.toFixed(1)}" height="${Math.max(1.7,Math.abs(y(op)-y(cl))).toFixed(1)}" fill="${color}"/>`;
+  svg+=`<rect x="${(x-wide/2).toFixed(1)}" y="${(volY+volH*(1-v/mv)).toFixed(1)}" width="${wide.toFixed(1)}" height="${(volH*v/mv).toFixed(1)}" fill="${color}" opacity=".6"/>`;
+ });
+ const currentY=y(close);svg+=`<line x1="${l}" x2="${r+7}" y1="${currentY.toFixed(1)}" y2="${currentY.toFixed(1)}" stroke="#f4f8fb" stroke-width="1.3" stroke-dasharray="4 3" opacity=".86"/>`;
+ const labels=[...uniq.filter(v=>v.v>=min&&v.v<=max),{name:'收盤',v:close,color:'#f0f9ff',key:'close'}].sort((a,b)=>b.v-a.v);
+ // Reserve a readable lane for each overlapping price label while keeping connector at exact price.
+ let cursor=t+2;for(const item of labels){item.py=y(item.v);item.ly=Math.max(item.py,cursor);cursor=item.ly+17;}
+ if(labels.length&&labels.at(-1).ly>b-4){const shift=labels.at(-1).ly-(b-4);labels.forEach(item=>item.ly-=shift);}
+ labels.forEach(item=>{
+   svg+=`<path d="M ${r} ${item.py.toFixed(1)} L ${r+9} ${item.py.toFixed(1)} L ${r+15} ${item.ly.toFixed(1)}" fill="none" stroke="${item.color}" stroke-width="1.2" stroke-dasharray="${item.key==='close'?'0':'3 2'}" opacity=".85"/>`;
+   svg+=`<circle cx="${r+15}" cy="${item.ly.toFixed(1)}" r="2.1" fill="${item.color}"/>`;
+   svg+=`<text x="${r+19}" y="${(item.ly+4).toFixed(1)}" fill="${item.color}" font-size="11" font-weight="700">${esc(item.name)} ${esc(f(item.v))}</text>`;
+ });
+ svg+=`<text x="${l}" y="${H-8}" fill="#94b2c5" font-size="10">${esc(String(data[0][0]).slice(5,10))}</text><text x="${r}" y="${H-8}" text-anchor="end" fill="#94b2c5" font-size="10">${esc(String(data.at(-1)[0]).slice(5,10))}</text></svg>`;
+ return `<div class="battle-chart-wrap"><div class="battle-chart-head"><b>📈 ${esc(c.code)} ${esc(c.name)}｜關卡圖解</b><span>${esc(c.date)} 盤後</span></div>${svg}<div class="battle-chart-caption">紅漲綠跌・淡綠帶為 MA5 附近回測觀察區；水平線均為條件參考，非盤中即時成交價。點開下方歷史K線可查看更多日期。</div></div>`;
+}
 function guidanceCard(c){
  const p=deskEvidence(c),g=ChaopanGuidance.evaluate(c,p,supportLines(c));
  const n=v=>price(v),available=g.level!=='unknown';
@@ -442,6 +499,7 @@ function guidanceCard(c){
  const ladder=levels.map(x=>`<div class="trade-level-row"><span>${esc(x.label)}</span><div class="trade-level-track"><i class="${x.color}" style="width:${ma===mi?60:(15+85*(x.value-mi)/(ma-mi)).toFixed(1)}%"></i></div><b>${n(x.value)}</b></div>`).join('');
  return `<section class="guidance-panel battle-panel" aria-label="買點賣點與移動停利作戰卡"><div class="guidance-title"><strong>◎ 超盤手｜買賣作戰卡</strong><span class="guidance-signal ${cls}">${esc(g.title)}</span></div>
  <p class="battle-asof">${esc(c.date||'日期待核對')} 收盤後情境｜${esc(g.stage)}｜非即時／非自動下單</p>
+ ${annotatedBattleChart(c,g)}
  <div class="battle-grid"><div><small>觀察突破</small><b>${n(g.breakoutLevel)}</b><span>需價量確認</span></div><div><small>回測觀察區</small><b>${g.pullbackZone?`${n(g.pullbackZone[0])}～${n(g.pullbackZone[1])}`:'待資料'}</b><span>止跌才觀察</span></div><div><small>移動停利參考</small><b>${n(g.trailingStop)}</b><span>${g.trailingStop===null?'缺完整事件史':'非保證成交價'}</span></div></div>
  <div class="trade-levels" aria-label="買賣關卡價位圖">${ladder||'<p>資料不足，暫不推估價位</p>'}</div>
  <div class="battle-action-grid"><div class="battle-buy"><b>入場觀察</b><p>${esc(g.buy)}</p></div><div class="battle-trim"><b>減碼／停利</b><p>${esc(g.trim)}</p></div><div class="battle-exit"><b>防守／賣出</b><p>${esc(g.sell)}</p></div></div>
@@ -873,16 +931,18 @@ function renderList(){
    const historicalMa510=continuationReadout(c).strictMA510Hold===true?`<span class="signal-tag confirmed">${esc(continuationReadout(c).source==='既有大量K突破事件'?'大量K歷史首破後全程守MA5／10':'區間突破後全程守MA5／10（非大量K證據）')}</span>`:continuationReadout(c).recentCloseHold10===true?'<span class="signal-tag near">近10日收盤守MA5／10（非全程守線）</span>':'';
    const strengthType=strengthSource(c),follow=continuationReadout(c);const liquidity=liquidityEvidence(c);const liquidityBadge=!liquidity.launch?'<span class="signal-tag risk">成交活躍度不足</span>':'';const strengthLabel=strengthType?'<span class="signal-tag confirmed">'+esc(strengthType)+'</span>':'<span class="signal-tag near">持續強勢待確認</span>';const continueTag=follow.kind==='pullback'?'<span class="signal-tag near">強勢回測／待確認</span>':follow.kind==='warning'?'<span class="signal-tag risk">強勢轉弱警戒</span>':'';
    const tags=lensFlags+strengthLabel+continueTag+riskTag+liquidityBadge+(c.priceConfirmed?'<span class="signal-tag confirmed">首破待驗證</span>':'')+(c.followStatus==='假突破警戒'?'<span class="signal-tag risk">假突破警戒</span>':'')+(c.possiblePriceAdjustment?'<span class="signal-tag risk">股價需核對</span>':'')+(c.unifiedStage==='資料不足'?'<span class="signal-tag risk">資料不足</span>':'');
+   const displayRank=rankById.get(rowId(c));
+   const displayRankLabel=Number.isInteger(displayRank)?`#${displayRank} ${lensActive?currentRankLabel()+'排名':'全市場綜合排序'}`:(HISTORY_510_STAGES.has(state.stageView)?'歷史守線候選｜未列起漲名次':'條件符合｜未列該雷達名次');
    const trigger=c.intradayPlan?.crossPrice;
    const br=breakoutReadout(c);
    const phaseTag=plan.stage==='third'?'<span class="signal-tag phase-tag good">突破第三根／待盤中驗證</span>':br.phase==='ready'||br.phase==='first'||br.phase==='second'?`<span class="signal-tag phase-tag ${esc(br.tone||'watch')}">${esc(br.label)}</span>`:'';
    const quick=trigger!=null?`<button type="button" class="quick-intraday" data-intraday-id="${id}">✎ 盤中輸入價量・立即試算 <span>→</span></button>`:
      `<button type="button" class="quick-intraday unavailable" data-intraday-id="${id}">查看個股・盤中關卡待資料 →</button>`;
-   return `<div class="ranked-stock"><button type="button" class="stock-card" data-id="${id}" aria-label="查看第${rankById.get(rowId(c))}名 ${esc(c.name)} 詳情">
-     <div class="rank-head"><span class="rank-number">#${rankById.get(rowId(c))} ${lensActive?esc(currentRankLabel())+'排名':'全市場綜合排序'}</span><span class="rank-score">發動潛力 ${plan.score.potential??'待資料'} · 進場品質 ${plan.score.entry??'待資料'}（非勝率）</span></div>
+   return `<div class="ranked-stock"><button type="button" class="stock-card" data-id="${id}" aria-label="查看${esc(displayRankLabel)} ${esc(c.name)} 圖解詳情">
+     <div class="rank-head"><span class="rank-number">${esc(displayRankLabel)}</span><span class="rank-score">發動潛力 ${plan.score.potential??'待資料'} · 進場品質 ${plan.score.entry??'待資料'}（非勝率）</span></div>
      <div class="stock-head"><div><span class="ticker">${esc(c.code)}</span><span class="ticker-name">${esc(c.name)}</span><span class="market-chip">${esc(c.market)}</span><span class="market-chip">${esc(c.industry||c.fundamentals?.industry||'產業待資料')}</span></div><div class="right-value"><div class="stock-price">${price(c.close)}</div><span class="stock-change ${cls}">${pct(c.changePct)}</span></div></div>
      <div class="tagrow">${phaseTag}${sixBadge}${historicalMa510}${kBadge}${c.riskLevel==='high'||c.riskFirst?riskTag:''}${liquidityBadge}</div>
-     <div class="rank-stage">${plan.priority?'🟢 盤中優先觀察':plan.qualified?'🟡 等量價確認':'🟠 條件不足／不追高'}</div>${deskPlanHTML(c,true)}
+     <div class="rank-stage">📈 點開股票看K線關卡圖解｜${plan.priority?'🟢 盤中優先觀察':plan.qualified?'🟡 等量價確認':'🟠 條件不足／不追高'}</div>${deskPlanHTML(c,true)}
      <div class="stock-bottom"><span class="metric">近期頸線 <strong>${price(latestNeck(c))}</strong></span><span class="metric">盤中觸發 <strong>${price(trigger)}</strong></span><span class="metric">日量比 <strong>${Number.isFinite(Number(c.volumeRatio))?Number(c.volumeRatio).toFixed(1)+'×':'—'}</strong></span></div>
    </button>${quick}</div>`;
  }).join('');

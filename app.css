@@ -418,3 +418,12 @@ html,body{overscroll-behavior-y:contain}
 .battle-action-grid b{font-size:13px;color:#f6fbfd}.battle-action-grid p{margin:5px 0 0;font-size:12px;line-height:1.75;color:#d4dfe8}
 .battle-panel .guidance-note{font-size:11px;line-height:1.7;color:#9ab8ca;margin:12px 0 0}
 @media(max-width:380px){.trade-level-row{grid-template-columns:92px minmax(0,1fr) 60px;gap:5px;font-size:10px}.battle-grid b{font-size:13px}.battle-panel{padding:12px}}
+
+/* r7 per-stock annotated real-OHLCV battle chart (not a static sample image). */
+.battle-chart-wrap{margin:12px 0 15px;background:#0a192a;border:1px solid #3a6170;border-radius:13px;overflow:hidden;padding:10px 7px 9px}
+.battle-chart-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:0 7px 8px;color:#d6f8f1;font-size:12px}
+.battle-chart-head b{font-weight:800}.battle-chart-head span{font-size:10px;color:#9aafbe;white-space:nowrap}
+.battle-chart-wrap svg{display:block;width:100%;height:auto;max-height:340px}
+.battle-chart-caption{font-size:10px;line-height:1.7;color:#a9c6d1;padding:4px 7px 0}
+.battle-chart-empty{padding:16px;background:#10283b;border:1px dashed #587185;border-radius:10px;color:#ffc68f;font-size:12px;line-height:1.6}
+@media(max-width:390px){.battle-chart-wrap{margin-left:-4px;margin-right:-4px;padding:9px 4px}.battle-chart-head{font-size:11px}}

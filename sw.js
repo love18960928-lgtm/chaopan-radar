@@ -1,7 +1,7 @@
 'use strict';
-// V3.1.1-r6: fast shell, conditional HTTP + persistent Cache API EOD.
+// V3.1.1-r7: fast shell, conditional HTTP + persistent Cache API EOD.
 // Persist market snapshots from r3; upgrade the static shell only.
-const STATIC='chaopan-static-v3.1.1-r6', DATA='chaopan-eod-data-v311-r3';
+const STATIC='chaopan-static-v3.1.1-r7', DATA='chaopan-eod-data-v311-r3';
 const SHELL=['./','./index.html','./app.css','./app-detail-swipe-v222.js','./phase-regime-v307.js','./rank-lenses-v308.js','./trade-desk-v310.js','./trade-guidance-v311.js','./market-intel-v311.js','./radar-extras-v311.js','./manifest.webmanifest'];
 self.addEventListener('install',e=>e.waitUntil(
  caches.open(STATIC).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())
