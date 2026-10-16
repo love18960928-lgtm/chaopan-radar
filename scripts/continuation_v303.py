@@ -15,6 +15,8 @@ def continuation_context(bars, recorded_event=None):
     base = dict(kind='unverified', label='持續強勢待確認', source=None,
                 breakoutDate=None, originalNeckline=None, daysSinceBreakout=None,
                 holdDays=None, strictMA510Hold=None, ma510CloseBreakDays=None, ma510WickBreakDays=None, ma5=None, ma10=None, ma20=None, ma60=None,
+                recentCloseHold5=None, recentCloseHold10=None, recentWickHold5=None, recentWickHold10=None,
+                consecutiveCloseMA510=None, highestCloseSinceBreakout=None, trailingStop=None, atr14=None,
                 riskFlags=[], reason='歷史資料不足，不能編造突破事件')
     if len(b)<61:
         return base
@@ -23,6 +25,24 @@ def continuation_context(bars, recorded_event=None):
     m=lambda p,k: mean(c[k-p+1:k+1]) if k>=p-1 else None
     ma5,ma10,ma20,ma60=(m(x,n-1) for x in (5,10,20,60))
     base.update(ma5=round(ma5,3),ma10=round(ma10,3),ma20=round(ma20,3),ma60=round(ma60,3))
+    # These indicators are computed for ALL eligible-history stocks, even if
+    # there is no historic high-volume K or range-breakout event.
+    def recent_hold(period, use_low=False):
+        if n < 10 + period - 1:
+            return None
+        for j in range(n-period, n):
+            value = float(b[j][3]) if use_low else c[j]
+            if value < m(5,j) or value < m(10,j):
+                return False
+        return True
+    consecutive = 0
+    for j in range(n-1, 8, -1):
+        if c[j] < m(5,j) or c[j] < m(10,j):
+            break
+        consecutive += 1
+    base.update(recentCloseHold5=recent_hold(5), recentCloseHold10=recent_hold(10),
+                recentWickHold5=recent_hold(5, True), recentWickHold10=recent_hold(10, True),
+                consecutiveCloseMA510=consecutive)
     candidates=[]
     start=max(55,n-150)
     for i in range(start,n):
@@ -58,6 +78,26 @@ def continuation_context(bars, recorded_event=None):
         return base
     i,level,source,hold=sorted(eligible,key=lambda z:(z[0],0 if z[2]=='既有大量K突破事件' else 1))[0]
     age=n-1-i
+    # Auditable, non-decreasing trailing ATR threshold: for each trading day
+    # since the historical event, remember the maximum of (running highest
+    # *closing price* minus twice the rolling ATR14). Never include future bars.
+    tr=[]
+    for j in range(n):
+        h=float(b[j][2]);lo=float(b[j][3]);prev=c[j-1] if j else c[j]
+        tr.append(max(h-lo,abs(h-prev),abs(lo-prev)))
+    high_close=max(c[i:])
+    trailing=None
+    peak=None
+    atr_now=None
+    for j in range(max(i,14),n):
+        peak=max(c[i:j+1]) if peak is None else max(peak,c[j])
+        atr=mean(tr[j-13:j+1])
+        atr_now=atr
+        candidate=peak-2*atr
+        trailing=candidate if trailing is None else max(trailing,candidate)
+    base.update(highestCloseSinceBreakout=round(high_close,3),
+                trailingStop=round(trailing,3) if trailing is not None and trailing>0 else None,
+                atr14=round(atr_now,3) if atr_now is not None else None)
     # Every candle from initial breakout through current as-of date must have
     # closed above both same-day averages. Do not confuse today-only MA5/10
     # positioning with an uninterrupted historical episode.

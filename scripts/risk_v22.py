@@ -12,7 +12,7 @@ from support_v22 import support_evidence
 from intraday_plan_v26 import build_intraday_plan
 from structure_v25 import cycle_judgement
 from ma_strength_v30 import moving_average_context
-from trend_continuation_v303 import trend_continuation
+from continuation_v303 import continuation_context
 
 
 def _ret(bars,days):
@@ -56,6 +56,13 @@ def assess_stock(st, snapshot_row, context, asof):
     n=len(b)
     c['bars']=[[x[0],float(x[1]),float(x[2]),float(x[3]),float(x[4]),round(float(x[5]))] for x in b[-65:]]
     c['date']=asof
+    # Publish long-term averages as date-locked diagnostics rather than
+    # shipping 240 daily candles to every mobile user. The chart can remain
+    # capped at 65 bars without mislabeling MA120/MA240 as missing.
+    average_days=(5,10,20,60,120,240)
+    close_series=[float(z[4]) for z in b]
+    ma_values={str(d):round(mean(close_series[-d:]),3) if n>=d else None for d in average_days}
+    c['maAll']={'asOf':asof,'count':n,'values':ma_values}
     c['open']=float(b[-1][1]);c['high']=float(b[-1][2]);c['low']=float(b[-1][3]);c['close']=float(b[-1][4]);c['lots']=round(float(b[-1][5]))
     if n>1 and b[-2][4]>0:c['changePct']=round(100*(b[-1][4]/b[-2][4]-1),2)
     if n<61:
@@ -67,7 +74,7 @@ def assess_stock(st, snapshot_row, context, asof):
         for key in ('cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview'):
             c[key]=short.get(key)
         c['lineContext']=moving_average_context(b,short.get('cycle'))
-        c['continuationV303']=trend_continuation(b, risk_level='unknown')
+        c['continuationContext']=continuation_context(b,short.get('cycle'))
         c['intradayPlan']=build_intraday_plan(b,short,asof=asof)
         c.update({'riskLevel':'unknown','riskStatus':'資料不足','riskReasons':['不足61根交易日K線'],
                   'opportunityScore':None,'decision':'資料不足','relMarket5Pct':None,'relSector5Pct':None})
@@ -84,6 +91,7 @@ def assess_stock(st, snapshot_row, context, asof):
     structure=cycle_judgement(b,market_breadth=context.get('breadthMa20',{}).get(st['market']))
     c['structureV23']=structure
     c['lineContext']=moving_average_context(b,structure.get('cycle'))
+    c['continuationContext']=continuation_context(b,structure.get('cycle'))
     # One recent-structure engine for EVERY stock (including non-candidates).
     # Preserve historical old logic only as the supporting volume reference;
     # do not let priceConfirmed/candidate override this as-of structural level.
@@ -167,7 +175,6 @@ def assess_stock(st, snapshot_row, context, asof):
         level='medium' if groups or declining else 'low';status='方向未明盤整'
     if not reasons:reasons=['無明顯高風險組合訊號，不代表安全或主力吸籌']
     c['riskLevel']=level;c['riskStatus']=status;c['riskReasons']=reasons
-    c['continuationV303']=trend_continuation(b, risk_level=level, risk_first=bool(c.get('riskFirst')), price_adjustment=unadjusted)
     # Full-universe opportunity: include a signal OR trend, not just arbitrary watchlists.
     t=trader_overlay({**c,'bars':b[-120:]})
     if not isinstance(c.get('trading'),dict): c['trading']=t
@@ -211,8 +218,8 @@ def build_universe(stocks, snapshot, asof):
           'distancePct','volumeRatio','oldMaxLots','oldMaxDate','oldMaxHigh','oldMaxClose','limit20','tags','priceConfirmed','preLaunch','followStatus',
           'launchStage','score','complete120','possiblePriceAdjustment','onePriceLimit',
           'riskLevel','riskStatus','riskReasons','riskEvidence','supportEvidence','structureV23','unifiedStage','unifiedScore','unifiedReasons','legacyNeck','relMarket5Pct','relSector5Pct',
-          'marketProxyNote','decision','opportunityScore','industry','trading','intradayPlan','lineContext',
-          'cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview','continuationV303')}
+          'marketProxyNote','decision','opportunityScore','industry','trading','intradayPlan','lineContext','maAll',
+          'cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview','continuationContext')}
         slim['fundamentals']={'industry':record['industry']}
         slim['bars']=record['bars']
         rows.append(slim)
@@ -222,9 +229,9 @@ def build_universe(stocks, snapshot, asof):
         if matching:
             for key in ('riskLevel','riskStatus','riskReasons','riskEvidence','supportEvidence','structureV23','relMarket5Pct',
                         'relSector5Pct','marketProxyNote','decision','opportunityScore',
-                        'cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview','intradayPlan','lineContext','continuationV303'):
+                        'cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview','intradayPlan','lineContext','continuationContext'):
                 c[key]=matching.get(key)
-    return {'schema':3,'rulesVersion':'eod-v3.0.3-trend-continuation','asOf':asof,'marketAsOf':snapshot.get('marketAsOf'),
+    return {'schema':3,'rulesVersion':'eod-v3.0.3-continuation','asOf':asof,'marketAsOf':snapshot.get('marketAsOf'),
             'marketCount':snapshot.get('activeMarketCount'), 'coverage':len(rows),
             'notes':['全市場盤後掃描；不等於個股主力持股紀錄','同市場比較以股票等權中位數估計，非加權指數',
                      '前波低點／大量K／缺口支撐為價量參考，非主力成本或保證價','公開日K未還原權值，異常價差須核對','外資投信若無經日期驗證的可靠來源，不假造法人資料'],
