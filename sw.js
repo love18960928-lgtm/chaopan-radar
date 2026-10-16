@@ -1,6 +1,7 @@
 'use strict';
-// V3.1.1-r3: fast shell, conditional HTTP + persistent Cache API EOD.
-const STATIC='chaopan-static-v3.1.1-r3-names', DATA='chaopan-eod-data-v311-r3';
+// V3.1.1-r5: fast shell, conditional HTTP + persistent Cache API EOD.
+// Persist market snapshots from r3; upgrade the static shell only.
+const STATIC='chaopan-static-v3.1.1-r5', DATA='chaopan-eod-data-v311-r3';
 const SHELL=['./','./index.html','./app.css','./app-detail-swipe-v222.js','./phase-regime-v307.js','./rank-lenses-v308.js','./trade-desk-v310.js','./trade-guidance-v311.js','./market-intel-v311.js','./radar-extras-v311.js','./manifest.webmanifest'];
 self.addEventListener('install',e=>e.waitUntil(
  caches.open(STATIC).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())
@@ -26,8 +27,8 @@ self.addEventListener('fetch',e=>{
  }
  const shell=/\/(app-detail-swipe-v222\.js|phase-regime-v307\.js|rank-lenses-v308\.js|trade-desk-v310\.js|trade-guidance-v311\.js|market-intel-v311\.js|radar-extras-v311\.js|app\.css|index\.html|manifest\.webmanifest)$/.test(path)||e.request.mode==='navigate';
  if(shell){
-  // New SW revisions precache a consistent set of static files. With the
-  // active r3 worker the app opens instantly even on a slow mobile network.
+  // New SW revisions precache a consistent set of static files. With a
+  // previously installed worker the app opens before a slow market fetch.
   e.respondWith(caches.open(STATIC).then(async c=>{
    const saved=await c.match(e.request,{ignoreSearch:true});if(saved)return saved;
    const fresh=await fetch(e.request);if(fresh.ok)c.put(e.request,fresh.clone());return fresh;

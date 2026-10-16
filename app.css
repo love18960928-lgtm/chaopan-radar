@@ -391,3 +391,10 @@
 .breakout-track-row>b{font-size:12px}.breakout-track-row span,.breakout-track-row small{font-size:11px;color:#b5cad6}
 .k-track-count{color:#f5d599}
 @media(max-width:700px){.inst-board{margin:26px 13px 0;padding:14px}.inst-columns{grid-template-columns:1fr}.inst-stock{padding:10px 4px}.six-ma-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* v3.1.1-r4: prevent Android Chrome native pull-to-refresh from restarting the
+   entire JavaScript app. Scrolling remains possible; the ↻ button checks data. */
+html,body{overscroll-behavior-y:contain}
+.intel-source-details{margin-top:9px;font-size:12px;line-height:1.65}
+.intel-source-details summary{cursor:pointer;color:#82dbce}
+.intel-source-details p{margin:7px 0;color:#b1cdd4;overflow-wrap:anywhere}

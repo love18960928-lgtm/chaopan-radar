@@ -25,15 +25,25 @@ function miniLights(intel,row,plan){const last=row.bars?.at(-1),ma=num(plan.ma5)
  return `<div class="intel-lights">${light(trend,'均線')}${light(volume,'量能')}${light(chip.tone,'法人')}${light(plan?.priority?'up':plan?.qualified?'warn':'down','進場風險')}</div>`;
 }
 function indexCard(label,obj,asOf,note=''){const valid=obj&&obj.date===asOf&&num(obj.close)!==null&&num(obj.pct)!==null;
- return `<div class="intel-index"><span>${esc(label)}</span><strong>${valid?fm(obj.close):'待資料'}</strong><small class="${valid?tone(obj.pct):'unknown'}">${valid?signed(obj.pct)+'%':'日期未核對'}</small><em>${valid?esc(obj.date):'—'}${note?' · '+esc(note):''}</em></div>`;}
+ return `<div class="intel-index"><span>${esc(label)}</span><strong>${valid?fm(obj.close):'待資料'}</strong><small class="${valid?tone(obj.pct):'unknown'}">${valid?signed(obj.pct)+'%':obj?'日期或欄位未核對':'官方來源未取得'}</small><em>${valid?esc(obj.date):'—'}${note?' · '+esc(note):''}</em></div>`;}
 function marketPanel(intel,asOf){const ok=safeMarket(intel,asOf),indices=ok?intel.indices||{}:{},institutional=ok?intel.institutional||{}:{},listed=institutional.listed;
  const valid=listed?.date===asOf&&listed.unit==='億元';
  const cards=[['外資',listed?.foreign],['投信',listed?.trust],['自營商',listed?.dealer]];
+ const codes={taiex:'證交所加權',otc:'櫃買指數',tx:'台指期',twse_bfi:'上市法人總額',twse_t86:'上市個股法人',tpex:'上櫃個股法人'};
+ const statuses=Object.entries(codes).map(([key,name])=>{
+  const entry=intel?.sources?.[key];
+  const fallback=intel?.coverage?.[key];
+  const status=entry?.status||(fallback?'ok':'missing');
+  return `${name}：${status==='ok'?'完成':status==='error'?'抓取失敗':status==='invalid'?'格式或日期不符':'未取得'}`;
+ });
+ const mismatch=intel&&intel.asOf!==asOf?`補充資料日 ${intel.asOf} 與個股 ${asOf} 不同，不可合併。`:
+   !intel?'補充資料檔尚未成功取得；不是全部指數都沒有行情。':'';
+ const summary=ok?statuses.join('｜'):(mismatch||'來源日期尚未核對');
  return `<div class="intel-market-head"><strong>台股收盤儀表板</strong><span>資料交易日 ${esc(asOf||'—')} · 非即時</span></div>
  <div class="intel-index-grid">${indexCard('加權指數',indices.taiex,asOf)}${indexCard('櫃買指數',indices.otc,asOf)}${indexCard('台指期',indices.taifex,asOf,indices.taifex?.session||'日盤')}</div>
  <div class="intel-flow-head"><strong>三大法人買賣超</strong><span>上市｜${valid?esc(listed.date):'待資料'}｜億元</span></div>
  <div class="intel-flow-grid">${cards.map(([label,value])=>`<div class="intel-flow"><span>${esc(label)}</span><b class="${valid?tone(value):'unknown'}">${valid?signed(value):'待資料'}</b></div>`).join('')}</div>
- <div class="intel-market-foot">上櫃法人成交金額另計；不同日期不合併。分點買超≠放空／做多持倉；缺資料不給燈號。</div>`;
+ <div class="intel-market-foot">上櫃法人成交金額另計；不同日期不合併。分點買超≠放空／做多持倉；缺資料不給燈號。<details class="intel-source-details"><summary>查看官方資料來源核對狀況</summary><p>${esc(summary)}</p><p>資料僅於盤後 GitHub Actions 自動擷取。來源失敗、日期不符或未發布時保留空缺，不用舊數字假裝當日行情。</p></details></div>`;
 }
 function marginLight(intel,row){if(!safeMarket(intel,row?.date))return null;
  const x=intel.margin?.[row.market+'-'+row.code];return x?.date===row.date?x:null;}
