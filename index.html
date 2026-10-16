@@ -4,13 +4,13 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#081222"><meta name="description" content="超盤手大量K突破雷達。上市櫃免費盤後掃描、歷史大量K壓力、20日漲停次數與成交量確認。">
 <link rel="icon" href="assets/icon-192.png"><link rel="apple-touch-icon" href="assets/icon-192.png"><link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="app.css?v=3.1.1-r5"><title>超盤手 V3.1.1 起漲與飆股作戰室｜大量K雷達</title>
+<link rel="stylesheet" href="app.css?v=3.1.1-r6"><title>超盤手 V3.1.1 起漲與飆股作戰室｜大量K雷達</title>
 </head>
 <body>
 <div class="app-shell">
 <header class="topbar">
   <div class="brandmark"><span class="logo-pulse">◉</span></div>
-  <div class="brandtext"><div class="brandname">超盤手 <span>RADAR</span> <b aria-label="超盤手 V3.1.1 盤後版" style="display:inline-block;vertical-align:middle;font-size:12px;line-height:1.3;letter-spacing:0;color:#a6f3df;background:#204c46;border:1px solid #3b9c8c;border-radius:8px;padding:3px 7px;margin-left:5px">V3.1.1-r5</b></div><div class="branddesc">兩大操盤雷達・起漲第一至第三根與飆股追蹤 <span class="tinysep">/</span> 盤後計畫＋手動盤中檢查</div></div>
+  <div class="brandtext"><div class="brandname">超盤手 <span>RADAR</span> <b aria-label="超盤手 V3.1.1 盤後版" style="display:inline-block;vertical-align:middle;font-size:12px;line-height:1.3;letter-spacing:0;color:#a6f3df;background:#204c46;border:1px solid #3b9c8c;border-radius:8px;padding:3px 7px;margin-left:5px">V3.1.1-r6</b></div><div class="branddesc">兩大操盤雷達・起漲第一至第三根與飆股追蹤 <span class="tinysep">/</span> 盤後計畫＋手動盤中檢查</div></div>
   <button id="refreshBtn" class="icon-button" aria-label="重新載入資料" title="重新載入資料"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 1 0-2.7 6M20 4v7h-7"/></svg></button>
 </header>
 <main>
@@ -46,7 +46,9 @@
       <button type="button" class="stage-scope" data-stage="first" aria-pressed="false">第一根</button>
       <button type="button" class="stage-scope" data-stage="second" aria-pressed="false">第二根</button>
       <button type="button" class="stage-scope" data-stage="third" aria-pressed="false">第三根</button>
-      <button type="button" class="stage-scope" data-stage="ma510" aria-pressed="false">歷史突破沿5／10日線</button>
+      <button type="button" class="stage-scope" data-stage="ma510" aria-pressed="false">大量K突破一路守5／10</button>
+      <button type="button" class="stage-scope" data-stage="ma510range" aria-pressed="false">區間突破一路守5／10</button>
+      <button type="button" class="stage-scope" data-stage="ma510recent" aria-pressed="false">近期10日守5／10</button>
     </div>
     <div class="rank-toolbar" role="group" aria-label="顯示名次範圍"><button type="button" class="rank-scope active" data-scope="20" aria-pressed="true">前20名</button><button type="button" class="rank-scope" data-scope="60" aria-pressed="false">前60名</button><button type="button" class="rank-scope" data-scope="all" aria-pressed="false">全部候選</button></div>
     <details class="desk-options"><summary>進階：成交量篩選與完整下載</summary><label class="liquidity-toggle"><input type="checkbox" id="onlyLiquid" checked><span><b>只顯示成交活躍股票</b><small>依股價分級檢查張數與成交金額；低價股須均量千張以上。搜尋仍可查全部。</small></span></label></details>
@@ -73,9 +75,9 @@
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script src="phase-regime-v307.js?v=20261016-v307"></script>
 <script src="rank-lenses-v308.js?v=20261016-v308" defer></script>
-<script src="radar-extras-v311.js?v=20261016-v311-r5audited" defer></script>
-<script src="trade-desk-v310.js?v=20261016-v311" defer></script>
-<script src="trade-guidance-v311.js?v=20261016-v311" defer></script>
-<script src="market-intel-v311.js?v=20261016-v311-r5audited" defer></script>
-<script src="app-detail-swipe-v222.js?v=20261016-v311-r5audited" defer></script>
+<script src="radar-extras-v311.js?v=20261017-v311-r6" defer></script>
+<script src="trade-desk-v310.js?v=20261017-v311-r6" defer></script>
+<script src="trade-guidance-v311.js?v=20261017-v311-r6" defer></script>
+<script src="market-intel-v311.js?v=20261017-v311-r6" defer></script>
+<script src="app-detail-swipe-v222.js?v=20261017-v311-r6" defer></script>
 </body></html>

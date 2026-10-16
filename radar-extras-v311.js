@@ -30,16 +30,21 @@ function institutionalRanking(intel, asOf, stockNames={}) {
  return {ready:entries.length>0,buys,sells,available:entries.length,unnamed:entries.filter(x=>x.name==='名稱待核對').length};
 }
 
-function averages(bars) {
+function averages(rowOrBars) {
+ const bars=Array.isArray(rowOrBars)?rowOrBars:rowOrBars?.bars;
+ const matched=rowOrBars&&!Array.isArray(rowOrBars)&&rowOrBars.maAll?.asOf===rowOrBars.date?rowOrBars.maAll:null;
  const valid=(Array.isArray(bars)?bars:[]).filter(b=>Array.isArray(b)&&n(b[4])!==null&&n(b[4])>0);
  const closes=valid.map(b=>Number(b[4])), last=closes.at(-1), values={};
- for(const d of [5,10,20,60,120,240])values[d]=closes.length>=d?closes.slice(-d).reduce((a,b)=>a+b,0)/d:null;
+ for(const d of [5,10,20,60,120,240]){
+   // Never combine an old-dated server field with today's price.
+   values[d]=matched?n(matched.values?.[String(d)]):(closes.length>=d?closes.slice(-d).reduce((a,b)=>a+b,0)/d:null);
+ }
  const complete=[5,10,20,60,120,240].every(d=>values[d]!==null);
  const short=[5,10,20].every(d=>values[d]!==null&&last>=values[d]);
  const long=[60,120,240].filter(d=>values[d]!==null&&last<values[d]);
  const full=complete&&short&&long.length===0;
  const status=full?'站上全部六條均線':short&&long.length>0?'短線站上MA5／10／20；長線仍有壓力':short&&!complete?'站上短線三線；長線資料不足':short?'短線站上三線／長線未全數確認':'短線均線尚未全部站上';
- return {values,close:last??null,count:closes.length,complete,short,full,long,status};
+ return {values,close:last??null,count:matched?Number(matched.count)||closes.length:closes.length,complete,short,full,long,status};
 }
 function breakoutTracks(row){
  const bars=(row?.bars||[]).filter(b=>Array.isArray(b)&&typeof b[0]==='string'&&n(b[1])!==null&&n(b[4])!==null);
