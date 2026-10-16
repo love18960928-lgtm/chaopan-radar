@@ -401,30 +401,97 @@ function renderSectorPulse(rows){
  const sectors=[...map].filter(([name,a])=>a.length>=6).map(([name,a])=>({name,count:a.length,median:median(a)})).sort((a,b)=>b.median-a.median).slice(0,3);
  output.innerHTML=sectors.length?'<span>近5日相對較強族群（同產業個股漲幅中位數；非法人資金流）</span><div>'+sectors.map(x=>`<b>${esc(x.name)} <small>${x.median>0?'+':''}${x.median.toFixed(1)}%</small></b>`).join('')+'</div>':'可用資料尚不足以評估產業強弱，不預設AI或其他產業永遠領漲';
 }
+// r8: Expanded sectors use data-driven battle cards, not the old compact rows.
+// Keep expansion and pagination in memory; refreshing the same EOD snapshot does
+// not trigger another fetch or re-render unexpanded stock cards.
+let sectorPacked=[],sectorRanks=new Map(),sectorDate='';
+const sectorOpen=new Set(),sectorShown=new Map();
+let sectorInteracted=false;
+const SECTOR_BATCH=5;
+function sectorBattleCard(c){
+ const p=deskEvidence(c),g=ChaopanGuidance.evaluate(c,p,supportLines(c));
+ const seq=breakoutReadout(c),track=ChaopanExtrasV311.breakoutTracks(c);
+ const ma=ChaopanExtrasV311.averages(c),hold=continuationReadout(c);
+ const rank=sectorRanks.get(rowId(c));
+ const rankText=Number.isInteger(rank)&&rank>0?`#${rank} 起漲雷達排名`:'未列入起漲排名';
+ const phases={ready:'頸線預備',first:'突破第一根',second:'突破第二根',third:'突破第三根',reclaim:'舊頸線重新站回',surge:'主升段續強',reentry:'回測再發動',caution:'高波動警戒'};
+ const stage=phases[p.stage]||phases[p.momentumStage]||phases[seq.phase]||'突破階段待核對';
+ const n=v=>numeric(v)===null?'待核對':price(v);
+ const s=v=>numeric(v)===null?'待核對':Number(v).toFixed(1);
+ const MA=[5,10,20,60,120,240];
+ const matags=MA.map(d=>`<span class="sector-ma ${numeric(ma.values?.[d])===null?'missing':ma.close>=ma.values[d]?'above':'below'}">MA${d} ${numeric(ma.values?.[d])===null?'待資料':ma.close>=ma.values[d]?'站上':'下方'}</span>`).join('');
+ const trackRow=track.length&&track[0].days<=3?`<span class="sector-card-tag muted">紅K×${track[0].red}／綠K×${track[0].green}</span>`:'';
+ const ma510=hold.strictMA510Hold===true?`<span class="sector-card-tag ok">${hold.source==='既有大量K突破事件'?'大量K首破':'歷史區間突破'}後全程守MA5／10</span>`:
+   hold.recentCloseHold10===true?'<span class="sector-card-tag muted">近10日守MA5／10（非全程）</span>':'';
+ const riskTag=g.level==='danger'?'出場警戒':g.level==='warn'?'減碼警戒':g.level==='unknown'?'資料不足':'等待量價確認';
+ const indicator=state.marketIntel?ChaopanIntel.miniLights(state.marketIntel,c,p):'';
+ const dateOk=c.date===state.payload?.asOf;
+ const levelsValid=g.level!=='unknown'&&dateOk;
+ return `<article class="sector-battle-card" data-stock-id="${esc(rowId(c))}">
+  <div class="sector-card-eyebrow"><b>${esc(rankText)}</b><span>發動潛力 ${s(p.score?.potential)} · 進場品質 ${s(p.score?.entry)}（非勝率）</span></div>
+  <div class="sector-card-identity"><div><strong>${esc(c.code)} ${esc(c.name)}</strong><div class="sector-card-meta">${esc(c.market||'市場待核對')} · ${esc(c.industry||c.fundamentals?.industry||'產業待核對')}</div></div><div class="sector-card-quote"><b>${n(c.close)}</b><small class="${numeric(c.changePct)>0?'rising':numeric(c.changePct)<0?'falling':''}">${pct(c.changePct)}</small></div></div>
+  <div class="sector-card-tags"><span class="sector-card-tag phase">${esc(stage)}</span>${ma510}${trackRow}<span class="sector-card-tag ${g.level==='danger'?'danger':g.level==='warn'?'caution':'muted'}">${esc(riskTag)}</span></div>
+  <div class="sector-ma-row" aria-label="六條均線狀態">${matags}</div>
+  <div class="sector-card-decision"><div class="sector-decision-top"><b>${esc(g.title)}</b><span>${levelsValid?'收盤資料已核對':'數據未齊 · 不給交易確認'}</span></div><div class="sector-card-scores"><span>觀察 <b>${levelsValid?n(g.breakoutLevel):'待核對'}</b></span><span>追價警戒 <b>${levelsValid?n(p.chase):'待核對'}</b></span><span>頸線防守 <b>${levelsValid?n(p.defense):'待核對'}</b></span></div>
+   <div class="sector-card-lights">${indicator}</div>
+   <div class="sector-card-levels"><div><span>買點觀察</span><b>${levelsValid?n(g.pullbackZone?.[0]):'待核對'}</b><small>MA5回測止跌或突破確認</small></div><div><span>減碼警戒</span><b>${levelsValid?n(g.ma5):'待核對'}</b><small>收盤失守MA5／假突破</small></div><div><span>防守／賣點</span><b>${levelsValid?n(g.ma10):'待核對'}</b><small>MA10有效失守需評估</small></div><div><span>移動停利</span><b>${levelsValid?n(g.trailingStop):'待核對'}</b><small>${g.trailingStop===null?'缺少完整歷史事件':'歷史ATR規則參考'}</small></div></div>
+   <p class="sector-card-asof">${esc(c.date||'日期待核對')}盤後 · 價位僅為條件參考，非即時報價及買賣指令</p>
+   <details class="sector-card-reasons"><summary>展開買進／減碼／賣出判斷理由</summary><p><b>買點：</b>${esc(g.buy)}</p><p><b>減碼：</b>${esc(g.trim)}</p><p><b>賣出：</b>${esc(g.sell)}</p></details>
+  </div>
+  <div class="sector-card-actions"><button type="button" class="sector-open-detail" data-sector-detail="${esc(rowId(c))}">📈 查看K線關卡圖解</button><button type="button" class="sector-open-intraday" data-sector-intraday="${esc(rowId(c))}">✎ 盤中輸入價量試算</button></div>
+ </article>`;
+}
+function renderSectorPage(groupEl){
+ const idx=Number(groupEl.dataset.sectorIndex),group=sectorPacked[idx];if(!group)return;
+ const container=groupEl.querySelector('.sector-rows');if(!container)return;
+ const limit=Math.min(group.arr.length,sectorShown.get(group.name)||SECTOR_BATCH);
+ // Only an expanded group creates expensive full battle cards.
+ container.innerHTML=group.arr.slice(0,limit).map(sectorBattleCard).join('')+(limit<group.arr.length?
+  `<button class="sector-load-more" type="button" data-sector-more="${idx}">再顯示 ${Math.min(SECTOR_BATCH,group.arr.length-limit)} 檔（${limit}／${group.arr.length}） ↓</button>`:'');
+}
 function sectorDirectory(){
  const out=$('#sectorDirectory');if(!out)return;
- const rows=allRows().filter(c=>{const p=deskEvidence(c);return p.qualified&&(p.stage||p.momentumStage)&&p.liquid});
+ const valid=state.mode==='live'&&state.payload?.asOf===state.universe?.asOf&&!staleDeskSnapshot(state.payload?.asOf);
+ if(!valid){out.innerHTML='<div class="desk-empty">全市場行情未核對為最近收盤，暫停當日強勢族群作戰卡；請查看資料日期。</div>';return;}
+ const asOf=state.payload?.asOf||'';
+ if(asOf!==sectorDate){sectorDate=asOf;sectorOpen.clear();sectorShown.clear();sectorInteracted=false;}
+ const rows=allRows().filter(c=>{
+   const p=deskEvidence(c),e=continuationReadout(c);
+   return Boolean(p.liquid&&((p.qualified&&(p.stage||p.momentumStage))||e.strictMA510Hold===true||e.recentCloseHold10===true));
+ });
  const groups=new Map();
  for(const c of rows){const industry=String(c.industry||c.fundamentals?.industry||'').trim();const name=industry&&!/未分類|不詳|未知|待分類/.test(industry)?industry:'其他（待分類）';
   if(!groups.has(name))groups.set(name,[]);groups.get(name).push(c);
  }
  const median=a=>{if(!a.length)return null;const b=a.slice().sort((x,y)=>x-y);return (b[Math.floor((b.length-1)/2)]+b[Math.floor(b.length/2)])/2};
- const packed=[...groups].map(([name,arr])=>{
-  arr.sort((a,b)=>(deskEvidence(b).score.entry??0)-(deskEvidence(a).score.entry??0)||(deskEvidence(b).score.potential??0)-(deskEvidence(a).score.potential??0));
-  const pct5=arr.map(c=>{const b=c.bars||[],old=b.length>=6?numeric(b.at(-6)[4]):null;return old&&c.close?100*(c.close/old-1):null}).filter(v=>v!==null);
+ sectorRanks=new Map(deskRankedCandidates('launch').map((c,i)=>[rowId(c),i+1]));
+ sectorPacked=[...groups].map(([name,arr])=>{
+  arr.sort((a,b)=>Number(Boolean(deskEvidence(b).priority))-Number(Boolean(deskEvidence(a).priority))||
+    (deskEvidence(b).score.entry??0)-(deskEvidence(a).score.entry??0)||
+    (deskEvidence(b).score.potential??0)-(deskEvidence(a).score.potential??0)||String(a.code).localeCompare(String(b.code),'zh-Hant',{numeric:true}));
+  const pct5=arr.map(c=>{const bars=c.bars||[],old=bars.length>=6?numeric(bars.at(-6)[4]):null;return old&&numeric(c.close)!==null?100*(Number(c.close)/old-1):null}).filter(v=>v!==null);
   return {name,arr,median:median(pct5)};
  }).sort((a,b)=>Number(b.name!=='其他（待分類）')-Number(a.name!=='其他（待分類）')||b.arr.length-a.arr.length||(b.median??-999)-(a.median??-999));
- const valid=state.mode==='live'&&state.payload?.asOf===state.universe?.asOf&&!staleDeskSnapshot(state.payload?.asOf);
- if(!valid){out.innerHTML='<div class="desk-empty">全市場行情未核對為最近收盤，暫停強勢族群排行；請查看資料日期。</div>';return;}
- if(!packed.length){out.innerHTML='<div class="desk-empty">目前沒有通過流動性與價量條件的族群股票，請到進階搜尋核對個股。</div>';return;}
- out.innerHTML='<p class="sector-headline">依股票各自條件排序；先看族群、點開股票，再查看買賣關卡。非即時。</p>'+packed.slice(0,16).map(({name,arr,median},i)=>`<details class="sector-group" ${i===0?'open':''}><summary><span class="sector-nom">${esc(name)}</span><span class="sector-sum">${arr.length}檔 · 近5日 ${median===null?'—':pct(median)}</span><span class="sector-arrow">⌄</span></summary><div class="sector-rows">${arr.slice(0,12).map(c=>{
-  const plan=deskEvidence(c),g=ChaopanGuidance.evaluate(c,plan,supportLines(c));
-  const label=plan.priority?'可優先觀察':g.level==='danger'?'賣出風險':plan.qualified?'等價格與量':'條件不足';
-  const seq=breakoutReadout(c),stageName=({ready:'預備突破頸線',first:'剛突破第一根',second:'突破第二根',third:'突破第三根'})[plan.stage]||({ready:'預備突破頸線',first:'剛突破第一根',second:'突破第二根'})[seq.phase]||'突破追蹤';
-  const trace=ChaopanExtrasV311.breakoutTracks(c);const candle=trace.length&&trace[0].days<=3?`・紅K×${trace[0].red} 綠K×${trace[0].green}`:'';
-  return `<button type="button" class="sector-stock" data-sector-stock="${esc(rowId(c))}"><span class="sector-stock-name"><strong>${esc(c.code)} ${esc(c.name)}</strong><small>${esc(stageName)}｜${esc(label)}${candle}</small></span><span class="sector-stock-price"><b>${price(c.close)}</b><small>${pct(c.changePct)}</small></span><span class="sector-stock-actions"><small>站穩 ${price(plan.trigger)} 再看</small><small>量需 ${integer(plan.breakoutVolNeed)} 張</small></span><span class="sector-stock-signal ${g.level}">${g.level==='danger'?'紅燈':g.level==='warn'?'黃燈':'觀察'}</span></button>`;
- }).join('')}</div></details>`).join('');
- $$('#sectorDirectory [data-sector-stock]').forEach(b=>b.onclick=()=>showDetails(b.dataset.sectorStock));
+ if(!sectorPacked.length){out.innerHTML='<div class="desk-empty">本交易日目前沒有核對通過流動性與突破／均線續強條件的族群股票，請到進階搜尋核對。</div>';return;}
+ if(!sectorInteracted&&sectorOpen.size===0)sectorOpen.add(sectorPacked[0].name);
+ out.innerHTML='<p class="sector-headline">按族群展開個股作戰卡：買點、減碼、移動停利與六線狀態。每次先顯示5檔；非即時。</p>'+sectorPacked.map(({name,arr,median},i)=>
+  `<details class="sector-group" data-sector-index="${i}" ${sectorOpen.has(name)?'open':''}><summary><span class="sector-nom">${esc(name)}</span><span class="sector-sum">${arr.length}檔 · 近5日 ${median===null?'—':pct(median)}</span><span class="sector-arrow">⌄</span></summary><div class="sector-rows"></div></details>`).join('');
+ out.querySelectorAll('.sector-group').forEach(el=>{
+   if(el.open)renderSectorPage(el);
+   el.addEventListener('toggle',()=>{const group=sectorPacked[Number(el.dataset.sectorIndex)];if(!group)return;
+     sectorInteracted=true;
+     if(el.open){sectorOpen.add(group.name);renderSectorPage(el)}else{sectorOpen.delete(group.name);el.querySelector('.sector-rows').replaceChildren()}
+   });
+ });
+ // Delegated clicks work for cards appended by subsequent "load more" actions.
+ out.onclick=e=>{
+   const detail=e.target.closest('[data-sector-detail]');if(detail){showDetails(detail.dataset.sectorDetail);return;}
+   const intraday=e.target.closest('[data-sector-intraday]');if(intraday){showDetails(intraday.dataset.sectorIntraday,true);return;}
+   const more=e.target.closest('[data-sector-more]');if(more){const idx=Number(more.dataset.sectorMore),group=sectorPacked[idx];if(!group)return;
+     sectorShown.set(group.name,Math.min(group.arr.length,(sectorShown.get(group.name)||SECTOR_BATCH)+SECTOR_BATCH));
+     renderSectorPage(more.closest('.sector-group'));
+   }
+ };
 }
 /* r7: Each chart is rendered from the selected stock's dated OHLCV rows. */
 function annotatedBattleChart(c,g){
