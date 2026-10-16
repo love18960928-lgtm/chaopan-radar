@@ -56,6 +56,7 @@ def twse_t86(payload, target):
                 if pat in str(key):return j
         return None
     col=index('證券代號','股票代號')
+    name_col=index('證券名稱','股票名稱','名稱')
     fr=index('外陸資買賣超股數(不含外資自營商)','外陸資買賣超股數')
     tr=index('投信買賣超股數')
     dl=index('自營商買賣超股數')
@@ -64,10 +65,13 @@ def twse_t86(payload, target):
     for row in rows:
         if not isinstance(row,list) or len(row)<=max(col,fr,tr,dl):continue
         code=str(row[col]).strip()
-        if not re.fullmatch(r'\d{4}',code):continue
+        if not re.fullmatch(r'(?:\d{4}|0\d{4,5}[A-Z]?)',code):continue
         vals=[number(row[i]) for i in (fr,tr,dl)]
         if any(v is None for v in vals):continue
-        result['上市-'+code]={'date':target,'foreignLots':round(vals[0]/1000,3),'trustLots':round(vals[1]/1000,3),'dealerLots':round(vals[2]/1000,3),'source':'TWSE T86','broker':None}
+        label=str(row[name_col]).strip() if name_col is not None and len(row)>name_col else ''
+        record={'date':target,'foreignLots':round(vals[0]/1000,3),'trustLots':round(vals[1]/1000,3),'dealerLots':round(vals[2]/1000,3),'source':'TWSE T86','broker':None}
+        if label and label not in ('-', '—', 'None'):record['name']=label
+        result['上市-'+code]=record
     return result
 
 def tpex_3insti(payload, target):
@@ -78,7 +82,8 @@ def tpex_3insti(payload, target):
           'foreign':('外資及陸資買賣超股數','外資及陸資買賣超','Foreign Investors include Mainland Area Investors (Foreign Dealers excluded)-Difference'),
           'trust':('投信買賣超股數','投信買賣超','SecuritiesInvestmentTrustCompanies-Difference'),
           'dealer':('自營商買賣超股數合計','自營商買賣超股數','自營商買賣超','Dealers-Difference'),
-          'date':('資料日期','日期','Date','TradeDate')}
+          'date':('資料日期','日期','Date','TradeDate'),
+          'name':('證券名稱','股票名稱','名稱','SecuritiesCompanyName','CompanyName','Name')}
     def pick(row, names):
         for name in names:
             if name in row:return row[name]
@@ -86,10 +91,13 @@ def tpex_3insti(payload, target):
     for row in payload:
         if not isinstance(row,dict) or date_iso(pick(row,keys['date']))!=target:continue
         code=str(pick(row,keys['code']) or '').strip()
-        if not re.fullmatch(r'\d{4}',code):continue
+        if not re.fullmatch(r'(?:\d{4}|0\d{4,5}[A-Z]?)',code):continue
         vals=[number(pick(row,keys[k])) for k in ('foreign','trust','dealer')]
         if any(v is None for v in vals):continue
-        result['上櫃-'+code]={'date':target,'foreignLots':round(vals[0]/1000,3),'trustLots':round(vals[1]/1000,3),'dealerLots':round(vals[2]/1000,3),'source':'TPEx 3insti','broker':None}
+        label=str(pick(row,keys['name']) or '').strip()
+        record={'date':target,'foreignLots':round(vals[0]/1000,3),'trustLots':round(vals[1]/1000,3),'dealerLots':round(vals[2]/1000,3),'source':'TPEx 3insti','broker':None}
+        if label and label not in ('-', '—', 'None'):record['name']=label
+        result['上櫃-'+code]=record
     return result
 
 def twse_fmtqik(payload,target):
@@ -169,7 +177,7 @@ def twse_margin(payload,target):
         for row in table.get('data') or []:
             if not isinstance(row,list) or len(row)<=max(ci,*balances,*priors):continue
             code=str(row[ci]).strip()
-            if not re.fullmatch(r'\d{4}',code):continue
+            if not re.fullmatch(r'(?:\d{4}|0\d{4,5}[A-Z]?)',code):continue
             vals=[number(row[i]) for i in [priors[0],balances[0],priors[1],balances[1]]]
             if any(v is None or v<0 for v in vals):continue
             out['上市-'+code]={
@@ -255,7 +263,10 @@ def save(out, path=DEST):
             if old.get('asOf')==out['asOf']:
                 for key,value in old.get('indices',{}).items():out['indices'].setdefault(key,value)
                 for key,value in old.get('institutional',{}).items():out['institutional'].setdefault(key,value)
-                for key,value in old.get('stocks',{}).items():out['stocks'].setdefault(key,value)
+                for key,value in old.get('stocks',{}).items():
+                    if key not in out['stocks']:out['stocks'][key]=value
+                    elif not out['stocks'][key].get('name') and isinstance(value,dict) and value.get('name'):
+                        out['stocks'][key]['name']=value['name']
                 for key,value in old.get('margin',{}).items():out.setdefault('margin',{}).setdefault(key,value)
         except (ValueError,OSError,TypeError):pass
     tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(out,ensure_ascii=False,separators=(',',':'))+'\n',encoding='utf8');tmp.replace(path)
