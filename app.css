@@ -222,3 +222,11 @@
 .v307-top-summary.warn{background:#3b3225;border-left-color:#dfa652;color:#fff0cd}
 .v307-top-summary.danger{background:#422932;border-left-color:#ec8291;color:#ffe8e8}
 .v307-top-summary.good{background:#143e37}
+
+/* V3.0.8 — three ranked lenses, same single EOD scan */
+.lens-toolbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:18px 0 8px}
+.lens-scope{border:1px solid #3b5366;background:#162b3f;border-radius:12px;padding:12px 9px;color:#d5e6f0;text-align:left;display:flex;flex-direction:column;gap:4px;min-height:65px}
+.lens-scope strong{font-size:15px;letter-spacing:.1px}.lens-scope small{font-size:10px;line-height:1.5;color:#a3b8c9}
+.lens-scope.active{border-color:#4dd5bf;background:#1a4b4e;box-shadow:inset 0 0 0 1px #4ad0b64a}
+.lens-scope.active small{color:#c5f3e6}.lens-explain{font-size:11px;color:#a0b9c7;line-height:1.65;margin:4px 0 12px}
+@media(min-width:760px){.lens-toolbar{grid-template-columns:repeat(4,minmax(0,1fr))}}

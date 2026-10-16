@@ -1,6 +1,6 @@
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
-const state={payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,universe:null,detailIds:[],detailHistory:false,rankView:'20',stageView:'all',liquidityOnly:true};
+const state={payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,universe:null,detailIds:[],detailHistory:false,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true};
 const TAGS={first:'第一根發動',prep:'發動前預備',near:'接近頸線',volume:'新大量超越',limit:'20日多漲停',follow:'突破後追蹤'};
 const price=n=>n!==null&&n!==undefined&&Number.isFinite(Number(n))? Number(n).toLocaleString('zh-TW',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
 const integer=n=>Number.isFinite(Number(n))?Math.round(Number(n)).toLocaleString('zh-TW'):'—';
@@ -10,7 +10,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&
 
 
 // V1.1 Top 60 candidate workflow. Generic CSV is NOT the proprietary 三竹匯入格式.
-const sixtyKey='chaopan-sixty-strength-snapshot-v29';
+const sixtyKey='chaopan-sixty-strength-snapshot-v308';
 const hasData=c=>c?.investment?.overall!==null&&Number.isFinite(Number(c?.investment?.overall));
 const investing=c=>hasData(c)? Number(c.investment.overall): null;
 const showField=v=>v===null||v===undefined||v===''?'待資料':String(v);
@@ -294,8 +294,24 @@ function rankedUniverse(){
    String(a.market).localeCompare(String(b.market),'zh-Hant'));
 }
 function strengthCandidates(){return rankedUniverse().filter(isStrengthCandidate)}
-function sixtyCandidates(){return strengthCandidates().slice(0,60)}
-function previousSixty(){try{return JSON.parse(localStorage.getItem(sixtyKey)||'null')}catch(e){return null}}
+// V3.0.8: Three independent ranking lenses share the same EOD bars and event history.
+// All historical stage tabs and direct stock searches continue to use rankedUniverse().
+const lensMemo=new WeakMap();
+function lensEvidence(c){
+ if(lensMemo.has(c))return lensMemo.get(c);
+ const data=RadarLenses.evaluate(c,{ma:maReadout(c),phase:breakoutReadout(c),follow:continuationReadout(c),
+  audit:confirmedStrengthAudit(c),liquidity:liquidityEvidence(c),baseScore:strengthScore(c),baseEligible:isStrengthCandidate(c)});
+ lensMemo.set(c,data);return data;
+}
+function lensRankedCandidates(lens=state.rankLens){
+ return allRows().filter(c=>lensEvidence(c).qualified[lens]).sort((a,b)=>
+   lensEvidence(b).score[lens]-lensEvidence(a).score[lens] ||
+   (numeric(b.trading?.trend)??0)-(numeric(a.trading?.trend)??0) ||
+   String(a.code).localeCompare(String(b.code),'zh-Hant',{numeric:true}));
+}
+function currentRankLabel(){return RadarLenses.labels[state.rankLens]||'強勢綜合'}
+function sixtyCandidates(){return lensRankedCandidates().slice(0,60)}
+function previousSixty(){try{return JSON.parse(localStorage.getItem(sixtyKey+'-'+state.rankLens)||'null')}catch(e){return null}}
 function sixtyChanges(current){
  const previous=previousSixty(), codes=current.map(x=>x.code);
  const changes=previous && previous.asOf!==state.payload?.asOf?{
@@ -303,7 +319,7 @@ function sixtyChanges(current){
   drop:previous.codes.filter(c=>!codes.includes(c))
  }:null;
  if(state.mode==='live' && state.payload?.asOf && (!previous||previous.asOf!==state.payload?.asOf)){
-   try{localStorage.setItem(sixtyKey,JSON.stringify({asOf:state.payload.asOf,codes}))}catch(e){}
+   try{localStorage.setItem(sixtyKey+'-'+state.rankLens,JSON.stringify({asOf:state.payload.asOf,codes}))}catch(e){}
  }
  return changes;
 }
@@ -320,7 +336,7 @@ function activeSelection(){
  }
  if(state.rankView==='all')return {records,label:state.liquidityOnly?'全部股票（排除低量）':'全部股票（含低量）'};
  const limit=state.rankView==='60'?60:20;
- return {records:records.filter(isStrengthCandidate).slice(0,limit),label:`當日強勢前${limit}名`};
+ return {records:lensRankedCandidates().slice(0,limit),label:`當日${currentRankLabel()}前${limit}名`};
 }
 function exportCsvRecords(records,label){
  if(!records.length){toast(`目前「${label}」沒有股票可以匯出`);return}
@@ -328,8 +344,9 @@ function exportCsvRecords(records,label){
  '收盤價','漲跌百分比','近期頸線','盤中跨越參考價','原突破頸線','首次突破日期','突破階段','第二根評估',
  '第一根收盤','第二根收盤','第二根量比第一根','5日均線','10日均線','20日均線',
  '連續收在原頸線上方日數','延續追蹤階段','歷史突破日期','歷史基準價','歷史守穩交易日數','歷史參考來源','20日平均成交量張','20日平均每日成交金額百萬元','可交易性分類','當日成交量張','成交量倍數','第一支撐下界','第一支撐上界',
- '強勢分數','交易風險級別','風險提示','當日狀態','資料來源'];
+ '強勢分數','交易風險級別','風險提示','當日狀態','資料來源','排行視角','視角內名次','視角指數（非勝率）','近5日漲幅％','近10日漲幅％','近20日漲幅％','注意風險'];
  const fullRanking=new Map(rankedUniverse().map((c,i)=>[rowId(c),i+1]));
+ const lensOrder=new Map(lensRankedCandidates().map((c,i)=>[rowId(c),i+1]));
  const asOf=String(state.payload?.asOf||'日期待資料');
  const csvRows=[columns,...records.map((c,i)=>{
    const m=maReadout(c),b=breakoutReadout(c),k=techMetrics(c),sup=supportLines(c)[0];
@@ -337,7 +354,7 @@ function exportCsvRecords(records,label){
     c.close,c.changePct,latestNeck(c),c.intradayPlan?.crossPrice,m.originalNeckline||b.level,b.initialDate||m.breakoutDate,
     b.label,b.assessment,b.firstClose,b.secondClose,b.secondVsFirstVolumeRatio,
     m.ma5,m.ma10,m.ma20,m.necklineHoldDays,continuationReadout(c).label,continuationReadout(c).breakoutDate,continuationReadout(c).originalNeckline,continuationReadout(c).holdDays,continuationReadout(c).source,k.avg20,liquidityEvidence(c).avgAmountM,liquidityEvidence(c).label,c.lots,c.volumeRatio,sup?.lower,sup?.upper,
-    rankingScore(c),c.riskLevel,(Array.isArray(c.riskReasons)?c.riskReasons.join('；'):(c.riskReasons||'')),c.unifiedStage,state.mode==='demo'?'示範資料':'盤後公開資料'];
+    rankingScore(c),c.riskLevel,(Array.isArray(c.riskReasons)?c.riskReasons.join('；'):(c.riskReasons||'')),c.unifiedStage,state.mode==='demo'?'示範資料':'盤後公開資料', currentRankLabel(),lensOrder.get(rowId(c))??'',lensEvidence(c).score[state.rankLens],lensEvidence(c).returns.r5,lensEvidence(c).returns.r10,lensEvidence(c).returns.r20,lensEvidence(c).flags.join('；')];
  })];
  downloadPlain('\ufeff'+csvRows.map(r=>r.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n'),
   `超盤手_${label}_${asOf}_${records.length}檔.csv`,'text/csv;charset=utf-8;');
@@ -349,7 +366,7 @@ function downloadPlain(body,filename,mime){
  setTimeout(()=>URL.revokeObjectURL(url),5000);
 }
 function exportCurrent(){const {records,label}=activeSelection();exportCsvRecords(records,label)}
-function exportSixty(){exportCsvRecords(sixtyCandidates(),'當日強勢前60名')}
+function exportSixty(){exportCsvRecords(sixtyCandidates(),`當日${currentRankLabel()}前60名`)}
 function exportCurrentCodes(){
  const {records,label}=activeSelection();if(!records.length){toast('目前沒有可匯出的股票代號');return}
  const asOf=String(state.payload?.asOf||'日期待資料');
@@ -363,9 +380,9 @@ async function copySixty(){
 }
 function showSixty(){
  const records=sixtyCandidates(),changed=sixtyChanges(records);
- const rows=records.map((c,i)=>`<button type="button" class="rank-modal-row" data-rank-stock="${esc(rowId(c))}"><strong>#${i+1} ${esc(c.code)} ${esc(c.name)}</strong><span>強勢分 ${rankingScore(c)??'—'}｜${esc(c.unifiedStage||'待資料')}｜觸發 ${price(c.intradayPlan?.crossPrice)}</span></button>`).join('');
+ const rows=records.map((c,i)=>`<button type="button" class="rank-modal-row" data-rank-stock="${esc(rowId(c))}"><strong>#${i+1} ${esc(c.code)} ${esc(c.name)}</strong><span>${esc(currentRankLabel())}指數 ${lensEvidence(c).score[state.rankLens]}｜${esc(c.unifiedStage||'待資料')}｜觸發 ${price(c.intradayPlan?.crossPrice)}</span></button>`).join('');
  const delta=changed?`<p style="font-size:13px">相較上次資料日：新進 ${changed.add.length} 檔，移出 ${changed.drop.length} 檔</p>`:'<p style="font-size:13px">首次開啟或同資料日期，尚無可比對的昨日名單。</p>';
- $('#modalContent').innerHTML=`<div class="eyebrow">STRENGTH RANK / TOP 60</div><h2 id="modalTitle">全市場強勢前60名</h2><p>盤後資料：${esc(state.payload?.asOf||'—')}｜首頁、此表與CSV使用同一強勢度排序；高風險與資料不足不列入強勢名單，仍可搜尋。不代表未來績效或實際可買入。</p>${delta}<div class="action-row"><button id="sixtyCsv" class="primary-action">下載前60名 CSV</button><button id="sixtyCopy" class="secondary-action">複製股票代號</button></div><div class="rank-modal-list">${rows||'<p>尚無候選股票</p>'}</div>`;
+ $('#modalContent').innerHTML=`<div class="eyebrow">STRENGTH RANK / TOP 60</div><h2 id="modalTitle">${esc(currentRankLabel())}前60名</h2><p>盤後資料：${esc(state.payload?.asOf||'—')}｜首頁、此表與CSV使用目前選定的排行視角；飆股榜可能包含高波動，請看風險標記。不是買進名單。</p>${delta}<div class="action-row"><button id="sixtyCsv" class="primary-action">下載前60名 CSV</button><button id="sixtyCopy" class="secondary-action">複製股票代號</button></div><div class="rank-modal-list">${rows||'<p>尚無候選股票</p>'}</div>`;
  $('#sixtyCsv').onclick=exportSixty;$('#sixtyCopy').onclick=copySixty;
  $$('#modalContent [data-rank-stock]').forEach(btn=>btn.onclick=()=>showDetails(btn.dataset.rankStock));
  $('#modalOverlay').hidden=false;document.body.style.overflow='hidden';
@@ -373,7 +390,7 @@ function showSixty(){
 function setupSixtyToolbar(){
  if($('#sixtyToolbar'))return;
  const wrap=document.createElement('div');wrap.id='sixtyToolbar';wrap.className='daily-export-toolbar';
- wrap.innerHTML='<div class="daily-export-note"><b>每日收盤重新排名</b>｜前20／前60是該資料日的強勢股；切換「第一根預備／突破第一根／突破第二根」可下載該類全部股票，不限60檔。檔案會保留交易日，供隔天比較。</div><div class="action-row"><button type="button" id="currentExport" class="primary-action">下載目前分類全部 CSV</button><button type="button" id="currentCodes" class="secondary-action">下載目前分類代號 TXT</button></div><div class="action-row"><button type="button" id="sixtyOpen" class="secondary-action">查看當日強勢前60名・可點股票</button></div>';
+ wrap.innerHTML='<div class="daily-export-note"><b>每日收盤重新排名</b>｜排行視角分為剛要發動、穩定強勢、飆股動能與綜合；前20／前60是該資料日的股票；切換「第一根預備／突破第一根／突破第二根」可下載該類全部股票，不限60檔。檔案會保留交易日，供隔天比較。</div><div class="action-row"><button type="button" id="currentExport" class="primary-action">下載目前分類全部 CSV</button><button type="button" id="currentCodes" class="secondary-action">下載目前分類代號 TXT</button></div><div class="action-row"><button type="button" id="sixtyOpen" class="secondary-action">查看本排行前60名・可點股票</button></div>';
  const anchor=$('#infoBanner');anchor.parentNode.insertBefore(wrap,anchor);
  $('#sixtyOpen').onclick=showSixty;$('#currentExport').onclick=exportCurrent;$('#currentCodes').onclick=exportCurrentCodes;
 }
@@ -477,18 +494,20 @@ function renderList(){
    list.innerHTML=`<div class="empty-state"><h3>${ready?'暫無候選資料':'雷達等待首次資料啟用'}</h3><p>${ready?'請檢查雷達資料日期與全市場資料是否同步。':'部署並完成盤後資料回補才有真實全市場排行。'}</p></div>`;
    more.hidden=true;$('#rankSummary').textContent='等待盤後資料';return;
  }
- const strong=strengthCandidates();
+ const strong=lensRankedCandidates();
  const stageFilter=state.stageView!=='all'&&!state.query.trim()&&state.tab!=='star';
  const showAll=Boolean(state.query.trim()||state.tab==='star'||state.rankView==='all'||stageFilter);
  const selection=activeSelection(),cards=selection.records;
+ const lensActive=!state.query.trim()&&state.tab!=='star'&&state.stageView==='all'&&state.rankView!=='all';
  const rawRank=rankedUniverse();
- const rankById=new Map(rawRank.map((c,i)=>[rowId(c),i+1]));
+ const rankById=new Map((lensActive?strong:rawRank).map((c,i)=>[rowId(c),i+1]));
  const cap=showAll?state.visible:cards.length;
  const shown=cards.slice(0,cap);
  $('#rankSummary').textContent=stageFilter?`資料日 ${state.payload?.asOf||'—'}｜目前「${selection.label}」共 ${cards.length} 檔，依同一強勢分排序，可下載完整名單`:
  state.query.trim()?`搜尋 ${cards.length} 檔｜保留全市場名次`:
   state.tab==='star'?`自選追蹤 ${cards.length} 檔`:
-  `資料日 ${state.payload?.asOf||'—'}｜${selection.label}：${cards.length} 檔｜合格強勢候選 ${strong.length} 檔／${state.universe?'全市場':'目前可讀'} ${rawRank.length} 檔；隔日重新排名，不足不補弱勢`;
+  `資料日 ${state.payload?.asOf||'—'}｜${selection.label}：${cards.length} 檔｜${currentRankLabel()}合格候選 ${strong.length} 檔／${state.universe?'全市場':'目前可讀'} ${rawRank.length} 檔；隔日重新排名，不足不補弱勢`;
+ $$('.lens-scope').forEach(b=>{const active=b.dataset.lens===state.rankLens&&!stageFilter&&state.rankView!=='all';b.classList.toggle('active',active);b.setAttribute('aria-pressed',active?'true':'false')});
  $$('.rank-scope').forEach(b=>{const active=b.dataset.scope===state.rankView&&!stageFilter;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active?'true':'false')});
  $$('.stage-scope').forEach(b=>{const active=b.dataset.stage===state.stageView;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active?'true':'false')});
  if(!cards.length){
@@ -496,7 +515,7 @@ function renderList(){
    const isTrend=state.stageView==='trend'||state.stageView==='pullback';
    const potential=isTrend?rawRank.filter(c=>continuationReadout(c).kind===state.stageView):[];
    const metricsReady=rawRank.some(c=>numeric(c.trading?.trend)!==null);
-   const note=isTrend&&trace.available===0?
+   const note=(isTrend||(!stageFilter&&['stable','balanced'].includes(state.rankLens)))&&trace.available===0?
      `⚠ ${trace.total}檔行情已載入，但沒有任何 V3.0.3 趨勢分類資料（核心版本：${trace.rulesVersion}）。不能據此宣稱市場零強勢；請檢查 scripts 與 Actions 盤後重算。`:
      isTrend&&potential.length>0&&state.liquidityOnly?
      `找到 ${potential.length} 檔符合此階段，但都未達成交活躍度門檻。可暫時關閉「排除成交不活躍」檢視與核對，勿直接當成可交易名單。`:
@@ -508,19 +527,20 @@ function renderList(){
  list.innerHTML=shown.map(c=>{
    const id=esc(rowId(c)),cls=c.changePct>0?'rising':c.changePct<0?'falling':'neutral';
    const riskTag=c.riskLevel==='high'||c.riskFirst?'<span class="signal-tag risk-high">高風險・已降權</span>':c.riskLevel==='medium'?'<span class="signal-tag risk">轉弱風險・已降權</span>':'<span class="signal-tag risk-low">無高風險組合</span>';
+   const lens=lensEvidence(c);const lensFlags=lens.flags.slice(0,2).map(f=>`<span class="signal-tag risk">${esc(f)}</span>`).join('');
    const m=maReadout(c);const maBadge=m.bullAligned&&m.aboveAll?'<span class="signal-tag confirmed">MA5&gt;MA10&gt;MA20</span>':m.aboveAll?'<span class="signal-tag near">站上5/10/20日線</span>':'';
    const holdBadge=numeric(m.necklineHoldDays)!==null&&m.necklineHoldDays>=2?`<span class="signal-tag confirmed">頸線站穩${integer(m.necklineHoldDays)}日</span>`:'';
    const strengthType=strengthSource(c),follow=continuationReadout(c);const liquidity=liquidityEvidence(c);const liquidityBadge=!liquidity.launch?'<span class="signal-tag risk">成交活躍度不足</span>':'';const strengthLabel=strengthType?'<span class="signal-tag confirmed">'+esc(strengthType)+'</span>':'<span class="signal-tag near">持續強勢待確認</span>';const continueTag=follow.kind==='pullback'?'<span class="signal-tag near">強勢回測／待確認</span>':follow.kind==='warning'?'<span class="signal-tag risk">強勢轉弱警戒</span>':'';
-   const tags=strengthLabel+continueTag+riskTag+liquidityBadge+(c.priceConfirmed?'<span class="signal-tag confirmed">首破待驗證</span>':'')+(c.followStatus==='假突破警戒'?'<span class="signal-tag risk">假突破警戒</span>':'')+(c.possiblePriceAdjustment?'<span class="signal-tag risk">股價需核對</span>':'')+(c.unifiedStage==='資料不足'?'<span class="signal-tag risk">資料不足</span>':'');
+   const tags=lensFlags+strengthLabel+continueTag+riskTag+liquidityBadge+(c.priceConfirmed?'<span class="signal-tag confirmed">首破待驗證</span>':'')+(c.followStatus==='假突破警戒'?'<span class="signal-tag risk">假突破警戒</span>':'')+(c.possiblePriceAdjustment?'<span class="signal-tag risk">股價需核對</span>':'')+(c.unifiedStage==='資料不足'?'<span class="signal-tag risk">資料不足</span>':'');
    const trigger=c.intradayPlan?.crossPrice;
    const br=breakoutReadout(c);
    const phaseTag=br.phase==='ready'||br.phase==='first'||br.phase==='second'?`<span class="signal-tag phase-tag ${esc(br.tone||'watch')}">${esc(br.label)}</span>`:'';
    const quick=trigger!=null?`<button type="button" class="quick-intraday" data-intraday-id="${id}">✎ 盤中輸入價量・立即試算 <span>→</span></button>`:
      `<button type="button" class="quick-intraday unavailable" data-intraday-id="${id}">查看個股・盤中關卡待資料 →</button>`;
    return `<div class="ranked-stock"><button type="button" class="stock-card" data-id="${id}" aria-label="查看第${rankById.get(rowId(c))}名 ${esc(c.name)} 詳情">
-     <div class="rank-head"><span class="rank-number">#${rankById.get(rowId(c))} 全市場強勢排名</span><span class="rank-score">強勢分 ${rankingScore(c)??'待資料'}/100（非勝率）</span></div>
+     <div class="rank-head"><span class="rank-number">#${rankById.get(rowId(c))} ${lensActive?esc(currentRankLabel())+'排名':'全市場綜合排序'}</span><span class="rank-score">${lensActive?esc(currentRankLabel())+'指數 '+lens.score[state.rankLens]: '強勢分 '+(rankingScore(c)??'待資料')} /100（非勝率）</span></div>
      <div class="stock-head"><div><span class="ticker">${esc(c.code)}</span><span class="ticker-name">${esc(c.name)}</span><span class="market-chip">${esc(c.market)}</span><span class="market-chip">${esc(c.industry||c.fundamentals?.industry||'產業待資料')}</span></div><div class="right-value"><div class="stock-price">${price(c.close)}</div><span class="stock-change ${cls}">${pct(c.changePct)}</span></div></div>
-     <div class="tagrow">${phaseTag}${maBadge}${holdBadge}${tags}</div><div class="rank-stage">${esc(c.unifiedStage||'待新版資料')} · ${esc(c.entryReadiness||'等待判斷')}</div>
+     <div class="tagrow">${phaseTag}${maBadge}${holdBadge}${tags}</div><div class="rank-stage">${lensActive&&state.rankLens==='momentum'?'⚠ 急漲僅供觀察，不代表適合追價 · ':''}${esc(c.unifiedStage||'待新版資料')} · ${esc(c.entryReadiness||'等待判斷')}</div>
      <div class="stock-bottom"><span class="metric">MA5 <strong>${price(m.ma5)}</strong></span><span class="metric">MA10 <strong>${price(m.ma10)}</strong></span><span class="metric">MA20 <strong>${price(m.ma20)}</strong></span></div><div class="stock-bottom"><span class="metric">近期頸線 <strong>${price(latestNeck(c))}</strong></span><span class="metric">盤中觸發 <strong>${price(trigger)}</strong></span><span class="metric">日量比 <strong>${Number.isFinite(Number(c.volumeRatio))?Number(c.volumeRatio).toFixed(1)+'×':'—'}</strong></span></div>
    </button>${quick}</div>`;
  }).join('');
@@ -989,5 +1009,6 @@ function setupDetailSwipe(){
 }
 function openSettings(){const isReady=state.mode==='live';$('#modalContent').innerHTML=`<div class="eyebrow">APP STATUS / SETTINGS</div><h2 id="modalTitle">資料與安裝設定</h2><div class="settings-card"><strong>目前：${modeName()}</strong><p>最近盤後日期：${esc(state.payload?.asOf||'尚無')}<br>掃描歷史完整股票：${integer(state.payload?.eligibleCount||0)} 檔<br>已記錄股票：${integer(state.payload?.stockCount||0)} 檔</p></div><div class="settings-card"><strong>如何使用免費版？</strong><p>把本程式上傳 GitHub 公開 Repository，啟用 Actions，先手動執行「初次回補約220天」，設定 Pages 從 main /root 發布，再以 Android Chrome 的「新增至主畫面」安裝。GitHub Actions 依排程在13:30、14:30、18:30、23:00以及隔日06:00、08:30嘗試核對盤後資料（實際排程可能延遲），若交易所阻擋雲端 IP，需改用在台灣網路執行的收集主機。</p></div><div class="settings-card"><strong>即時版升級狀態</strong><p>目前沒有盤中報價或推播。未來串接授權即時行情、雲端首次突破判斷及 Firebase 推播後升級；不會使用盤後資料假裝盤中訊號。</p></div><div class="settings-card"><strong>網站隱私與密碼：目前仍是公開網站</strong><p>GitHub Pages 的 JavaScript 密碼視窗不能真正保護行情或阻止已取得網址的人查看檔案，亦不能安全撤銷別人的存取權。若需要可取消授權的真正私密網站，應遷移到有伺服端登入控管的部署方式（例如 Cloudflare Pages + Access），並關閉舊公開 Pages、保護行情資料來源。不要在此公開程式中設定真實密碼。</p></div><div class="action-row"><button id="reloadData" class="primary-action">重新檢查盤後資料</button>${isReady?'':'<button id="demoModeBtn" class="secondary-action">開啟示範畫面</button>'}</div>`;$('#reloadData').onclick=()=>{hideDetails();loadData()};if($('#demoModeBtn'))$('#demoModeBtn').onclick=()=>{hideDetails();demoMode()};$('#modalOverlay').hidden=false;document.body.style.overflow='hidden'}
 function navTo(page){$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(page==='list'){setTab('all');$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='star'){state.tab='star';$$('.tab').forEach(x=>x.classList.remove('active'));renderList();$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='guide')$('#guide').scrollIntoView({behavior:'smooth'});else openSettings()}
-function wire(){loadWatch();setupSixtyToolbar();setupDetailSwipe();const liquidityToggle=$('#onlyLiquid');if(liquidityToggle){liquidityToggle.checked=state.liquidityOnly;liquidityToggle.addEventListener('change',e=>{state.liquidityOnly=e.target.checked;state.visible=30;renderList()})}$$('.rank-scope').forEach(b=>b.onclick=()=>{state.rankView=b.dataset.scope;state.stageView='all';state.visible=30;state.tab='all';renderList()});$$('.stage-scope').forEach(b=>b.onclick=()=>{state.stageView=b.dataset.stage;state.visible=30;state.tab='all';state.query='';$('#searchBox').value='';renderList()});const sort=$('#sortFilter');if(sort){sort.insertAdjacentHTML('afterbegin','<option value="trade">操盤品質與追高風險（預設）</option><option value="launch">第一根發動優先</option><option value="priority">基本面投資優先度</option>');sort.value='trade';state.sort='trade';}$$('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.stat-card').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.nav-item').forEach(b=>b.onclick=()=>navTo(b.dataset.page));$('#searchBox').oninput=e=>{state.query=e.target.value;state.visible=30;renderList()};$('#showMore').onclick=()=>{state.visible+=30;renderList()};$('#refreshBtn').onclick=()=>loadData();$('#closeModal').onclick=()=>hideDetails();$('#modalOverlay').onclick=e=>{if(e.target===$('#modalOverlay'))hideDetails()};window.onkeydown=e=>{if(e.key==='Escape')hideDetails()};window.addEventListener('popstate',()=>{if(state.detail)hideDetails(true)});loadData();if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(console.warn)}}
+function wire(){loadWatch();setupSixtyToolbar();setupDetailSwipe();
+ $$('.lens-scope').forEach(b=>b.onclick=()=>{state.rankLens=b.dataset.lens;state.rankView='20';state.stageView='all';state.tab='all';state.query='';$('#searchBox').value='';state.visible=30;renderList()});const liquidityToggle=$('#onlyLiquid');if(liquidityToggle){liquidityToggle.checked=state.liquidityOnly;liquidityToggle.addEventListener('change',e=>{state.liquidityOnly=e.target.checked;state.visible=30;renderList()})}$$('.rank-scope').forEach(b=>b.onclick=()=>{state.rankView=b.dataset.scope;state.stageView='all';state.visible=30;state.tab='all';renderList()});$$('.stage-scope').forEach(b=>b.onclick=()=>{state.stageView=b.dataset.stage;state.visible=30;state.tab='all';state.query='';$('#searchBox').value='';renderList()});const sort=$('#sortFilter');if(sort){sort.insertAdjacentHTML('afterbegin','<option value="trade">操盤品質與追高風險（預設）</option><option value="launch">第一根發動優先</option><option value="priority">基本面投資優先度</option>');sort.value='trade';state.sort='trade';}$$('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.stat-card').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.nav-item').forEach(b=>b.onclick=()=>navTo(b.dataset.page));$('#searchBox').oninput=e=>{state.query=e.target.value;state.visible=30;renderList()};$('#showMore').onclick=()=>{state.visible+=30;renderList()};$('#refreshBtn').onclick=()=>loadData();$('#closeModal').onclick=()=>hideDetails();$('#modalOverlay').onclick=e=>{if(e.target===$('#modalOverlay'))hideDetails()};window.onkeydown=e=>{if(e.key==='Escape')hideDetails()};window.addEventListener('popstate',()=>{if(state.detail)hideDetails(true)});loadData();if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(console.warn)}}
 document.addEventListener('DOMContentLoaded',wire);
