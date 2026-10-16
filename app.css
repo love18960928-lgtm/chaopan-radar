@@ -190,3 +190,16 @@
 .liquidity-toggle input{width:21px;height:21px;accent-color:#42d5b7;margin-top:2px;flex:none;}
 .liquidity-toggle span{display:flex;flex-direction:column;gap:5px;font-size:14px;}
 .liquidity-toggle small{color:#abc9c6;font-size:12px;line-height:1.5;}
+
+/* V3.0.6: human-readable intraday decision summary */
+.intraday-status{font-size:14px;line-height:1.6;padding:14px}
+.intraday-status .verdict-title{font-size:18px;font-weight:800;line-height:1.45;margin-bottom:7px;color:#fff}
+.intraday-status .verdict-reason{color:#e5f0f6;margin:0 0 12px}
+.intraday-status .verdict-next{padding:12px;background:#122b3e;border:1px solid #456a7c;border-radius:10px;display:flex;flex-direction:column;gap:5px;color:#f1f8ff}
+.intraday-status .verdict-next strong{color:#9ae9df}
+.intraday-status .verdict-checks{display:grid;gap:8px;margin-top:12px}
+.intraday-status .verdict-check{display:grid;grid-template-columns:19px minmax(0,1fr);gap:8px;align-items:start;font-size:13px;color:#dbe9f0}
+.intraday-status .verdict-check span:first-child{font-weight:900}
+.intraday-status .verdict-check.is-ok span:first-child{color:#8fe3cf}
+.intraday-status .verdict-check.is-bad span:first-child{color:#ffadac}
+.intraday-status .verdict-warning{font-size:12px;color:#b6cbd4;border-top:1px solid #426175;margin:12px 0 0;padding-top:10px}

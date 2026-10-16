@@ -764,9 +764,9 @@ function intradayPanel(c){
  const avg=p.avg20Lots?integer(p.avg20Lots):'待資料';
  const cautions=(p.riskNotes||[]).map(a=>`<div>⚠ ${esc(a)}</div>`).join('');
  return `<section class="intraday-panel" aria-label="隔日盤中手動檢查">
-  <h3>隔日盤中突破預判｜券商資料手動核對</h3>
+  <h3>盤中突破判斷｜直接告訴你目前狀態</h3>
   <div class="muted">依 ${esc(p.asOf)} 收盤已知資料預算，適用<strong>下個實際交易日</strong>；若你看的已是其他交易日，應先等最新盤後資料。網站無盤中行情，不會自行判斷現在是否突破。</div>
-  <div class="intraday-kpis"><div><small>近期頸線</small><strong>${price(p.neckline)}</strong></div><div><small>初步跨越</small><strong>${price(p.crossPrice)}</strong></div><div><small>較強突破價格參考</small><strong>${price(p.strengthPrice)}</strong></div><div><small>超過需防追價</small><strong>${price(p.chaseLine)}</strong></div></div>
+  <div class="intraday-kpis"><div><small>需要突破的頸線</small><strong>${price(p.neckline)}</strong></div><div><small>第一道突破觀察價</small><strong>${price(p.crossPrice)}</strong></div><div><small>突破後較強價位</small><strong>${price(p.strengthPrice)}</strong></div><div><small>追高警戒價</small><strong>${price(p.chaseLine)}</strong></div></div>
   <p class="intraday-small">${esc(p.status)}。前20日平均日量 <b>${avg} 張</b>。先看是否站上頸線；紅K、收在盤中區間上方70%、粗估時段量比 ≥1.3為<strong>不同證據</strong>，不是全市場剔除條件。需連續觀察約15分鐘，不能只憑瞬間成交。</p>
   <div class="intraday-fields">
    <label>盤中觀察時間<select id="v26Time">${Object.keys(p.volumeTargets||{}).map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select></label>
@@ -777,54 +777,93 @@ function intradayPanel(c){
    <label>累計成交量（張）<input id="v26Volume" type="number" min="0" step="1" inputmode="numeric" placeholder="不是成交股數"/></label>
   </div>
   <label class="intraday-hold"><input id="v26Hold" type="checkbox"/>我已從券商5分K觀察：價格至少15分鐘維持在初步突破價附近或以上（需自行核對）</label>
-  <div id="v26Result" class="intraday-status">輸入同一交易日的價量資料，開始手動核對盤中條件。</div>
+  <div id="v26Result" class="intraday-status" role="status" aria-live="polite">輸入同一交易日的資料後，這裡會先顯示「現在是否突破」，再告訴你下一步看什麼。</div>
   <div class="intraday-small">量門檻會隨上面時間選擇變動，根據「日均量 × 估計分時累積比例 × 1.3」粗估，<strong>不是</strong>過去20日同時刻的實測量比，不適合單獨作為交易理由。盤中紅K與收盤位置都可能在13:30前改變；跳空過大、破位或上影轉長時即使量大仍應提高警戒。${cautions}</div>
  </section>`;
 }
+// V3.0.6: plain-language intraday worksheet. Manual input only;
+// an intraday observation is never a confirmed daily closing breakout.
 function wireIntradayPanel(c){
  const p=c.intradayPlan;if(!p?.crossPrice)return;
  const ids=['v26Time','v26Open','v26Price','v26High','v26Low','v26Volume','v26Hold'];
  const getNum=id=>{const v=$('#'+id)?.value;return v!==''&&v!=null&&Number.isFinite(Number(v))?Number(v):null;};
  const out=$('#v26Result');
+ const msg=(tone,title,reason,action,checks=[],warning='')=>{
+   out.className='intraday-status '+tone;
+   out.innerHTML=`<div class="verdict-title">${esc(title)}</div>
+    <p class="verdict-reason">${esc(reason)}</p>
+    <div class="verdict-next"><strong>接下來看什麼？</strong><span>${esc(action)}</span></div>
+    ${checks.length?`<div class="verdict-checks">${checks.map(x=>`<div class="verdict-check ${x.ok?'is-ok':'is-bad'}"><span aria-hidden="true">${x.ok?'✓':'×'}</span><span>${esc(x.text)}</span></div>`).join('')}</div>`:''}
+    ${warning?`<p class="verdict-warning">${esc(warning)}</p>`:''}`;
+ };
  const calculate=()=>{
    const time=$('#v26Time')?.value,open=getNum('v26Open'),priceNow=getNum('v26Price'),high=getNum('v26High'),low=getNum('v26Low'),volume=getNum('v26Volume');
-   const required=[open,priceNow,high,low,volume];
-   if(required.some(x=>x===null)) {out.className='intraday-status';out.textContent='請填入同一交易日的開、高、低、現價與累計張數；本站不會自動抓盤中報價。';return;}
-   if(open<=0||priceNow<=0||low<=0||high<low||high<open||high<priceNow||low>open||low>priceNow||volume<0){out.className='intraday-status danger';out.textContent='輸入價量前後矛盾；請核對K線的開高低及最新成交價，成交量使用「張」。';return;}
-   const target=p.volumeTargets?.[time];
+   if([open,priceNow,high,low,volume].some(x=>x===null)){
+     msg('','尚未開始試算','請輸入同一檔股票、同一個交易日的開盤價、現價、最高、最低與成交張數。','輸入完整後，才會判斷是否碰到突破關卡。');return;
+   }
+   if(open<=0||priceNow<=0||low<=0||high<low||high<open||high<priceNow||low>open||low>priceNow||volume<0){
+     msg('danger','資料有矛盾，暫停判斷','開盤價、現價必須介於當日最高價與最低價之間，成交量不可為負數。','先回券商確認同一個交易日的開高低及現價，成交量以「張」輸入。');return;
+   }
+   const neckline=Number(p.neckline),cross=Number(p.crossPrice),strong=Number(p.strengthPrice),chaseLine=Number(p.chaseLine);
+   const ref=Number(p.referenceClose);
+   const abnormal=!Number.isFinite(cross)||cross<=0||!Number.isFinite(neckline)||neckline<=0||cross>neckline*1.12||cross<neckline*.88||
+     (Number.isFinite(ref)&&ref>0&&(cross>ref*5||cross<ref*.2))||priceNow<cross*.2||priceNow>cross*5;
+   if(abnormal){
+     msg('danger','⚠ 價位資料不合理，不能判斷突破',
+       `你輸入的現價是 ${price(priceNow)} 元，但這檔的預設突破價是 ${price(cross)} 元，兩者或與頸線的差距異常，可能選錯股票、輸入錯欄位或行情資料尚未更新。`,
+       '請檢查上方股票代號、資料日期及券商價格，再重新輸入；不要照這個觸發價下單。');return;
+   }
+   const rough=p.volumeTargets?.[time],target=rough!=null&&Number.isFinite(Number(rough))&&Number(rough)>0?Number(rough):null;
    const loc=high>low?(priceNow-low)/(high-low):1;
    const wick=high>low?(high-Math.max(open,priceNow))/(high-low):0;
-   const body=priceNow>open;
-   const closeHigh=loc>=.70&&wick<=.30;
-   const enough=target!=null&&volume>=target;
-   const pass=Number(body)+Number(closeHigh)+Number(enough);
-   const stood=$('#v26Hold')?.checked;
-   const gap=(open/Number(p.referenceClose)-1)*100;
-   const chase=priceNow>=p.chaseLine||gap>p.gapCautionPct;
-   const dangerous=c.riskLevel==='high'||c.riskFirst||p.status.includes('風險優先');
-   const broken=p.supportFloor!=null&&priceNow<Number(p.supportFloor);
-   const above=priceNow>=p.crossPrice;
-   const firm=priceNow>=p.strengthPrice;
-   const near=p.neckline>0&&priceNow>=p.neckline*.995;
-   const notes=[];
-   let headline='',tone='warn';
-   if(broken){headline='支撐失守警戒／不將反彈誤認起漲';tone='danger';}
-   else if(!above){headline=near?'接近頸線，但尚未跨越觸發價':'尚未觸及突破價／觀察中';if(high>=p.crossPrice){headline='盤中一度突破但目前跌回／假突破警戒';tone='danger';}}
-   else if(dangerous){headline='雖已跨越頸線，既有結構風險仍應優先處理';tone='danger';}
-   else if(chase){headline='已站上但追價風險偏高／先觀察回測';tone='warn';}
-   else if(!stood){headline='價格已突破／尚待確認至少15分鐘站穩';}
-   else if(firm&&pass>=2){headline='盤中條件較佳／仍非日K收盤確認';tone='good';}
-   else {headline='盤中突破但量價證據不足／持續觀察';}
-   if(!body)notes.push('目前不是實體紅K');
-   if(!closeHigh)notes.push('現價位置或上影線品質不足');
-   if(!enough)notes.push(`粗估累計量門檻 ${integer(target)} 張，目前 ${integer(volume)} 張`);
-   if(gap>p.gapCautionPct)notes.push(`開盤跳空 ${gap.toFixed(1)}%，留意開盤高點和回測`);
-   if(priceNow>=p.chaseLine)notes.push('距原頸線已偏遠，追價價差增加');
-   if(low<p.neckline && above)notes.push('盤中曾跌破頸線，需核對是否真有穩定收復');
-   out.className='intraday-status '+tone;
-   out.textContent=headline+'。價位 '+price(priceNow)+' / 觸發 '+price(p.crossPrice)+'；'+
-       `紅K ${body?'是':'否'}、位置 ${(loc*100).toFixed(0)}%、量 ${integer(volume)}/${integer(target)} 張（粗估）、條件 ${pass}/3。`+
-       (notes.length?' 注意：'+notes.join('；')+'。':'')+' 請以券商即時報價核對，非自動買賣訊號。';
+   const red=priceNow>open,nearHigh=loc>=.70&&wick<=.30;
+   const volumeOK=target!==null&&volume>=target;
+   const held=!!$('#v26Hold')?.checked;
+   const risk=c.riskLevel==='high'||c.riskFirst||String(p.status||'').includes('風險優先');
+   const floor=p.supportFloor!=null&&Number.isFinite(Number(p.supportFloor))?Number(p.supportFloor):null;
+   const broken=floor!=null&&priceNow<floor;
+   const gap=ref>0?(open/ref-1)*100:0;
+   const chase= (Number.isFinite(chaseLine)&&chaseLine>0&&priceNow>=chaseLine)||(Number.isFinite(Number(p.gapCautionPct))&&gap>Number(p.gapCautionPct));
+   const above=priceNow>=cross;
+   const bounced=high>=cross&&!above;
+   const firm=Number.isFinite(strong)&&priceNow>=strong;
+   const posLabel=nearHigh?'股價靠近當日高點':'股價離當日高點較遠（或上影較長）';
+   const checks=[
+     {ok:above,text:`突破價格：${priceNow>=cross?'已站上':'還沒站上'} ${price(cross)} 元（現價 ${price(priceNow)} 元）`},
+     {ok:red,text:`紅K檢查：${red?'現價高於開盤價':'現價未高於開盤價'}（開盤 ${price(open)} 元）`},
+     {ok:nearHigh,text:`K棒位置：${posLabel}（目前位於當日區間約 ${Math.round(loc*100)}% 處）`},
+     {ok:volumeOK,text:target!=null?`量能粗估：${integer(volume)}／${integer(target)} 張（${volumeOK?'達到':'未達到'}參考值）`:'量能粗估：缺少此時段參考值，不能判定是否達標'},
+     {ok:held,text:`15分鐘觀察：${held?'已自行確認':'尚未核對券商5分K'}`}
+   ];
+   const baseWarning='這是手動盤中觀察，並非收盤確認或買賣指令；量能只是用日均量粗估，不是真正同時段量比。';
+   if(broken){
+     msg('danger','🔴 支撐已跌破｜先注意風險',`現價 ${price(priceNow)} 元，已低於系統參考支撐 ${price(floor)} 元。`,
+      '先核對支撐是否有效失守，不要因為成交量增加就當成起漲。',checks,baseWarning);return;
+   }
+   if(!above){
+     const short=cross-priceNow;
+     msg(bounced?'danger':'warn',bounced?'🔴 曾經突破又跌回｜假突破警戒':'🟠 尚未突破｜先等待',
+       `現價 ${price(priceNow)} 元，距離第一道突破價 ${price(cross)} 元，還差 ${price(short)} 元。${bounced?'今天最高價一度碰到突破價，但目前又跌回。':''}`,
+       bounced?'先等價格重新站回突破價，並觀察能否維持至少15分鐘；不要只看瞬間成交量。':`先觀察價格是否真正站上 ${price(cross)} 元；在此之前，量再大也不能算突破。`,checks,baseWarning);return;
+   }
+   if(risk){
+     msg('danger','🔴 已跨過價位，但原有風險仍高',`現價 ${price(priceNow)} 元已達突破觀察價，但前一交易日結構仍有風險警訊。`,
+       '先核對前日是否失守均線或支撐；單憑現在站上價位，不足以當成轉強。',checks,baseWarning);return;
+   }
+   if(chase){
+     msg('warn','🟠 突破了，但不適合只因上漲就追價',`現價 ${price(priceNow)} 元，距頸線可能已偏遠，或開盤跳空幅度過大。`,
+       '先看能不能回測並守住原突破價，同時檢查量能是否持續，而不是在拉高時直接追。',checks,baseWarning);return;
+   }
+   if(!held){
+     msg('warn','🟠 已跨過第一關｜尚待確認站穩',`現價 ${price(priceNow)} 元已達 ${price(cross)} 元，但尚未確認至少15分鐘維持在突破價附近或以上。`,
+       '打開券商5分鐘K線，確認不是一瞬間衝高後跌回；確認後再勾選上方核對框。',checks,baseWarning);return;
+   }
+   if(firm&&red&&nearHigh&&volumeOK){
+     msg('good','🟢 盤中突破條件較完整｜繼續觀察',`價格站上 ${price(cross)} 元、盤中紅K、靠近高點，粗估量能也足夠。`,
+       '繼續看原頸線是否守住，以及收盤前是否出現上影轉長或放量回落；收盤才能確認日K突破。',checks,baseWarning);return;
+   }
+   msg('warn','🟠 已站上價位｜突破品質還不夠',`現價 ${price(priceNow)} 元已跨過 ${price(cross)} 元，但紅K、K棒位置或粗估量能至少有一項仍待改善。`,
+       '保持追蹤原頸線，不要只因跨過數字就判定成功；等價格穩定、K棒與量能改善。',checks,baseWarning);
  };
  ids.forEach(id=>{const el=$('#'+id);if(el){el.addEventListener('input',calculate);el.addEventListener('change',calculate);}});
 }
