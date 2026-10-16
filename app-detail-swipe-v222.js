@@ -1,6 +1,6 @@
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
-const state={payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true};
+const state={payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false};
 const TAGS={first:'第一根發動',prep:'發動前預備',near:'接近頸線',volume:'新大量超越',limit:'20日多漲停',follow:'突破後追蹤'};
 const price=n=>n!==null&&n!==undefined&&Number.isFinite(Number(n))? Number(n).toLocaleString('zh-TW',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
 const integer=n=>Number.isFinite(Number(n))?Math.round(Number(n)).toLocaleString('zh-TW'):'—';
@@ -17,8 +17,13 @@ const showField=v=>v===null||v===undefined||v===''?'待資料':String(v);
 const tradeScore=c=>c?.trading?.score!=null&&Number.isFinite(Number(c.trading.score))?Number(c.trading.score):-1;
 const candidateRank=c=>tradeScore(c)+(c.priceConfirmed?12:c.followStatus==='突破續強'?8:c.preLaunch?4:0)+(c.investment?.growth==null?0:Math.min(10,Number(c.investment.growth)*.1))-(c.trading?.status==='不宜追價'?35:c.followStatus==='假突破警戒'?20:0);
 
+// V3.1.1-r2: row calculations are immutable within a daily snapshot.
+// Cache expensive 5/10/20/60-day computations to prevent repeated sorting
+// from recalculating identical technical evidence thousands of times.
+const memoByRow=fn=>{const cache=new WeakMap();return row=>{if(!row||typeof row!=='object')return fn(row);if(cache.has(row))return cache.get(row);const value=fn(row);cache.set(row,value);return value;}};
 function movingMean(values,n){return values.length>=n?values.slice(-n).reduce((a,b)=>a+b,0)/n:null}
-function techMetrics(c){
+const techMetrics=memoByRow(techMetricsCore);
+function techMetricsCore(c){
  const bars=(c.bars||[]).filter(b=>Number.isFinite(+b[4])&&Number.isFinite(+b[5]));
  const cls=bars.map(b=>+b[4]), lots=bars.map(b=>+b[5]);
  const ret=n=>cls.length>n&&cls.at(-n-1)>0?100*(cls.at(-1)/cls.at(-n-1)-1):null;
@@ -32,7 +37,8 @@ function techMetrics(c){
 // V3.0 daily closing-price averages and locked original breakout reference.
 // The backend fields win when present; the fallback is expressly a local
 // calculation on the available displayed bars, not an invented event.
-function maReadout(c){
+const maReadout=memoByRow(maReadoutCore);
+function maReadoutCore(c){
  if(c.lineContext && c.lineContext.maStage)return c.lineContext;
  const bars=(c.bars||[]).filter(b=>numeric(b[4])!==null),cls=bars.map(b=>+b[4]);
  const meanAt=(n,end=cls.length)=>end>=n?cls.slice(end-n,end).reduce((a,b)=>a+b,0)/n:null;
@@ -48,6 +54,28 @@ function maReadout(c){
     ma5SlopePct:old5===null?null:100*(a/old5-1),ma10SlopePct:old10===null?null:100*(b/old10-1),ma20SlopePct:old20===null?null:100*(d/old20-1),
     necklineHoldDays:held,originalNeckline:level,breakoutDate:day||null,
     necklineHoldLabel:held===null?'尚無固定突破事件':held===0?'目前未站穩原頸線':`連續站上原頸線 ${held} 日`,maRisk:close>a*1.08?'股價距5日線逾8%，追高風險':null};
+}
+function sixMaPanel(c){
+ const a=ChaopanExtrasV311.averages(c.bars),fmt=x=>price(a.values[x]);
+ const grids=[5,10,20,60,120,240].map(d=>`<div class="six-ma-unit ${a.values[d]===null?'unknown':a.close>=a.values[d]?'above':'below'}"><small>MA${d}</small><strong>${fmt(d)}</strong><span>${a.values[d]===null?'歷史不足':a.close>=a.values[d]?'站上':'下方壓力'}</span></div>`).join('');
+ return `<section class="ma-structure-panel six-ma-panel"><div class="panel-head"><span>六條均線攻防｜MA5 / 10 / 20 / 60 / 120 / 240</span><small>${a.count}根日K</small></div><div class="six-ma-grid">${grids}</div><p class="ma-structure-stage"><b>${esc(a.status)}</b>${a.long.length?'｜壓力：'+a.long.map(d=>'MA'+d).join('、'):''}</p><small>需至少240根有效交易日K才能驗證六線全部站上；均線未還原除權息。</small></section>`;
+}
+function breakoutTrackPanel(c){
+ const events=ChaopanExtrasV311.breakoutTracks(c);
+ if(!events.length)return '<section class="ma-structure-panel"><div class="panel-head">突破K線紅綠K／前兩個事件</div><p>尚無可核對的歷史突破事件，不能把一般紅K誤判成突破第一根。</p></section>';
+ return `<section class="ma-structure-panel"><div class="panel-head"><span>突破後紅綠K／前兩個已記錄事件</span><small>盤後追蹤</small></div>`+events.map((e,i)=>`<div class="breakout-track-row"><b>${i+1}. ${esc(e.date)}｜${esc(e.source)}</b><span>原突破價 ${price(e.level)}｜${esc(e.trend)}</span><strong class="k-track-count">紅K ×${e.red} ／ 綠K ×${e.green}${e.doji?' ／ 平K ×'+e.doji:''}</strong><small>計算突破日起最近${e.window}根K（事件後合計${e.days}根）；紅K=收盤高於開盤，非漲跌幅顏色。</small></div>`).join('')+'</section>';
+}
+function institutionalBoard(){
+ const board=$('#institutionalBoard');if(!board)return;
+ const asOf=state.payload?.asOf;
+ const names=Object.fromEntries(allRows().map(c=>[rowId(c),c.name]));
+ const lists=ChaopanExtrasV311.institutionalRanking(state.marketIntel,asOf,names);
+ $('#instDay').textContent=lists.ready?'交易日 '+asOf+'｜非即時':'法人資料尚未核對交易日';
+ const fmtLots=x=>Number(x).toLocaleString('zh-TW',{minimumFractionDigits:Number.isInteger(x)?0:1,maximumFractionDigits:3});
+ const mk=rows=>rows.length?rows.map((r,i)=>`<button type="button" class="inst-stock" data-inst-id="${esc(r.id)}"><span class="inst-rank">${i+1}</span><span class="inst-title"><b>${esc(r.code)} ${esc(r.name)}</b><small>${esc(r.market)}｜外 ${fmtLots(r.foreign)}／投 ${fmtLots(r.trust)}／自 ${fmtLots(r.dealer)}</small></span><strong class="${r.net>0?'rising':'falling'}">${r.net>0?'+':''}${fmtLots(r.net)}張</strong></button>`).join(''):'<div class="inst-empty">尚未取得足夠同日官方法人資料；不能補虛構名單。</div>';
+ $('#institutionalBuys').innerHTML=mk(lists.buys);$('#institutionalSells').innerHTML=mk(lists.sells);
+ $('#instFoot').textContent=lists.ready?`同日完整法人資料 ${integer(lists.available)} 檔；買超顯示 ${lists.buys.length} 檔、賣超顯示 ${lists.sells.length} 檔。未達20檔不湊數，非即時，也不代表分點買進或持倉。`:'未取得與雷達同日、欄位完整的上市上櫃法人資料；請核對 data/market-intel.json 與盤後 Actions。';
+ $$('#institutionalBoard [data-inst-id]').forEach(b=>b.onclick=()=>{if(allRows().some(c=>rowId(c)===b.dataset.instId))showDetails(b.dataset.instId);else toast('此檔不在目前全市場診斷中，請核對資料日')});
 }
 function maPanel(c){
  const m=maReadout(c),maTag=m.maStage||'待資料',slope=v=>numeric(v)===null?'待資料':(Number(v)>=0?'↑':'↓')+Math.abs(Number(v)).toFixed(2)+'%';
@@ -73,7 +101,8 @@ function hasContinuationEvidence(c){
  return Boolean((c?.continuationContext&&typeof c.continuationContext.kind==='string')||
                 (c?.continuationV303&&typeof c.continuationV303.stage==='string'));
 }
-function continuationReadout(c){
+const continuationReadout=memoByRow(continuationReadoutCore);
+function continuationReadoutCore(c){
  const e=c.continuationContext;
  if(e&&typeof e==='object'&&typeof e.kind==='string')return e;
  const v=c.continuationV303;
@@ -130,7 +159,8 @@ function liquidityPanel(c){
  const v=liquidityEvidence(c),num=x=>x===null?'待資料':Number(x).toLocaleString('zh-TW',{maximumFractionDigits:1});
  return `<section class="ma-structure-panel"><div class="panel-head"><span>可交易性檢查｜盤後歷史量能</span><small>${esc(v.label)}</small></div><p>前20交易日均量 <b>${num(v.avgLots)} 張</b> ／ 平均每日成交金額 <b>${num(v.avgAmountM)} 百萬元</b> ／ 最新交易日 <b>${num(v.dayLots)} 張</b></p><p class="ma-structure-note">強勢榜門檻：1000張＋2000萬元＋最近日100張；突破追蹤門檻：300張＋1000萬元＋最近日50張。未達門檻仍保留搜尋與自選。這不是即時成交檢查；當日無成交、停牌與券商報價缺漏仍須另外查證。</p></section>`;
 }
-function strengthSource(c){
+const strengthSource=memoByRow(strengthSourceCore);
+function strengthSourceCore(c){
  const a=confirmedStrengthAudit(c),e=continuationReadout(c);
  if(e.kind==='trend')return '持續強勢';
  if(a.confirmed)return '已確認強勢';
@@ -159,7 +189,8 @@ function rowId(c){return c.market+'-'+c.code;}
 // Quantities below are heuristic research weights, not a fitted win probability.
 // Missing evidence does not pretend to be zero-risk. High-risk stocks remain searchable.
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
-function strengthScore(c){
+const strengthScore=memoByRow(strengthScoreCore);
+function strengthScoreCore(c){
  const t=c.trading||{};
  const trend=numeric(t.trend),r5=numeric(t.return5Pct),vol=numeric(c.volumeRatio);
  if(trend===null||r5===null||vol===null||c.unifiedStage==='資料不足')return null;
@@ -212,7 +243,8 @@ function strengthScore(c){
 // One classifier for ranking labels, phase tabs and stock details.
 // Before the V2.9 backend rebuild, only explicitly existing cycle/history
 // facts are reused; no fabricated new breakout assessment.
-function breakoutReadout(c){
+const breakoutReadout=memoByRow(breakoutReadoutCore);
+function breakoutReadoutCore(c){
  if(c.breakoutSequence && c.breakoutSequence.phase)return c.breakoutSequence;
  const e=c.cycle,neck=latestNeck(c),close=numeric(c.close);
  if(e && Number.isInteger(Number(e.daysSinceFirst))){
@@ -242,7 +274,8 @@ function phasePanel(c){
 // V3.0.2: Confirmed continuing strength is an eligibility CHECK, not
 // a small weighted bonus. New first-bar breakouts remain visible in stage tabs.
 // Only use observed daily bars and a recorded original breakout event.
-function confirmedStrengthAudit(c){
+const confirmedStrengthAudit=memoByRow(confirmedStrengthAuditCore);
+function confirmedStrengthAuditCore(c){
  const bars=(c.bars||[]).filter(b=>Array.isArray(b)&&numeric(b[4])!==null&&numeric(b[4])>0);
  const m=maReadout(c),t=techMetrics(c),close=numeric(c.close),ma60=t.ma60;
  const reasons=[];
@@ -277,7 +310,8 @@ function confirmedStrengthAudit(c){
  }
  return {confirmed:reasons.length===0,reasons,ma60,holdDays:held};
 }
-function isStrengthCandidate(c){
+const isStrengthCandidate=memoByRow(isStrengthCandidateCore);
+function isStrengthCandidateCore(c){
  const sc=strengthScore(c),trend=numeric(c.trading?.trend);
  return liquidityEvidence(c).strength && sc!==null&&sc>=58&&trend!==null&&trend>=55&&
    !c.riskFirst&&c.riskLevel!=='high'&&c.riskLevel!=='medium'&&
@@ -285,13 +319,18 @@ function isStrengthCandidate(c){
    !(continuationReadout(c).riskFlags||[]).some(x=>x.includes('放量收低'));
 }
 function rankingScore(c){return strengthScore(c)}
+let rankedCacheRows=null,rankedCache=null;
 function rankedUniverse(){
- return allRows().slice().sort((a,b)=>
+ const rows=state.universe?.rows||state.payload?.candidates||[];
+ if(rankedCacheRows===rows&&rankedCache)return rankedCache;
+ rankedCacheRows=rows;
+ rankedCache=rows.slice().sort((a,b)=>
    Number(isStrengthCandidate(b))-Number(isStrengthCandidate(a)) ||
    (strengthScore(b)??-1)-(strengthScore(a)??-1) ||
    (numeric(b.unifiedScore)??-1)-(numeric(a.unifiedScore)??-1) ||
    String(a.code).localeCompare(String(b.code),'zh-Hant',{numeric:true}) ||
    String(a.market).localeCompare(String(b.market),'zh-Hant'));
+ return rankedCache;
 }
 function strengthCandidates(){return rankedUniverse().filter(isStrengthCandidate)}
 // V3.0.8: Three independent ranking lenses share the same EOD bars and event history.
@@ -304,14 +343,19 @@ function deskEvidence(c){
  const plan=ChaopanDeskV310.evaluate(c,{asOf:state.payload?.asOf,phase:breakoutReadout(c)});
  deskMemo.set(c,plan);return plan;
 }
+let deskCacheRows=null;const deskCache=new Map();
 function deskRankedCandidates(lens=state.rankLens){
+ const rows=state.universe?.rows||state.payload?.candidates||[];
+ if(rows!==deskCacheRows){deskCacheRows=rows;deskCache.clear()}
+ if(deskCache.has(lens))return deskCache.get(lens);
  const launch=lens==='launch';
- return allRows().filter(c=>{const p=deskEvidence(c);return launch?Boolean(p.qualified&&p.stage):
+ const sorted=rows.filter(c=>{const p=deskEvidence(c);return launch?Boolean(p.qualified&&p.stage):
    Boolean(p.momentumStage&&lensEvidence(c).qualified.momentum);}).sort((a,b)=>{
    const aa=deskEvidence(a),bb=deskEvidence(b);
    return (bb.score.potential??0)-(aa.score.potential??0)||
       (bb.score.entry??0)-(aa.score.entry??0)||String(a.code).localeCompare(String(b.code),'zh-Hant',{numeric:true});
  });
+ deskCache.set(lens,sorted);return sorted;
 }
 function deskPlanHTML(c,small=false){
  const p=deskEvidence(c),type={ready:'頸線預備',first:'突破第一根',second:'突破第二根',third:'突破第三根',surge:'主升段延續',reentry:'回測再發動',caution:'高波動警戒'};
@@ -376,7 +420,9 @@ function sectorDirectory(){
  out.innerHTML='<p class="sector-headline">依股票各自條件排序；先看族群、點開股票，再查看買賣關卡。非即時。</p>'+packed.slice(0,16).map(({name,arr,median},i)=>`<details class="sector-group" ${i===0?'open':''}><summary><span class="sector-nom">${esc(name)}</span><span class="sector-sum">${arr.length}檔 · 近5日 ${median===null?'—':pct(median)}</span><span class="sector-arrow">⌄</span></summary><div class="sector-rows">${arr.slice(0,12).map(c=>{
   const plan=deskEvidence(c),g=ChaopanGuidance.evaluate(c,plan,supportLines(c));
   const label=plan.priority?'可優先觀察':g.level==='danger'?'賣出風險':plan.qualified?'等價格與量':'條件不足';
-  return `<button type="button" class="sector-stock" data-sector-stock="${esc(rowId(c))}"><span class="sector-stock-name"><strong>${esc(c.code)} ${esc(c.name)}</strong><small>${esc(label)}</small></span><span class="sector-stock-price"><b>${price(c.close)}</b><small>${pct(c.changePct)}</small></span><span class="sector-stock-actions"><small>站穩 ${price(plan.trigger)} 再看</small><small>量需 ${integer(plan.breakoutVolNeed)} 張</small></span><span class="sector-stock-signal ${g.level}">${g.level==='danger'?'紅燈':g.level==='warn'?'黃燈':'觀察'}</span></button>`;
+  const seq=breakoutReadout(c),stageName=({ready:'預備突破頸線',first:'剛突破第一根',second:'突破第二根',third:'突破第三根'})[plan.stage]||({ready:'預備突破頸線',first:'剛突破第一根',second:'突破第二根'})[seq.phase]||'突破追蹤';
+  const trace=ChaopanExtrasV311.breakoutTracks(c);const candle=trace.length&&trace[0].days<=3?`・紅K×${trace[0].red} 綠K×${trace[0].green}`:'';
+  return `<button type="button" class="sector-stock" data-sector-stock="${esc(rowId(c))}"><span class="sector-stock-name"><strong>${esc(c.code)} ${esc(c.name)}</strong><small>${esc(stageName)}｜${esc(label)}${candle}</small></span><span class="sector-stock-price"><b>${price(c.close)}</b><small>${pct(c.changePct)}</small></span><span class="sector-stock-actions"><small>站穩 ${price(plan.trigger)} 再看</small><small>量需 ${integer(plan.breakoutVolNeed)} 張</small></span><span class="sector-stock-signal ${g.level}">${g.level==='danger'?'紅燈':g.level==='warn'?'黃燈':'觀察'}</span></button>`;
  }).join('')}</div></details>`).join('');
  $$('#sectorDirectory [data-sector-stock]').forEach(b=>b.onclick=()=>showDetails(b.dataset.sectorStock));
 }
@@ -393,8 +439,6 @@ function renderTradeDesk(){
    target.innerHTML='<div class="desk-empty">⚠ 行情尚未更新至可用的最近交易日，或全市場資料日期不一致。優先觀察名單暫停，避免把舊資料當今天的進場關卡；請核對 GitHub Actions。</div>';
    $('#deskNote').textContent='⚠ 不能拿舊行情當今天可成交的價格。';return;
  }
- sectorDirectory();
- renderSectorPulse(allRows());
  const entries=allRows().map(row=>({row,plan:deskEvidence(row)}));
  const picks=ChaopanDeskV310.shortlist(entries,5);
  $('#deskCount').textContent=picks.length+' 檔';
@@ -406,6 +450,8 @@ function renderTradeDesk(){
   <div class="desk-pick-footer">動能 ${plan.score.potential}分｜${esc(plan.flags.slice(0,2).join('、')||'仍需盤中K棒與量能確認')}</div></div>`;
  }).join(''):'<div class="desk-empty"><b>今天沒有通過嚴格條件的優先候選。</b><p>不是程式故障，也不用硬湊3～5檔。仍可在下面查看起漲和飆股候選，但不等於適合現在買進。</p></div>';
  $$('#deskList [data-desk-id]').forEach(b=>b.onclick=()=>showDetails(b.dataset.deskId));
+ // Large sector calculations are deferred until the main cards have painted.
+ setTimeout(()=>{if(state.universe?.asOf===current&&state.payload?.asOf===current){sectorDirectory();renderSectorPulse(allRows());}},40);
 }
 const lensMemo=new WeakMap();
 function lensEvidence(c){
@@ -505,42 +551,50 @@ function loadWatch(){try{state.watch=new Set(JSON.parse(localStorage.getItem('ra
 function saveWatch(){localStorage.setItem('radar-watchlist',JSON.stringify([...state.watch]))}
 function setTab(tab){state.tab=tab;state.visible=30;$$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));renderList();$('#candidateList').scrollIntoView({behavior:'smooth',block:'nearest'})}
 function modeName(){return state.mode==='demo'?'示範資料':state.mode==='live'?'盤後資料':state.mode==='warming'?'歷史累積中':state.mode==='partial'?'上市櫃資料不同步':'尚未建立'}
+let loadRun=0;
+async function fetchJsonWithTimeout(name,ms){
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),ms);
+ try{const r=await fetch('./data/'+name+'?t='+Date.now(),{cache:'no-store',signal:ctl.signal});if(!r.ok)throw new Error(name+' HTTP '+r.status);return await r.json()}
+ finally{clearTimeout(timer)}
+}
 async function loadData(){
-  if(window.__RADAR_PREVIEW__){state.payload=window.__RADAR_PREVIEW__;state.mode='demo';render();return}
-  $('#dataStatus').textContent='讀取中';
-  try{
-    const response=await fetch(`./data/radar.json?t=${Date.now()}`,{cache:'no-store'});
-    if(!response.ok) throw new Error('HTTP '+response.status);
-    const obj=await response.json();
-    if(!obj || !Array.isArray(obj.candidates))throw new Error('資料格式無效');
-    state.universe=null;state.payload=obj;state.mode=obj.mode==='live'?'live':obj.mode==='warming'?'warming':obj.mode==='partial'?'partial':'empty';
-    state.universe=null;
-    try{
-      const full=await fetch(`./data/universe.json?t=${Date.now()}`,{cache:'no-store'});
-      if(full.ok){const u=await full.json();if(u?.asOf===obj.asOf && Array.isArray(u.rows)&&u.rows.length>500){
-        const candidates=new Map((obj.candidates||[]).map(c=>[c.market+'-'+c.code,c]));
-        u.rows=u.rows.map(row=>{
-          const match=candidates.get(row.market+'-'+row.code);
-          return match?{...row,...match,riskLevel:row.riskLevel,riskStatus:row.riskStatus,
-             breakoutSequence:row.breakoutSequence,continuationContext:row.continuationContext,continuationV303:row.continuationV303,riskReasons:row.riskReasons,riskEvidence:row.riskEvidence,supportEvidence:row.supportEvidence,structureV23:row.structureV23,intradayPlan:row.intradayPlan,
-             neck:row.neck,neckDate:row.neckDate,distancePct:row.distancePct,
-             priceConfirmed:row.priceConfirmed,preLaunch:row.preLaunch,followStatus:row.followStatus,
-             launchStage:row.launchStage,tags:row.tags,unifiedStage:row.unifiedStage,
-             unifiedScore:row.unifiedScore,unifiedReasons:row.unifiedReasons,relMarket5Pct:row.relMarket5Pct,
-             relSector5Pct:row.relSector5Pct,marketProxyNote:row.marketProxyNote,
-             opportunityScore:row.opportunityScore,decision:row.decision,industry:row.industry}:row;
-        });
-        state.universe=u;
-      }}
-    }catch(err){console.info('全市場個股診斷資料待更新',err)}
-  }catch(ex){state.payload={candidates:[],counts:{},stockCount:0,eligibleCount:0};state.mode='empty';console.warn(ex)}
-  state.marketIntel=null;
-  if(state.mode==='live'&&state.payload?.asOf){
-    try {const mr=await fetch(`./data/market-intel.json?t=${Date.now()}`,{cache:'no-store'});
-      if(mr.ok){const md=await mr.json();if(ChaopanIntel.safeMarket(md,state.payload.asOf))state.marketIntel=md;}
-    } catch(err){console.info('補充盤後資料待更新',err)}
-  }
-  render();
+ const run=++loadRun;
+ if(window.__RADAR_PREVIEW__){state.payload=window.__RADAR_PREVIEW__;state.mode='demo';render();return}
+ $('#dataStatus').textContent='同時取得3份盤後資料…';
+ const radar=fetchJsonWithTimeout('radar.json',14000);
+ const universe=fetchJsonWithTimeout('universe.json',22000).then(v=>({ok:true,v}),err=>({ok:false,err}));
+ const intel=fetchJsonWithTimeout('market-intel.json',14000).then(v=>({ok:true,v}),err=>({ok:false,err}));
+ let obj;
+ try {obj=await radar;if(!obj||!Array.isArray(obj.candidates))throw Error('radar.json 格式無效')}
+ catch(e){if(run!==loadRun)return;state.payload={candidates:[],counts:{},stockCount:0,eligibleCount:0};state.mode='empty';state.universe=null;state.marketIntel=null;state.loadingExtra=false;render();$('#dataStatus').textContent='雷達資料取得失敗：請檢查網路或 Actions';console.warn(e);return}
+ if(run!==loadRun)return;
+ state.payload=obj;state.mode=['live','warming','partial'].includes(obj.mode)?obj.mode:'empty';
+ state.universe=null;state.marketIntel=null;state.loadingExtra=true;
+ // Render the first usable radar snapshot immediately: slow optional sources
+ // no longer hold the whole screen at an endless loading placeholder.
+ render();
+ $('#dataStatus').textContent='基本雷達已顯示；全市場與法人背景載入中…';
+ const [uf,mi]=await Promise.all([universe,intel]);
+ if(run!==loadRun)return;
+ state.loadingExtra=false;
+ if(uf.ok&&uf.v?.asOf===obj.asOf&&Array.isArray(uf.v.rows)&&uf.v.rows.length>500){
+  const candidates=new Map((obj.candidates||[]).map(c=>[c.market+'-'+c.code,c]));
+  uf.v.rows=uf.v.rows.map(row=>{const match=candidates.get(row.market+'-'+row.code);return match?{...row,...match,
+   riskLevel:row.riskLevel,riskStatus:row.riskStatus,breakoutSequence:row.breakoutSequence,
+   continuationContext:row.continuationContext,continuationV303:row.continuationV303,
+   riskReasons:row.riskReasons,riskEvidence:row.riskEvidence,supportEvidence:row.supportEvidence,structureV23:row.structureV23,
+   intradayPlan:row.intradayPlan,neck:row.neck,neckDate:row.neckDate,distancePct:row.distancePct,
+   priceConfirmed:row.priceConfirmed,preLaunch:row.preLaunch,followStatus:row.followStatus,
+   launchStage:row.launchStage,tags:row.tags,unifiedStage:row.unifiedStage,
+   unifiedScore:row.unifiedScore,unifiedReasons:row.unifiedReasons,relMarket5Pct:row.relMarket5Pct,
+   relSector5Pct:row.relSector5Pct,marketProxyNote:row.marketProxyNote,
+   opportunityScore:row.opportunityScore,decision:row.decision,industry:row.industry}:row});
+  state.universe=uf.v;
+ }else{console.warn('全市場資料缺失、逾時或日期不符',uf.err||uf.v?.asOf)}
+ if(mi.ok&&ChaopanIntel.safeMarket(mi.v,obj.asOf))state.marketIntel=mi.v;
+ else console.info('法人及指數資料未驗證/逾時',mi.err||mi.v?.asOf);
+ rankedCacheRows=null;rankedCache=null;deskCacheRows=null;deskCache.clear();
+ render();
 }
 async function demoMode(){
   try{const res=await fetch('./data/demo.json'); if(!res.ok)throw new Error('failed');state.payload=await res.json();state.mode='demo';render();toast('已開啟示範畫面：不代表真實行情')}
@@ -578,9 +632,9 @@ function render(){
     `長期趨勢資料 ${integer(t.available)}/${integer(t.total)} 檔；後端版本 ${t.rulesVersion}。`+
     (t.available===0?' ⚠ 尚未讀到持續強勢分類所需欄位，請上傳V3.0.3兩個scripts並重新執行盤後掃描。':' 先確認已收錄後再套用成交活躍度門檻。')+
     ' 高風險股票仍可搜尋；量價警訊不代表已查得主力真實持股。'}
-   else {coverage.hidden=false;coverage.textContent='⚠ 全市場個股診斷資料未取得、日期不一致或未完成重算。目前只顯示舊版候選股，不能視為已完成V2.4全市場結構掃描。請確認GitHub Actions執行及data/universe.json已發布。'}
+   else {coverage.hidden=false;coverage.textContent=state.loadingExtra?'全市場資料背景下載中；基本雷達可先查詢。':'⚠ 全市場個股診斷資料未取得、日期不一致或未完成重算。目前只顯示舊版候選股，不能視為已完成V2.4全市場結構掃描。請確認GitHub Actions執行及data/universe.json已發布。'}
   }
-  renderList();renderTradeDesk();
+  institutionalBoard();renderList();renderTradeDesk();
 }
 function updateSectors(){
  const select=$('#sectorFilter');if(!select)return;
@@ -642,7 +696,7 @@ function renderList(){
    const id=esc(rowId(c)),cls=c.changePct>0?'rising':c.changePct<0?'falling':'neutral';
    const riskTag=c.riskLevel==='high'||c.riskFirst?'<span class="signal-tag risk-high">高風險・已降權</span>':c.riskLevel==='medium'?'<span class="signal-tag risk">轉弱風險・已降權</span>':'<span class="signal-tag risk-low">無高風險組合</span>';
    const plan=deskEvidence(c);const lens=lensEvidence(c);const lensFlags=lens.flags.slice(0,2).map(f=>`<span class="signal-tag risk">${esc(f)}</span>`).join('');
-   const m=maReadout(c);const maBadge=m.bullAligned&&m.aboveAll?'<span class="signal-tag confirmed">MA5&gt;MA10&gt;MA20</span>':m.aboveAll?'<span class="signal-tag near">站上5/10/20日線</span>':'';
+   const m=maReadout(c),six=ChaopanExtrasV311.averages(c.bars),track=ChaopanExtrasV311.breakoutTracks(c);const sixBadge=six.full?'<span class="signal-tag confirmed">站上六線 MA5/10/20/60/120/240</span>':six.short&&six.long.length?`<span class="signal-tag risk">短多長壓：${esc(six.long.map(d=>'MA'+d).join(' / '))}</span>`:six.short&&!six.complete?'<span class="signal-tag near">站上短三線・長線不足</span>':'';const kBadge=track.length&&track[0].days<=3?`<span class="signal-tag near">紅K×${track[0].red} 綠K×${track[0].green}</span>`:'';const maBadge=m.bullAligned&&m.aboveAll?'<span class="signal-tag confirmed">MA5&gt;MA10&gt;MA20</span>':m.aboveAll?'<span class="signal-tag near">站上5/10/20日線</span>':'';
    const holdBadge=numeric(m.necklineHoldDays)!==null&&m.necklineHoldDays>=2?`<span class="signal-tag confirmed">頸線站穩${integer(m.necklineHoldDays)}日</span>`:'';
    const strengthType=strengthSource(c),follow=continuationReadout(c);const liquidity=liquidityEvidence(c);const liquidityBadge=!liquidity.launch?'<span class="signal-tag risk">成交活躍度不足</span>':'';const strengthLabel=strengthType?'<span class="signal-tag confirmed">'+esc(strengthType)+'</span>':'<span class="signal-tag near">持續強勢待確認</span>';const continueTag=follow.kind==='pullback'?'<span class="signal-tag near">強勢回測／待確認</span>':follow.kind==='warning'?'<span class="signal-tag risk">強勢轉弱警戒</span>':'';
    const tags=lensFlags+strengthLabel+continueTag+riskTag+liquidityBadge+(c.priceConfirmed?'<span class="signal-tag confirmed">首破待驗證</span>':'')+(c.followStatus==='假突破警戒'?'<span class="signal-tag risk">假突破警戒</span>':'')+(c.possiblePriceAdjustment?'<span class="signal-tag risk">股價需核對</span>':'')+(c.unifiedStage==='資料不足'?'<span class="signal-tag risk">資料不足</span>':'');
@@ -654,7 +708,7 @@ function renderList(){
    return `<div class="ranked-stock"><button type="button" class="stock-card" data-id="${id}" aria-label="查看第${rankById.get(rowId(c))}名 ${esc(c.name)} 詳情">
      <div class="rank-head"><span class="rank-number">#${rankById.get(rowId(c))} ${lensActive?esc(currentRankLabel())+'排名':'全市場綜合排序'}</span><span class="rank-score">發動潛力 ${plan.score.potential??'待資料'} · 進場品質 ${plan.score.entry??'待資料'}（非勝率）</span></div>
      <div class="stock-head"><div><span class="ticker">${esc(c.code)}</span><span class="ticker-name">${esc(c.name)}</span><span class="market-chip">${esc(c.market)}</span><span class="market-chip">${esc(c.industry||c.fundamentals?.industry||'產業待資料')}</span></div><div class="right-value"><div class="stock-price">${price(c.close)}</div><span class="stock-change ${cls}">${pct(c.changePct)}</span></div></div>
-     <div class="tagrow">${phaseTag}${c.riskLevel==='high'||c.riskFirst?riskTag:''}${liquidityBadge}</div>
+     <div class="tagrow">${phaseTag}${sixBadge}${kBadge}${c.riskLevel==='high'||c.riskFirst?riskTag:''}${liquidityBadge}</div>
      <div class="rank-stage">${plan.priority?'🟢 盤中優先觀察':plan.qualified?'🟡 等量價確認':'🟠 條件不足／不追高'}</div>${deskPlanHTML(c,true)}
      <div class="stock-bottom"><span class="metric">近期頸線 <strong>${price(latestNeck(c))}</strong></span><span class="metric">盤中觸發 <strong>${price(trigger)}</strong></span><span class="metric">日量比 <strong>${Number.isFinite(Number(c.volumeRatio))?Number(c.volumeRatio).toFixed(1)+'×':'—'}</strong></span></div>
    </button>${quick}</div>`;
@@ -1047,7 +1101,7 @@ function wireIntradayPanel(c){
 }
 
 function renderDetail(){const c=state.detail;if(!c)return;const starred=state.watch.has(c.market+'-'+c.code),cls=c.changePct>0?'rising':c.changePct<0?'falling':'neutral';
-  $('#modalContent').innerHTML=`${detailNav()}<div class="detail-title"><div><div class="eyebrow">STOCK ANALYSIS / ${esc(c.market)}</div><h2 id="modalTitle">${esc(c.code)} ${esc(c.name)}</h2><div class="detail-sub">${esc(c.date)} 盤後資料${state.mode==='demo'?' · 示範':''}</div></div><div class="detail-price"><strong>${price(c.close)}</strong><div class="${cls}">${pct(c.changePct)}</div></div></div><div class="priority-levels"><span>近期頸線 <b>${price(latestNeck(c))}</b></span><span>第一支撐 <b>${price(supportLines(c)[0]?.lower)}</b></span><span>盤中觸發 <b>${price(c.intradayPlan?.crossPrice)}</b></span></div>${guidanceCard(c)}${deskPlanHTML(c)}${ChaopanIntel.chipPanel(state.marketIntel,c,deskEvidence(c))}<div class="chart-area"><div class="chart-top"><strong>歷史K線／成交量／均線</strong><div class="chart-range"><button class="range-btn ${state.chartDays===20?'active':''}" data-days="20">20日</button><button class="range-btn ${state.chartDays===60?'active':''}" data-days="60">60日</button><button class="range-btn ${state.chartDays===120?'active':''}" data-days="120">120日</button><button type="button" class="zoom-btn" data-zoom="in" aria-label="K線放大">＋</button><button type="button" class="zoom-btn" data-zoom="out" aria-label="K線縮小">－</button></div></div><div id="chartSvg" aria-label="雙指捏合可縮放K線">${makeChart(c.bars||[],latestNeck(c),state.chartDays,supportLines(c),c.structureV23?.necklines||[],c.structureV23?.mainDefense)}</div><small class="chart-zoom-hint">雙指捏合或按 ＋／－ 放大縮小；只有現有歷史K棒，非即時。</small><div class="chart-legend"><span>━━ 橘色：最新頸線</span><span style="color:#c8a5e8">┄┄ 淺紫：其他頸線／最後防守</span><span style="color:#3dd9ba">━━ 第一支撐</span><span style="color:#76abfa">━━ 第二支撐</span><span style="color:#ffd36e">━━ MA5</span><span style="color:#8dafff">━━ MA10</span><span style="color:#eaa8ec">━━ MA20</span><span>紅漲綠跌</span></div></div>${maPanel(c)}${trendModePanel(c)}${liquidityPanel(c)}${continuationPanel(c)}${confirmedStrengthPanel(c)}${phasePanel(c)}<div class="tagrow">${(c.tags||[]).map(t=>`<span class="signal-tag ${t}">${esc(TAGS[t]||t)}</span>`).join('')}${c.priceConfirmed?'<span class="signal-tag confirmed">價格收盤確認</span>':c.confirmed?'<span class="signal-tag confirmed">最大量確認</span>':''}</div><div class="detail-grid"><div class="detail-metric"><div class="small">近期主要突破頸線</div><strong>${price(latestNeck(c))} 元</strong><div class="small">${esc(c.structureV23?.necklineDate||c.neckDate||'尚無壓力點')}${c.priceConfirmed&&c.neck!==latestNeck(c)?'／突破當日參考 '+price(c.neck):''}</div></div><div class="detail-metric"><div class="small">距離近期頸線</div><strong>${pct(latestNeck(c)>0?100*(Number(c.close)/latestNeck(c)-1):null)}</strong><div class="small">正值代表已突破</div></div><div class="detail-metric"><div class="small">當日成交量</div><strong>${integer(c.lots)} 張</strong><div class="small">前10日均量 ${Number(c.volumeRatio).toFixed(2)} 倍</div></div><div class="detail-metric"><div class="small">近20日漲停估算</div><strong>${integer(c.limit20)} 次</strong><div class="small">含今天，依收盤價近似判定</div></div><div class="detail-metric"><div class="small">前120日最大量</div><strong>${integer(c.oldMaxLots)} 張</strong><div class="small">${esc(c.oldMaxDate||'—')}</div></div><div class="detail-metric"><div class="small">突破確認</div><strong>${c.priceConfirmed?'價格已突破':c.confirmed?'成交量創新高（非首破）':'尚未確認首破'}</strong><div class="small">低量一字漲停也可價格確認；大量另計</div></div></div>${summaryPanel(c)}<div class="intraday-shortcut"><button type="button" id="intradayJump">✎ 盤中輸入價格與成交量 →</button><small>前一天預算好條件；盤中用券商即時報價自行核對</small></div>${intradayPanel(c)}${cyclePanel(c)}<details class="intel-deep"><summary>進階研究：財報、技術與風險細節</summary>${financialPanel(c)}${technicalVisual(c)}${riskPanel(c)}</details><details class="fin-notes secondary-details"><summary>大量K突破與其他技術細節</summary>${launchSummary(c)}${traderPanel(c)}</details><div class="detail-note">${c.tags?.includes('volume')?'✓ 今日成交量大於前120個交易日最大量，且收盤高於舊最大量K最高價。':''} ${c.tags?.includes('first')?'✓ 今日收盤首次突破仍有效的大量K高點。':''} ${c.overextended?'⚠ 收盤距頸線已逾8%，應留意追高風險。':''}<br>盤後訊號僅供觀察，不代表次日買點；除權息可能導致假突破。</div><div class="detail-actions"><button class="primary-action" id="starButton">${starred?'★ 移出自選':'☆ 加入自選'}</button><button class="secondary-action" id="shareButton">分享股票資訊</button></div>`;
+  $('#modalContent').innerHTML=`${detailNav()}<div class="detail-title"><div><div class="eyebrow">STOCK ANALYSIS / ${esc(c.market)}</div><h2 id="modalTitle">${esc(c.code)} ${esc(c.name)}</h2><div class="detail-sub">${esc(c.date)} 盤後資料${state.mode==='demo'?' · 示範':''}</div></div><div class="detail-price"><strong>${price(c.close)}</strong><div class="${cls}">${pct(c.changePct)}</div></div></div><div class="priority-levels"><span>近期頸線 <b>${price(latestNeck(c))}</b></span><span>第一支撐 <b>${price(supportLines(c)[0]?.lower)}</b></span><span>盤中觸發 <b>${price(c.intradayPlan?.crossPrice)}</b></span></div>${guidanceCard(c)}${deskPlanHTML(c)}${ChaopanIntel.chipPanel(state.marketIntel,c,deskEvidence(c))}<div class="chart-area"><div class="chart-top"><strong>歷史K線／成交量／均線</strong><div class="chart-range"><button class="range-btn ${state.chartDays===20?'active':''}" data-days="20">20日</button><button class="range-btn ${state.chartDays===60?'active':''}" data-days="60">60日</button><button class="range-btn ${state.chartDays===120?'active':''}" data-days="120">120日</button><button type="button" class="zoom-btn" data-zoom="in" aria-label="K線放大">＋</button><button type="button" class="zoom-btn" data-zoom="out" aria-label="K線縮小">－</button></div></div><div id="chartSvg" aria-label="雙指捏合可縮放K線">${makeChart(c.bars||[],latestNeck(c),state.chartDays,supportLines(c),c.structureV23?.necklines||[],c.structureV23?.mainDefense)}</div><small class="chart-zoom-hint">雙指捏合或按 ＋／－ 放大縮小；只有現有歷史K棒，非即時。</small><div class="chart-legend"><span>━━ 橘色：最新頸線</span><span style="color:#c8a5e8">┄┄ 淺紫：其他頸線／最後防守</span><span style="color:#3dd9ba">━━ 第一支撐</span><span style="color:#76abfa">━━ 第二支撐</span><span style="color:#ffd36e">━━ MA5</span><span style="color:#8dafff">━━ MA10</span><span style="color:#eaa8ec">━━ MA20</span><span>紅漲綠跌</span></div></div>${maPanel(c)}${sixMaPanel(c)}${breakoutTrackPanel(c)}${trendModePanel(c)}${liquidityPanel(c)}${continuationPanel(c)}${confirmedStrengthPanel(c)}${phasePanel(c)}<div class="tagrow">${(c.tags||[]).map(t=>`<span class="signal-tag ${t}">${esc(TAGS[t]||t)}</span>`).join('')}${c.priceConfirmed?'<span class="signal-tag confirmed">價格收盤確認</span>':c.confirmed?'<span class="signal-tag confirmed">最大量確認</span>':''}</div><div class="detail-grid"><div class="detail-metric"><div class="small">近期主要突破頸線</div><strong>${price(latestNeck(c))} 元</strong><div class="small">${esc(c.structureV23?.necklineDate||c.neckDate||'尚無壓力點')}${c.priceConfirmed&&c.neck!==latestNeck(c)?'／突破當日參考 '+price(c.neck):''}</div></div><div class="detail-metric"><div class="small">距離近期頸線</div><strong>${pct(latestNeck(c)>0?100*(Number(c.close)/latestNeck(c)-1):null)}</strong><div class="small">正值代表已突破</div></div><div class="detail-metric"><div class="small">當日成交量</div><strong>${integer(c.lots)} 張</strong><div class="small">前10日均量 ${Number(c.volumeRatio).toFixed(2)} 倍</div></div><div class="detail-metric"><div class="small">近20日漲停估算</div><strong>${integer(c.limit20)} 次</strong><div class="small">含今天，依收盤價近似判定</div></div><div class="detail-metric"><div class="small">前120日最大量</div><strong>${integer(c.oldMaxLots)} 張</strong><div class="small">${esc(c.oldMaxDate||'—')}</div></div><div class="detail-metric"><div class="small">突破確認</div><strong>${c.priceConfirmed?'價格已突破':c.confirmed?'成交量創新高（非首破）':'尚未確認首破'}</strong><div class="small">低量一字漲停也可價格確認；大量另計</div></div></div>${summaryPanel(c)}<div class="intraday-shortcut"><button type="button" id="intradayJump">✎ 盤中輸入價格與成交量 →</button><small>前一天預算好條件；盤中用券商即時報價自行核對</small></div>${intradayPanel(c)}${cyclePanel(c)}<details class="intel-deep"><summary>進階研究：財報、技術與風險細節</summary>${financialPanel(c)}${technicalVisual(c)}${riskPanel(c)}</details><details class="fin-notes secondary-details"><summary>大量K突破與其他技術細節</summary>${launchSummary(c)}${traderPanel(c)}</details><div class="detail-note">${c.tags?.includes('volume')?'✓ 今日成交量大於前120個交易日最大量，且收盤高於舊最大量K最高價。':''} ${c.tags?.includes('first')?'✓ 今日收盤首次突破仍有效的大量K高點。':''} ${c.overextended?'⚠ 收盤距頸線已逾8%，應留意追高風險。':''}<br>盤後訊號僅供觀察，不代表次日買點；除權息可能導致假突破。</div><div class="detail-actions"><button class="primary-action" id="starButton">${starred?'★ 移出自選':'☆ 加入自選'}</button><button class="secondary-action" id="shareButton">分享股票資訊</button></div>`;
   wireIntradayPanel(c);
   if($('#intradayJump'))$('#intradayJump').onclick=jumpToIntraday;
   $('#detailPrev').onclick=()=>nextDetail(-1);$('#detailNext').onclick=()=>nextDetail(1);
@@ -1133,7 +1187,7 @@ function setupDetailSwipe(){
  sheet.addEventListener('touchcancel',()=>{start=null;},{passive:true});
 }
 function openSettings(){const isReady=state.mode==='live';$('#modalContent').innerHTML=`<div class="eyebrow">APP STATUS / SETTINGS</div><h2 id="modalTitle">資料與安裝設定</h2><div class="settings-card"><strong>目前：${modeName()}</strong><p>最近盤後日期：${esc(state.payload?.asOf||'尚無')}<br>掃描歷史完整股票：${integer(state.payload?.eligibleCount||0)} 檔<br>已記錄股票：${integer(state.payload?.stockCount||0)} 檔</p></div><div class="settings-card"><strong>如何使用免費版？</strong><p>把本程式上傳 GitHub 公開 Repository，啟用 Actions，先手動執行「初次回補約220天」，設定 Pages 從 main /root 發布，再以 Android Chrome 的「新增至主畫面」安裝。GitHub Actions 依排程在13:30、14:30、18:30、23:00以及隔日06:00、08:30嘗試核對盤後資料（實際排程可能延遲），若交易所阻擋雲端 IP，需改用在台灣網路執行的收集主機。</p></div><div class="settings-card"><strong>即時版升級狀態</strong><p>目前沒有盤中報價或推播。未來串接授權即時行情、雲端首次突破判斷及 Firebase 推播後升級；不會使用盤後資料假裝盤中訊號。</p></div><div class="settings-card"><strong>網站隱私與密碼：目前仍是公開網站</strong><p>GitHub Pages 的 JavaScript 密碼視窗不能真正保護行情或阻止已取得網址的人查看檔案，亦不能安全撤銷別人的存取權。若需要可取消授權的真正私密網站，應遷移到有伺服端登入控管的部署方式（例如 Cloudflare Pages + Access），並關閉舊公開 Pages、保護行情資料來源。不要在此公開程式中設定真實密碼。</p></div><div class="action-row"><button id="reloadData" class="primary-action">重新檢查盤後資料</button>${isReady?'':'<button id="demoModeBtn" class="secondary-action">開啟示範畫面</button>'}</div>`;$('#reloadData').onclick=()=>{hideDetails();loadData()};if($('#demoModeBtn'))$('#demoModeBtn').onclick=()=>{hideDetails();demoMode()};$('#modalOverlay').hidden=false;document.body.style.overflow='hidden'}
-function navTo(page){$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(page==='list'){setTab('all');$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='star'){state.tab='star';$$('.tab').forEach(x=>x.classList.remove('active'));renderList();$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='guide')$('#guide').scrollIntoView({behavior:'smooth'});else openSettings()}
+function navTo(page){$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(page==='list'){setTab('all');$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='star'){state.tab='star';$$('.tab').forEach(x=>x.classList.remove('active'));renderList();$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='guide')$('#institutionalBoard').scrollIntoView({behavior:'smooth'});else openSettings()}
 function wire(){loadWatch();setupSixtyToolbar();setupDetailSwipe();
  $$('.lens-scope').forEach(b=>b.onclick=()=>{state.rankLens=b.dataset.lens;state.rankView='20';state.stageView='all';state.tab='all';state.query='';$('#searchBox').value='';state.visible=30;renderList()});const liquidityToggle=$('#onlyLiquid');if(liquidityToggle){liquidityToggle.checked=state.liquidityOnly;liquidityToggle.addEventListener('change',e=>{state.liquidityOnly=e.target.checked;state.visible=30;renderList()})}$$('.rank-scope').forEach(b=>b.onclick=()=>{state.rankView=b.dataset.scope;state.visible=30;state.tab='all';renderList()});$$('.stage-scope').forEach(b=>b.onclick=()=>{state.stageView=b.dataset.stage;state.visible=30;state.tab='all';state.query='';$('#searchBox').value='';renderList()});const sort=$('#sortFilter');if(sort){sort.insertAdjacentHTML('afterbegin','<option value="trade">操盤品質與追高風險（預設）</option><option value="launch">第一根發動優先</option><option value="priority">基本面投資優先度</option>');sort.value='trade';state.sort='trade';}$$('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.stat-card').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.nav-item').forEach(b=>b.onclick=()=>navTo(b.dataset.page));$('#searchBox').oninput=e=>{state.query=e.target.value;state.visible=30;renderList()};$('#showMore').onclick=()=>{state.visible+=30;renderList()};$('#refreshBtn').onclick=()=>loadData();$('#closeModal').onclick=()=>hideDetails();$('#modalOverlay').onclick=e=>{if(e.target===$('#modalOverlay'))hideDetails()};window.onkeydown=e=>{if(e.key==='Escape')hideDetails()};window.addEventListener('popstate',()=>{if(state.detail)hideDetails(true)});loadData();if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(console.warn)}}
 document.addEventListener('DOMContentLoaded',wire);

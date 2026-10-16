@@ -372,3 +372,22 @@
 .guidance-buy b {color:#8be1b9}.guidance-sell b {color:#ffa5a5}
 .guidance-note {font-size:11px;color:#9eb9c7;margin:10px 0 0}
 @media(max-width:360px){.sector-sum{font-size:10px}.guidance-price-grid strong{font-size:13px}}
+
+/* V3.1.1-r2 institutional flow, six moving averages and breakout events */
+.inst-board{margin:30px 25px 0;border:1px solid #2b4e57;background:#0c1c2b;border-radius:18px;padding:20px}
+.inst-intro,.inst-foot{font-size:12px;line-height:1.7;color:#9eb9ca}.inst-day{font-size:11px;color:#8fe3d2}
+.inst-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;margin-top:15px}
+.inst-column{min-width:0;border:1px solid #284153;border-radius:13px;padding:11px;background:#101f31}.inst-column h3{font-size:14px;margin:0 0 9px}
+.inst-stock{display:flex;gap:9px;align-items:center;padding:10px 4px;width:100%;text-align:left;border-bottom:1px solid #274052;background:transparent;color:#f2fbff}
+.inst-rank{color:#9cb5cc;width:19px;flex-shrink:0;font-size:12px}.inst-title{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.inst-title b{font-size:12px}.inst-title small{font-size:10px;color:#9ab5c6;white-space:normal;line-height:1.35}
+.inst-stock strong{font-size:12px;white-space:nowrap}.inst-empty{color:#bdcdda;font-size:12px;line-height:1.6;padding:20px 5px}
+.six-ma-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:12px}
+.six-ma-unit{min-width:0;display:flex;flex-direction:column;gap:3px;border:1px solid #355166;padding:9px 6px;background:#122438;border-radius:9px}
+.six-ma-unit small{color:#9fbacb}.six-ma-unit strong{font-size:14px}.six-ma-unit span{font-size:10px}
+.six-ma-unit.above strong,.six-ma-unit.above span{color:#81e3ba}.six-ma-unit.below strong,.six-ma-unit.below span{color:#ffbd8d}
+.six-ma-unit.unknown strong,.six-ma-unit.unknown span{color:#93a8b5}
+.breakout-track-row{margin-top:10px;padding:11px;background:#13283a;border:1px solid #274758;border-radius:10px;display:flex;flex-direction:column;gap:6px}
+.breakout-track-row>b{font-size:12px}.breakout-track-row span,.breakout-track-row small{font-size:11px;color:#b5cad6}
+.k-track-count{color:#f5d599}
+@media(max-width:700px){.inst-board{margin:26px 13px 0;padding:14px}.inst-columns{grid-template-columns:1fr}.inst-stock{padding:10px 4px}.six-ma-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
