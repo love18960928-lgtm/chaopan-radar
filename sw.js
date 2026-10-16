@@ -1,6 +1,6 @@
 'use strict';
-const STATIC='chaopan-static-v3.1.0-two-radars';
-const SHELL=['./','./index.html','./app.css','./app-detail-swipe-v222.js','./phase-regime-v307.js','./rank-lenses-v308.js','./trade-desk-v310.js','./manifest.webmanifest'];
+const STATIC='chaopan-static-v3.1.1-market-sector-guidance';
+const SHELL=['./','./index.html','./app.css','./app-detail-swipe-v222.js','./phase-regime-v307.js','./rank-lenses-v308.js','./trade-desk-v310.js','./trade-guidance-v311.js','./market-intel-v311.js','./manifest.webmanifest'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(STATIC).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(Promise.all([
   caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('chaopan-static-')&&k!==STATIC).map(k=>caches.delete(k)))),
@@ -10,8 +10,8 @@ self.addEventListener('fetch',e=>{
   const u=new URL(e.request.url);
   if(e.request.method!=='GET'||u.origin!==self.location.origin)return;
   const path=u.pathname;
-  const dynamic=(path.endsWith('/data/radar.json')||path.endsWith('/data/universe.json'));
-  const asset=dynamic||/\/(app\.js|app-detail-swipe-v222\.js|phase-regime-v307\.js|rank-lenses-v308\.js|trade-desk-v310\.js|app\.css|index\.html|sw\.js)$/.test(path)||e.request.mode==='navigate';
+  const dynamic=(path.endsWith('/data/radar.json')||path.endsWith('/data/universe.json')||path.endsWith('/data/market-intel.json'));
+  const asset=dynamic||/\/(app\.js|app-detail-swipe-v222\.js|phase-regime-v307\.js|rank-lenses-v308\.js|trade-desk-v310\.js|trade-guidance-v311\.js|market-intel-v311\.js|app\.css|index\.html|sw\.js)$/.test(path)||e.request.mode==='navigate';
   if(asset){
     e.respondWith(fetch(e.request,{cache:'no-store'}).then(r=>{
       if(r.ok){const copy=r.clone();caches.open(STATIC).then(c=>c.put(e.request,copy));}

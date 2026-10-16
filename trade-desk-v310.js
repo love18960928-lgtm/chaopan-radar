@@ -38,7 +38,14 @@ function evaluate(row,ctx={}){
  const neck=num(phase.level)??num(row.intradayPlan?.neckline)??num(row.neck);
  const relevantDate=String(row.neckDate||row.structureV23?.necklineDate||'');
  const historical=Boolean(neck&&neck>0&&(relevantDate&&relevantDate<date||stage&&stage!=='ready'&&(phase.initialDate||row.cycle?.initialDate)));
- const liquid=Boolean(v20>=300&&amt20>=1e7&&last[5]>=50);
+ // V3.1.1: A ¥? no: all amounts here are TWD; equity volume is board lots.
+ // Low-price stock must have actual turnover, rather than a flattering 300-lot screen.
+ const liquid=Boolean(close<30 ? v20>=1000&&amt20>=25e6&&last[5]>=500 :
+   close<200 ? v20>=500&&amt20>=20e6&&last[5]>=200 :
+               v20>=80&&amt20>=30e6&&last[5]>=50);
+ const breakoutVolNeed=close<30?Math.max(5000,v20*1.8):close<200?v20*1.8:v20*1.5;
+ const isBreakoutDay=stage==='first'||stage==='second'||stage==='third';
+ const certifiedVolume=!isBreakoutDay||last[5]>=breakoutVolNeed;
  const risky=row.riskFirst||row.riskLevel==='high';
  const candleWeak=last[4]<last[1]&&location<.35;
  const extended=r5>16||r20>35||close>ma5*1.10;
@@ -58,7 +65,8 @@ function evaluate(row,ctx={}){
  let q=100*(.22*(stage?(phasePoints[stage]||0):reset?.75:.28)+.21*(dist===null?0:clamp(1-dist/.075))+.15*(strongTrend?1:close>ma20?.5:0)+.14*location+.14*clamp(volumeRatio/1.7)+.14*(atrPct<=5?1:clamp((9-atrPct)/4)));
  if(risky){q-=38;output.flags.push('原系統高風險／不得當成可追價');}
  else if(row.riskLevel==='medium'){q-=12;output.flags.push('原系統中度風險');}
- if(!liquid){q-=30;output.flags.push('成交活躍度不足');}
+ if(!liquid){q-=40;output.flags.push('成交活躍度不足，低價股需20日均量1000張與日均成交值2500萬元');}
+ if(!certifiedVolume){q-=22;output.flags.push('突破量不足：需約'+Math.ceil(breakoutVolNeed)+'張；放量亦非保證突破');}
  if(extended){q-=25;output.flags.push('漲幅或MA5乖離過大，不宜追價');}
  if(atrPct>8){q-=15;output.flags.push('ATR波動偏大');}
  if(candleWeak){q-=14;output.flags.push('收低賣壓');}
@@ -68,24 +76,29 @@ function evaluate(row,ctx={}){
  if(row.disposition||row.underDisposition||row.disposal) {q-=25;output.flags.push('交易處置狀態請向證交所核對');}
  const chase=next?floorTick(next+Math.min(atr*.6,next*.018)):null;
  const defense=historical?Math.round(neck*100)/100:null;
- const riskBudget=historical?Math.round((neck-.5*atr)*100)/100:null;
+ // A one-tick move under a neckline is not a credible loss budget. ATR-based
+ // conservative invalidation is distinct from the neckline's warning level.
+ const riskBudget=historical?floorTick(Math.max(.01, neck-Math.max(atr*1.1,close*.025))):null;
  const risks=next&&riskBudget?100*(next-riskBudget)/next:null;
  if(risks!==null&&risks>6){q-=15;output.flags.push('觸發價與保守風險參考距離過大');}
  const pressure=b.slice(0,-1).map(x=>x[2]).filter(x=>x>(next??Infinity));
+ // A rolling average can act as nearby overhead even when there is no old swing.
+ const overhead=[20,60,120,240].filter(n=>closes.length>=n).map(n=>mean(closes.slice(-n))).filter(v=>v>next);
+ pressure.push(...overhead);
  const knownTarget=pressure.length?Math.min(...pressure):null;
  const rr=knownTarget!==null&&next>riskBudget?(knownTarget-next)/(next-riskBudget):null;
- if(rr!==null&&rr<2){q-=10;output.flags.push('上方已知壓力與風險距離比不足2倍');}
- if(!knownTarget&&next)output.flags.push('上方沒有可確認壓力，不能聲稱有2R空間');
+ if(rr!==null&&rr<2){q-=30;output.flags.push('上方已知壓力與風險距離比不足2倍');}
+ if(!knownTarget&&next){q=Math.min(q,58);output.flags.push('上方沒有可確認壓力／潛在獲利空間，不能給高進場品質分');}
  if(!stage&&!mom)output.flags.push('尚未形成起漲／飆股訊號');
  const entry=round(clamp(q,0,100));
- const qualified=Boolean(liquid&&!risky&&atrPct<=8&&(stage||mom)&&!row.possiblePriceAdjustment);
- const priority=Boolean(qualified&&historical&&next&&risks!==null&&risks<=6&&entry>=63&&!extended&&!candleWeak&&
+ const qualified=Boolean(liquid&&certifiedVolume&&!risky&&atrPct<=8&&(stage||mom)&&!row.possiblePriceAdjustment);
+ const priority=Boolean(qualified&&historical&&next&&risks!==null&&risks<=6&&entry>=63&&knownTarget!==null&&rr!==null&&rr>=2&&!extended&&!candleWeak&&
                    (stage==='ready'||stage==='first'||stage==='second'||stage==='third'||momType==='reentry')&&
-                   (rr===null||rr>=2));
+                   true);
  return {...output,qualified,priority,stage,momentumStage:momType,score:{potential,entry},flags: [...new Set(output.flags)],
          trigger:next,chase,defense,riskBudget,knownTarget,rr:rr===null?null:round(rr),atr:round(atr),atrPct:round(atrPct),
          ma5:round(ma5),ma10:round(ma10),ma20:round(ma20),r5:round(r5),r10:round(r10),r20:round(r20),
-         gap:gap===null?null:round(gap),close,volumeRatio:round(volumeRatio),avg20:round(v20),
+         gap:gap===null?null:round(gap),close,volumeRatio:round(volumeRatio),avg20:round(v20),breakoutVolNeed:Math.ceil(breakoutVolNeed),liquid,certifiedVolume,
          status:priority?'盤中優先觀察（非買進訊號）':qualified?'列入觀察／尚不適合追價':'暫不列入優先名單'};
 }
 function shortlist(entries,limit=5){return entries.filter(x=>x.plan?.priority).sort((a,b)=>
