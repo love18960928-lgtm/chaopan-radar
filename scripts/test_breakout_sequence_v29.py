@@ -44,6 +44,20 @@ class BreakoutSequenceV29Tests(unittest.TestCase):
         later=cycle_judgement(append(b,102,108,101,107,2400))
         self.assertNotEqual(later['breakoutSequence']['phase'],'first')
         self.assertFalse(later['priceBreakout'])
+    def test_historical_neckline_recross_not_first_even_on_red_candle(self):
+        from structure_v25 import breakout_sequence
+        bars=self.first[:-1]+[
+            ['2026-10-12',592,596,578,581,21050],
+            ['2026-10-14',556,568,546,567,16630],
+            ['2026-10-15',532,537,518,519,24930],
+            ['2026-10-16',537,565,537,557,28140]]
+        original={'idx':len(bars)-1,'date':'2026-10-16','initialIdx':len(bars)-1,
+                  'initialDate':'2026-10-16','level':550.,'initialAlreadyCrossed':True}
+        result=breakout_sequence(bars,original,550.,False)
+        self.assertEqual(result['phase'],'reclaim')
+        self.assertNotIn('突破頸線｜第一根',result['label'])
+        self.assertIn('不是首次',result['label'])
+
     def test_no_future_leak_in_first(self):
         early=cycle_judgement(self.first)['breakoutSequence']
         _=cycle_judgement(append(self.first,107,112,104.7,105.,7000))

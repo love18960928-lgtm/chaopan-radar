@@ -117,6 +117,12 @@ def breakout_sequence(b, event, neck, risk_first=False):
     first_vol=float(first[5]);now_vol=float(today[5]);ratio=round(now_vol/first_vol,2) if first_vol>0 else None
     common={'level':lvl,'initialDate':event['initialDate'],'firstClose':first[4],
             'firstVolumeLots':first_vol,'daysSinceFirst':since,'secondVsFirstVolumeRatio':ratio}
+    if since==0 and event.get('initialAlreadyCrossed'):
+        return {**common,'phase':'reclaim','label':'歷史頸線再次站回｜不是首次突破',
+                'assessment':'過去已曾突破此歷史頸線，今次重新站回或再次突破，不能重設原首次突破日。需核對前次大量K錨點及失守紀錄。',
+                'tone':'watch','reasons':[f'歷史舊頸線 {lvl:g} 元已曾跨越',
+                '本日只算再次站回，不列入第一根或第二根名單'],
+                'next':'觀察後續交易日是否守穩；不以反彈紅K冒稱初次突破'}
     if since==0:
         rng=first[2]-first[3];loc=(first[4]-first[3])/rng if rng>0 else 1
         upper=(first[2]-max(first[1],first[4]))/rng if rng>0 else 0
@@ -128,6 +134,11 @@ def breakout_sequence(b, event, neck, risk_first=False):
                 'tone':'danger' if risk_first else ('warn' if weak else 'good'),
                 'reasons':[f'第一根收盤 {first[4]:g} 元；固定原頸線 {lvl:g} 元',f'收盤位置 {loc:.0%}；上影比例 {upper:.0%}'],
                 'next':'次交易日比較是否守住原頸線、量能是否異常及上影線是否擴大'}
+    if since==1 and event.get('initialAlreadyCrossed'):
+        return {**common,'phase':'reclaim-follow','label':'再次站回後第2交易日｜非首次突破第二根',
+                'assessment':'原價位在歷史上已發生首次突破；此次僅記錄重新站回後的觀察日，不得算成原突破第二根。',
+                'tone':'watch','reasons':['歷史曾突破同一道頸線'],
+                'next':'追蹤原頸線回測及量價風險'}
     if since==1:
         rng=today[2]-today[3];loc=(close-today[3])/rng if rng>0 else 1
         wick=(today[2]-max(today[1],close))/rng if rng>0 else 0

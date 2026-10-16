@@ -6,6 +6,8 @@ This optional task cannot break the existing price-volume collector.
 """
 import argparse
 import datetime as dt
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import urllib.error
 import json
 import logging
 import re
@@ -27,21 +29,33 @@ def number(value):
     except (ValueError, TypeError): return None
 
 def date_iso(value):
+    """Normalise ISO/Gregorian/ROC source dates without confusing YYYY/MM/DD with ROC.
+
+    TPEx and TWSE sources use both full Gregorian and ROC 3-digit dates.
+    Handle YYYY/MM/DD before ROC substring matching; reject invalid dates.
+    """
     s = str(value or '').strip()
-    m = re.fullmatch(r'(\d{4})-(\d{1,2})-(\d{1,2})', s)
-    if m: y,mo,d = map(int,m.groups())
+    # Full Gregorian dates, including calendar dates inside published headers.
+    m = re.search(r'(?<!\d)(\d{4})[年/\-.](\d{1,2})[月/\-.](\d{1,2})(?:日)?(?!\d)', s)
+    if m:
+        y, mo, d = map(int, m.groups())
     else:
-        m = re.search(r'(\d{2,3})[年/\-.](\d{1,2})[月/\-.](\d{1,2})',s)
-        if m: y,mo,d = map(int,m.groups());y+=1911
+        # Republic-of-China date with separators, optionally inside a header.
+        m = re.search(r'(?<!\d)(\d{2,3})[年/\-.](\d{1,2})[月/\-.](\d{1,2})(?:日)?(?!\d)', s)
+        if m:
+            y, mo, d = map(int, m.groups()); y += 1911
         else:
-            m = re.fullmatch(r'(\d{3})(\d{2})(\d{2})',s)
-            if m:y,mo,d=map(int,m.groups());y+=1911
+            m = re.fullmatch(r'(\d{3})(\d{2})(\d{2})', s)
+            if m:
+                y, mo, d = map(int, m.groups()); y += 1911
             else:
-                m = re.fullmatch(r'(\d{4})(\d{2})(\d{2})',s)
-                if not m:return None
-                y,mo,d=map(int,m.groups())
-    try:return dt.date(y,mo,d).isoformat()
-    except ValueError:return None
+                m = re.fullmatch(r'(\d{4})(\d{2})(\d{2})', s)
+                if not m: return None
+                y, mo, d = map(int, m.groups())
+    try:
+        return dt.date(y, mo, d).isoformat()
+    except ValueError:
+        return None
 
 def twse_t86(payload, target):
     """Parse the named-column TWSE T86; figures are in shares, not lots."""
@@ -209,33 +223,70 @@ def tpex_otc_index(payload,target):
             return {'date':target,'close':close,'change':change,'pct':pct,'source':'TPEx indexSummary'}
     return None
 
-def fetch_json(url,timeout=18):
-    req=urllib.request.Request(url,headers={'User-Agent':'ChaopanRadar/3.1.1 (GitHub Actions; public EOD data)','Accept':'application/json'})
-    with urllib.request.urlopen(req,timeout=timeout) as r:
-        if r.status!=200:raise IOError('HTTP status '+str(r.status))
-        raw=r.read(14000000)
-    return json.loads(raw)
+def fetch_json(url, timeout=9):
+    """Two bounded attempts for transient official API errors; never invent data."""
+    req=urllib.request.Request(url,headers={
+        'User-Agent':'Mozilla/5.0 (compatible; ChaopanRadar/3.1.1; public daily EOD)',
+        'Accept':'application/json'})
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(req,timeout=timeout) as response:
+                if response.status!=200:raise IOError('HTTP status '+str(response.status))
+                raw=response.read(14000001)
+                if len(raw)>14000000:raise ValueError('JSON payload too large')
+            return json.loads(raw)
+        except (urllib.error.URLError,TimeoutError,OSError) as err:
+            if attempt:raise
+            LOG.warning('Retry official feed after %s',type(err).__name__)
+            time.sleep(.45)
 
 def build(target, fetch=fetch_json):
+    """Check independent official sources concurrently (max 3 at once).
+
+    One slow/blocked endpoint must not delay all the other endpoints. Sources
+    expose per-feed health; partial data is explicitly marked as such.
+    """
     compact=target.replace('-','')
     urls={
       'twse_t86':f'https://www.twse.com.tw/rwd/zh/fund/T86?response=json&date={compact}&selectType=ALLBUT0999',
-      'tpex': 'https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading',
+      'tpex':'https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading',
       'taiex':f'https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK?response=json&date={compact}',
       'twse_bfi':f'https://www.twse.com.tw/rwd/zh/fund/BFI82U?response=json&dayDate={compact}&type=day',
       'tx':'https://openapi.taifex.com.tw/v1/DailyMarketReportFut',
       'twse_margin':f'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date={compact}&response=json&selectType=ALL',
-      'otc':f'https://www.tpex.org.tw/www/zh-tw/afterTrading/indexSummary?date={int(target[:4])-1911}/{target[5:7]}&response=json',
+      'otc':f'https://www.tpex.org.tw/www/zh-tw/afterTrading/indexSummary?date={int(target[:4])-1911}/{target[5:7]}/{target[8:10]}&response=json',
     }
-    out={'schema':SCHEMA,'asOf':target,'indices':{},'institutional':{},'stocks':{},'coverage':{},'notice':'官方盤後；不同資料源可能延遲。未取得則顯示待資料；分點不能推斷多空持倉。'}
-    mapping={'twse_t86':lambda x:twse_t86(x,target),'tpex':lambda x:tpex_3insti(x,target),'taiex':lambda x:twse_fmtqik(x,target),'twse_bfi':lambda x:twse_bfi(x,target),'tx':lambda x:taifex_tx(x,target),'twse_margin':lambda x:twse_margin(x,target),'otc':lambda x:tpex_otc_index(x,target)}
-    for key,url in urls.items():
-        try:data=mapping[key](fetch(url));LOG.info('%s accepted=%s',key,len(data) if isinstance(data,dict) else bool(data))
-        except Exception as ex:LOG.warning('%s skipped: %s',key,str(ex)[:150]);data=None
+    out={'schema':SCHEMA,'asOf':target,'indices':{},'institutional':{},'stocks':{},'coverage':{},
+         'sources':{},'checkedAt':dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),
+         'notice':'官方盤後來源獨立核對交易日；未取得資料不推估，可能部分來源失敗。'}
+    mapping={'twse_t86':lambda x:twse_t86(x,target),
+             'tpex':lambda x:tpex_3insti(x,target),
+             'taiex':lambda x:twse_fmtqik(x,target),
+             'twse_bfi':lambda x:twse_bfi(x,target),
+             'tx':lambda x:taifex_tx(x,target),
+             'twse_margin':lambda x:twse_margin(x,target),
+             'otc':lambda x:tpex_otc_index(x,target)}
+    def task(key,url):
+        began=time.monotonic()
+        try:
+            result=mapping[key](fetch(url))
+            ok=bool(result)
+            return key,result,{'status':'ok' if ok else 'invalid','durationMs':round((time.monotonic()-began)*1000),
+                               'detail': '通過日期和格式驗證' if ok else '官方資料空白、欄位不合或交易日不符'}
+        except Exception as err:
+            return key,None,{'status':'error','durationMs':round((time.monotonic()-began)*1000),
+                             'detail':type(err).__name__}
+    results={}
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures=[pool.submit(task,key,url) for key,url in urls.items()]
+        for f in as_completed(futures):
+            key,data,health=f.result();results[key]=(data,health)
+    for key in urls:
+        data,health=results[key]
+        out['sources'][key]=health
+        LOG.info('%s status=%s count=%s durationMs=%s',key,health['status'],len(data) if isinstance(data,dict) else bool(data),health['durationMs'])
         if key=='twse_margin':
-            if data:
-                for code,record in data.items():
-                    out.setdefault('margin',{})[code]=record
+            if data:out.setdefault('margin',{}).update(data)
             out['coverage'][key]=len(data or {})
         elif key=='twse_bfi':
             if data:out['institutional']['listed']=data
@@ -246,7 +297,6 @@ def build(target, fetch=fetch_json):
         else:
             if data:out['indices'][{'taiex':'taiex','tx':'taifex','otc':'otc'}.get(key,key)]=data
             out['coverage'][key]=bool(data)
-        time.sleep(.25)
     return out
 
 def save(out, path=DEST):
@@ -268,6 +318,14 @@ def save(out, path=DEST):
                     elif not out['stocks'][key].get('name') and isinstance(value,dict) and value.get('name'):
                         out['stocks'][key]['name']=value['name']
                 for key,value in old.get('margin',{}).items():out.setdefault('margin',{}).setdefault(key,value)
+                source_map={'taiex':('indices','taiex'),'otc':('indices','otc'),'tx':('indices','taifex'),
+                            'twse_bfi':('institutional','listed')}
+                for source_key,(group,field) in source_map.items():
+                    if out.get('sources',{}).get(source_key,{}).get('status')!='ok' and field in old.get(group,{}):
+                        out.setdefault('sources',{})[source_key]={'status':'retained','detail':'當日先前成功資料保留；本次抓取未成功'}
+                for source_key,group in [('twse_t86','stocks'),('tpex','stocks'),('twse_margin','margin')]:
+                    if out.get('sources',{}).get(source_key,{}).get('status')!='ok' and old.get(group):
+                        out.setdefault('sources',{})[source_key]={'status':'retained','detail':'保留已核對的同日紀錄；本次未成功'}
         except (ValueError,OSError,TypeError):pass
     tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(out,ensure_ascii=False,separators=(',',':'))+'\n',encoding='utf8');tmp.replace(path)
     return True
