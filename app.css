@@ -161,7 +161,7 @@
 .phase-compare>div{background:rgba(4,22,34,.55);padding:8px 10px;border-radius:9px}
 .phase-compare small{display:block;margin:0 0 3px}
 .phase-compare b{font-size:16px;font-variant-numeric:tabular-nums}
-.stage-toolbar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:10px 0}
+.stage-toolbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:10px 0}
 .stage-scope{font-size:12px;font-weight:750;border-radius:9px;padding:11px 3px;background:#1b3044;color:#b2d5df;border:1px solid #35516a;line-height:1.4}
 .stage-scope.active{color:#082821;background:#4fd7bd;border-color:#73e6cd}
 .signal-tag.phase-tag{background:#244b55;color:#d7fff2;font-size:11px}
@@ -184,3 +184,9 @@
 .daily-export-toolbar .action-row{margin-top:10px;display:flex;gap:9px;flex-wrap:wrap}
 .daily-export-toolbar .action-row button{flex:1 1 145px;min-height:45px;font-size:12px}
 @media(max-width:460px){.daily-export-toolbar .action-row button{flex:1 1 100%}}
+
+/* V3.0.4 liquidity guardrail */
+.liquidity-toggle{display:flex;gap:12px;align-items:flex-start;margin:12px 0;padding:13px 15px;border:1px solid #27655d;border-radius:14px;background:#102c33;color:#ddf6ee;cursor:pointer;}
+.liquidity-toggle input{width:21px;height:21px;accent-color:#42d5b7;margin-top:2px;flex:none;}
+.liquidity-toggle span{display:flex;flex-direction:column;gap:5px;font-size:14px;}
+.liquidity-toggle small{color:#abc9c6;font-size:12px;line-height:1.5;}
