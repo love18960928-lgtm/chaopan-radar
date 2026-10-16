@@ -161,7 +161,7 @@
 .phase-compare>div{background:rgba(4,22,34,.55);padding:8px 10px;border-radius:9px}
 .phase-compare small{display:block;margin:0 0 3px}
 .phase-compare b{font-size:16px;font-variant-numeric:tabular-nums}
-.stage-toolbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:10px 0}
+.stage-toolbar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:10px 0}
 .stage-scope{font-size:12px;font-weight:750;border-radius:9px;padding:11px 3px;background:#1b3044;color:#b2d5df;border:1px solid #35516a;line-height:1.4}
 .stage-scope.active{color:#082821;background:#4fd7bd;border-color:#73e6cd}
 .signal-tag.phase-tag{background:#244b55;color:#d7fff2;font-size:11px}
