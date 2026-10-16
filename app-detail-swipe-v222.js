@@ -66,9 +66,34 @@ function confirmedStrengthPanel(c){
 // V3.0.3: continuing trend remains eligible long after day 1/day 2.
 // Backend follows the original as-of event across a longer interval;
 // legacy snapshots lacking that result remain explicitly unverified.
+// V3.0.5 compatibility fix: V3.0.3 Python writes continuationV303.stage,
+// while a later frontend expected continuationContext.kind. Accept both real
+// structures; do not infer a certified breakout from an absent data field.
+function hasContinuationEvidence(c){
+ return Boolean((c?.continuationContext&&typeof c.continuationContext.kind==='string')||
+                (c?.continuationV303&&typeof c.continuationV303.stage==='string'));
+}
 function continuationReadout(c){
  const e=c.continuationContext;
- return e&&typeof e==='object'&&typeof e.kind==='string'?e:{kind:'unverified',label:'持續趨勢待新版盤後掃描',holdDays:null,reason:'尚無後端長期事件證據'};
+ if(e&&typeof e==='object'&&typeof e.kind==='string')return e;
+ const v=c.continuationV303;
+ if(v&&typeof v==='object'&&typeof v.stage==='string'){
+   const kinds={continued:'trend',pullback:'pullback',risk:'warning',weak:'weak',
+      consolidation:'consolidation',insufficient:'insufficient',not_established:'not_established'};
+   const reason=[...(Array.isArray(v.reasons)?v.reasons:[]),...(v.warning?[v.warning]:[])].filter(Boolean).join('；');
+   return {kind:kinds[v.stage]||'unverified',label:v.label||'趨勢待確認',
+      qualified:v.qualified===true,breakoutDate:v.anchorDate||null,
+      originalNeckline:v.anchorLevel??null,daysSinceBreakout:v.daysSinceBreakout??null,
+      holdDays:v.consecutiveHoldDays??null,reason:reason||v.label||'待完整驗證',
+      source:v.source||'V3.0.3 歷史日K判斷',riskFlags:Array.isArray(v.reasons)?v.reasons:[]};
+ }
+ return {kind:'unverified',label:'持續趨勢待新版盤後掃描',holdDays:null,
+   reason:'未收到 V3.0.3 趨勢判斷欄位；需檢查 scripts 與盤後資料重算'};
+}
+function continuationDataSummary(){
+ const rows=allRows();
+ const available=rows.reduce((n,c)=>n+(hasContinuationEvidence(c)?1:0),0);
+ return {total:rows.length,available,rulesVersion:state.universe?.rulesVersion||state.payload?.rulesVersion||'未知'};
 }
 function continuationPanel(c){
  const e=continuationReadout(c),type=e.kind==='trend'?'confirmed':e.kind==='warning'?'risk':'near';
@@ -375,7 +400,7 @@ async function loadData(){
         u.rows=u.rows.map(row=>{
           const match=candidates.get(row.market+'-'+row.code);
           return match?{...row,...match,riskLevel:row.riskLevel,riskStatus:row.riskStatus,
-             breakoutSequence:row.breakoutSequence,continuationContext:row.continuationContext,riskReasons:row.riskReasons,riskEvidence:row.riskEvidence,supportEvidence:row.supportEvidence,structureV23:row.structureV23,intradayPlan:row.intradayPlan,
+             breakoutSequence:row.breakoutSequence,continuationContext:row.continuationContext,continuationV303:row.continuationV303,riskReasons:row.riskReasons,riskEvidence:row.riskEvidence,supportEvidence:row.supportEvidence,structureV23:row.structureV23,intradayPlan:row.intradayPlan,
              neck:row.neck,neckDate:row.neckDate,distancePct:row.distancePct,
              priceConfirmed:row.priceConfirmed,preLaunch:row.preLaunch,followStatus:row.followStatus,
              launchStage:row.launchStage,tags:row.tags,unifiedStage:row.unifiedStage,
@@ -396,7 +421,10 @@ async function demoMode(){
 function render(){
   const x=state.payload||{candidates:[],counts:{}};
   $('#marketDate').textContent=(x.asOf||'—')+(state.mode==='demo'?' · 範例':'');
-  $('#dataStatus').textContent=modeName()+(x.rulesVersion==='eod-v3.0.3-continuation'?' · V3.0.3持續強勢／回測已更新':x.rulesVersion==='eod-v3.0-ma-neck-hold'?' · V3.0均線／頸線站穩天數已更新':x.rulesVersion==='eod-v2.9-breakout-sequence'?' · V3.0均線前端試算；需更新scripts以取得完整站穩天數':x.rulesVersion==='eod-v2.6-next-session'?' · V3.0介面；需重新執行盤後掃描':' · 需重新執行新版盤後掃描');
+  const trace=continuationDataSummary();
+  $('#dataStatus').textContent=modeName()+(trace.available>0?
+    ` · 趨勢資料 ${integer(trace.available)}/${integer(trace.total)} 檔已讀取`:
+    ` · 趨勢分析欄位待更新（來源版本：${trace.rulesVersion}）`);
   const counts=x.counts||{};
   // Legacy independent tab counts removed in v2.4. Only unified scan is visible.
   $('#coverageText').textContent=state.mode==='demo'?'示意畫面':`${integer(x.eligibleCount||0)} 檔具足夠歷史 / ${integer(x.stockCount||0)} 檔已收錄`;
@@ -416,7 +444,11 @@ function render(){
   }else if(health)health.hidden=true;
   const coverage=$('#universeHealth');
   if(coverage){
-   if(state.universe){coverage.hidden=false;coverage.textContent=`全市場診斷已載入：${integer(state.universe.coverage)} 檔，同一交易日 ${state.universe.asOf}。包含未入選大量K股票；高風險股票會降級但仍可搜尋。疑似出貨只表示量價警訊，不代表已查得主力真實持股。`}
+   if(state.universe){const t=continuationDataSummary();coverage.hidden=false;coverage.textContent=
+    `全市場診斷已載入：${integer(state.universe.coverage)} 檔，同一交易日 ${state.universe.asOf}。`+
+    `長期趨勢資料 ${integer(t.available)}/${integer(t.total)} 檔；後端版本 ${t.rulesVersion}。`+
+    (t.available===0?' ⚠ 尚未讀到持續強勢分類所需欄位，請上傳V3.0.3兩個scripts並重新執行盤後掃描。':' 先確認已收錄後再套用成交活躍度門檻。')+
+    ' 高風險股票仍可搜尋；量價警訊不代表已查得主力真實持股。'}
    else {coverage.hidden=false;coverage.textContent='⚠ 全市場個股診斷資料未取得、日期不一致或未完成重算。目前只顯示舊版候選股，不能視為已完成V2.4全市場結構掃描。請確認GitHub Actions執行及data/universe.json已發布。'}
   }
   renderList();
@@ -459,7 +491,20 @@ function renderList(){
   `資料日 ${state.payload?.asOf||'—'}｜${selection.label}：${cards.length} 檔｜合格強勢候選 ${strong.length} 檔／${state.universe?'全市場':'目前可讀'} ${rawRank.length} 檔；隔日重新排名，不足不補弱勢`;
  $$('.rank-scope').forEach(b=>{const active=b.dataset.scope===state.rankView&&!stageFilter;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active?'true':'false')});
  $$('.stage-scope').forEach(b=>{const active=b.dataset.stage===state.stageView;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active?'true':'false')});
- if(!cards.length){const metricsReady=rawRank.some(c=>numeric(c.trading?.trend)!==null);const note=state.payload?.rulesVersion!=='eod-v3.0.3-continuation'?'尚未有V3.0.3長期強勢資料，請先上傳scripts並執行盤後重算；未確認資料不硬湊排行。':!metricsReady?'強勢資料尚未載入；請檢查data/universe.json與GitHub Actions。':'行情偏弱時不硬湊20檔。可切換「全部股票」或搜尋指定股票。';list.innerHTML='<div class="empty-state"><h3>目前「'+esc(selection.label)+'」沒有符合股票</h3><p>'+esc(note)+'</p></div>';more.hidden=true;return;}
+ if(!cards.length){
+   const trace=continuationDataSummary();
+   const isTrend=state.stageView==='trend'||state.stageView==='pullback';
+   const potential=isTrend?rawRank.filter(c=>continuationReadout(c).kind===state.stageView):[];
+   const metricsReady=rawRank.some(c=>numeric(c.trading?.trend)!==null);
+   const note=isTrend&&trace.available===0?
+     `⚠ ${trace.total}檔行情已載入，但沒有任何 V3.0.3 趨勢分類資料（核心版本：${trace.rulesVersion}）。不能據此宣稱市場零強勢；請檢查 scripts 與 Actions 盤後重算。`:
+     isTrend&&potential.length>0&&state.liquidityOnly?
+     `找到 ${potential.length} 檔符合此階段，但都未達成交活躍度門檻。可暫時關閉「排除成交不活躍」檢視與核對，勿直接當成可交易名單。`:
+     !metricsReady?'強勢資料尚未完整載入，請檢查 data/universe.json 與盤後更新。':
+     `有 ${trace.available} 檔取得趨勢資料；目前篩選條件下確實沒有符合者。可切換全部股票或調整低量篩選核對。`;
+   list.innerHTML='<div class="empty-state"><h3>目前「'+esc(selection.label)+'」沒有顯示股票</h3><p>'+esc(note)+'</p></div>';
+   more.hidden=true;return;
+ }
  list.innerHTML=shown.map(c=>{
    const id=esc(rowId(c)),cls=c.changePct>0?'rising':c.changePct<0?'falling':'neutral';
    const riskTag=c.riskLevel==='high'||c.riskFirst?'<span class="signal-tag risk-high">高風險・已降權</span>':c.riskLevel==='medium'?'<span class="signal-tag risk">轉弱風險・已降權</span>':'<span class="signal-tag risk-low">無高風險組合</span>';
