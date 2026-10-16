@@ -33,11 +33,21 @@ jobs:
         run: |
           python scripts/collector.py --backfill "$BACKFILL" --delay 1.1
           python -m unittest discover -s scripts -p 'test_*.py' -v
+      - name: Collect verified supplemental official EOD data
+        # Optional feed may be missing: do not break existing OHLCV data.
+        run: |
+          if [ -f data/radar.json ]; then
+            AS_OF=$(python -c 'import json;print(json.load(open("data/radar.json")).get("asOf",""))')
+            if echo "$AS_OF" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+              python scripts/market_intel_v311.py --as-of "$AS_OF" || true
+            fi
+          fi
       - name: Commit updated market data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add storage/history.json data/radar.json data/universe.json
+          if [ -f data/market-intel.json ]; then git add data/market-intel.json; fi
           if ! git diff --cached --quiet; then
             git commit -m "data: update V2.2 unified radar"
             git push
