@@ -299,6 +299,96 @@ def build(target, fetch=fetch_json):
             out['coverage'][key]=bool(data)
     return out
 
+
+# r9: official daily OHLCV for listed ETFs appearing in the institutional top-20.
+# Keep ETF history separate from the ordinary-equity breakout universe: no
+# stock breakout labels or trading alerts may be transferred to ETF rows.
+def parse_twse_etf_month(payload, code, month, target):
+    """Validate TWSE STOCK_DAY monthly bars; TWSE volume is SHARES."""
+    if not isinstance(payload, dict) or payload.get('stat') != 'OK':
+        return []
+    # A monthly endpoint returns an entire month even for weekend queries.
+    # Do not mistake its request date for the final daily trading date.
+    title = str(payload.get('title') or '')
+    if code not in title and str(payload.get('stockNo') or '') != code:
+        return []
+    bars = []
+    for row in payload.get('data') or []:
+        if not isinstance(row, list) or len(row) < 7:
+            continue
+        day = date_iso(row[0])
+        if not day or not day.startswith(month) or day > target:
+            continue
+        o,h,l,c,shares = (number(row[3]),number(row[4]),number(row[5]),number(row[6]),number(row[1]))
+        if any(v is None or v <= 0 for v in (o,h,l,c,shares)) or not (l<=o<=h and l<=c<=h):
+            continue
+        bars.append([day, o, h, l, c, round(shares / 1000,3)])
+    return sorted({b[0]: b for b in bars}.values(), key=lambda b:b[0])
+
+
+def month_starts(as_of, count=6):
+    y,m=map(int,as_of[:7].split('-'))
+    out=[]
+    for _ in range(count):
+        out.append(f'{y:04d}-{m:02d}')
+        m-=1
+        if m==0:y-=1;m=12
+    return list(reversed(out))
+
+
+def build_etf_histories(intel, target, old=None, fetch=fetch_json, max_etfs=40):
+    """Optional enrichment. Never fail the base market-intel update."""
+    if intel.get('asOf')!=target:return {}
+    # ETF charts only for the actual displayed institutional top-20 per side,
+    # not for an arbitrary set of funds with the largest absolute flows.
+    available=[]
+    for ident, rec in (intel.get('stocks') or {}).items():
+        if rec.get('date') != target:
+            continue
+        vals=[number(rec.get(k)) for k in ('foreignLots','trustLots','dealerLots')]
+        if any(v is None for v in vals):
+            continue
+        available.append((sum(vals),ident,rec))
+    buys=sorted((x for x in available if x[0]>0),key=lambda x:-x[0])[:20]
+    sells=sorted((x for x in available if x[0]<0),key=lambda x:x[0])[:20]
+    chosen=[(abs(flow),ident,rec) for flow,ident,rec in buys+sells
+            if re.fullmatch(r'上市-0\d{3,5}[A-Z]?', ident)][:max_etfs]
+    cached=(old or {}).get('etfOHLCV') or {}
+    months=month_starts(target)
+    result={}
+    def scan(pair):
+        _,ident,rec=pair;code=ident.split('-')[1]
+        prior=cached.get(ident) or {}
+        prior_bars=prior.get('bars') or []
+        collected={b[0]:b for b in prior_bars if isinstance(b,list) and len(b)==6 and isinstance(b[0],str) and b[0]<=target}
+        fetched=0
+        for month in months:
+            # Always recheck current month, to pick up the new trading day.
+            if month != target[:7] and sum(b[0].startswith(month) for b in collected.values())>=12:
+                continue
+            url=('https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?'
+                 +urllib.parse.urlencode({'date':month.replace('-','')+'01','stockNo':code,'response':'json'}))
+            try:
+                part=parse_twse_etf_month(fetch(url),code,month,target)
+            except (OSError,ValueError,TypeError,KeyError) as error:
+                LOG.warning('ETF %s %s fetch failed: %s',code,month,type(error).__name__)
+                continue
+            for b in part:collected[b[0]]=b
+            fetched+=bool(part)
+        bars=sorted(collected.values(),key=lambda b:b[0])[-135:]
+        if not bars:return ident,None
+        # Listing metadata is indicative only. A chart may NOT claim current
+        # as-of unless the latest confirmed daily bar matches that date.
+        item={'name':rec.get('name') or prior.get('name') or '', 'market':'上市',
+              'bars':bars,'latestDate':bars[-1][0],
+              'source':'TWSE STOCK_DAY（日收盤，成交量單位張）'}
+        return ident,item
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for ident,item in pool.map(scan,chosen):
+            if item:result[ident]=item
+    LOG.info('ETF listed historical charts: %d / %d; source may be incomplete',len(result),len(chosen))
+    return result
+
 def save(out, path=DEST):
     if not out['stocks'] and not out['indices'] and not out['institutional'] and not out.get('margin'):
         LOG.warning('No verified source passed; retaining existing JSON.');return False
@@ -318,6 +408,10 @@ def save(out, path=DEST):
                     elif not out['stocks'][key].get('name') and isinstance(value,dict) and value.get('name'):
                         out['stocks'][key]['name']=value['name']
                 for key,value in old.get('margin',{}).items():out.setdefault('margin',{}).setdefault(key,value)
+                for key,value in old.get('etfOHLCV',{}).items():
+                    current=out.setdefault('etfOHLCV',{}).get(key)
+                    if not current or str(value.get('latestDate',''))>str(current.get('latestDate','')):
+                        out['etfOHLCV'][key]=value
                 source_map={'taiex':('indices','taiex'),'otc':('indices','otc'),'tx':('indices','taifex'),
                             'twse_bfi':('institutional','listed')}
                 for source_key,(group,field) in source_map.items():
@@ -336,6 +430,17 @@ def main():
     if not date or date!=args.as_of:ap.error('Require ISO date YYYY-MM-DD')
     logging.basicConfig(level=logging.INFO,format='%(levelname)s %(message)s')
     result=build(date)
+    prior={}
+    if args.out.is_file():
+        try:prior=json.loads(args.out.read_text('utf8'))
+        except (OSError,ValueError):pass
+    # Failures of optional ETF API must not block existing official stock data.
+    try:
+        result['etfOHLCV']=build_etf_histories(result,date,old=prior)
+        result['coverage']['etfOHLCV']=len(result['etfOHLCV'])
+    except Exception as err:
+        LOG.warning('ETF history enrichment failed: %s',type(err).__name__)
+        result['etfOHLCV']={}
     LOG.info('Source coverage: %s',json.dumps(result['coverage'],ensure_ascii=False))
     if not save(result,args.out):LOG.warning('Ancillary feed unavailable; base scanner remains operational')
 
