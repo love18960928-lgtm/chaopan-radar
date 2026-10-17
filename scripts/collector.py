@@ -25,7 +25,7 @@ from rules import build_snapshot
 from trader import trader_overlay,apply_sector_relative_strength
 from performance import update_diary
 from market_quality import breadth
-from risk_v22 import build_universe
+from risk_v22 import build_universe, published_fundamentals
 
 ROOT = Path(__file__).resolve().parents[1]
 HISTORY = ROOT / 'storage' / 'history.json'
@@ -257,6 +257,9 @@ def financial_fields(kind,row):
         month=int(period[-2:]); year=int(period[:-2])+1911
         if not (2000<=year<=2100 and 1<=month<=12):return None
         return {'revenuePeriod':f'{year:04d}-{month:02d}',
+                # Official open-data revenue amounts are in NT$1,000 (NOT NT$1).
+                'revenueMonthThousand':validnum(findval(row,'營業收入-當月營收','當月營收'),0),
+                'revenueCumThousand':validnum(findval(row,'累計營業收入-當月累計營收','當年累計營收'),0),
                 'revenueYoY':validnum(findval(row,'營業收入-去年同月增減(%)','營業收入-去年同月增減％','當月營收較去年同期增減(%)'),-1000,10000),
                 'revenueCumYoY':validnum(findval(row,'累計營業收入-前期比較增減(%)','累計營業收入-前期比較增減％','累計營收較去年同期增減(%)'),-1000,10000),
                 'industry':str(findval(row,'產業別','產業類別') or '')[:60]}
@@ -444,7 +447,7 @@ def run(days,delay,as_of=None):
     # No claims about foreign/trust buying can be made without a source check.
     for c in snapshot['candidates']:
         st=allstocks.get(c['market']+c['code'],{})
-        c['fundamentals']=st.get('fundamentals',{})
+        c['fundamentals']=published_fundamentals(st.get('fundamentals',{}),snapshot['asOf'])
         c['investment']=score_company(st,c)
         c['trading']=trader_overlay(c)
         c['institutional']=None
@@ -474,8 +477,8 @@ def run(days,delay,as_of=None):
                                for c in sorted(snapshot['candidates'],key=rank_trade,reverse=True)[:60]]
     snapshot['generatedAt']=dt.datetime.now(dt.timezone.utc).isoformat()
     universe=build_universe(allstocks,snapshot,snapshot['asOf'])
-    snapshot['rulesVersion']='eod-v2.9-breakout-sequence'
-    snapshot['rankMethod']='V2.6: one as-of recent neckline/support event cycle, risk-first validation, no independent AND gates; old unadjusted EOD'
+    snapshot['rulesVersion']='eod-v3.0.3-continuation'
+    snapshot['rankMethod']='V3.0.3: recent neckline plus historical price-range continuation, early breakout and pullback tracked separately; EOD only'
     snapshot['performanceCaveat']='歷史績效日誌仍為舊版候選股規則，不能用來宣稱V2.5有獲利優勢；需另做樣本外、含交易成本回測'
     snapshot['universeCount']=universe['coverage']
     snapshot['unifiedCandidatesCount']=sum(x.get('unifiedStage') not in ('一般觀察','資料不足') for x in universe['rows'])
@@ -496,11 +499,13 @@ def run(days,delay,as_of=None):
         record={'date':row['date'],'stage':row.get('unifiedStage'),
                 'neck':row.get('neck'),'risk':row.get('riskLevel'),
                 'score':row.get('unifiedScore'),
-                'origin':(row.get('cycle') or {}).get('initialDate')}
+                'origin':(row.get('cycle') or {}).get('initialDate'),
+                'strengthPhase':(row.get('continuationContext') or {}).get('kind'),
+                'historicalBreakout':(row.get('continuationContext') or {}).get('breakoutDate')}
         events=structure_journal.setdefault(key,[])
         if events and events[-1]['date']==record['date']:
             events[-1]=record
-        elif not events or events[-1].get('stage')!=record['stage'] or events[-1].get('neck')!=record['neck']:
+        elif not events or events[-1].get('stage')!=record['stage'] or events[-1].get('neck')!=record['neck'] or events[-1].get('strengthPhase')!=record['strengthPhase']:
             events.append(record)
         if len(events)>90:del events[:-90]
         row['stageHistory']=events[-12:]
