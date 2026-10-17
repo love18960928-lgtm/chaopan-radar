@@ -1,6 +1,6 @@
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
-const state={payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false};
+const state={payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false};
 const TAGS={first:'第一根發動',prep:'發動前預備',near:'接近頸線',volume:'新大量超越',limit:'20日多漲停',follow:'突破後追蹤'};
 const price=n=>n!==null&&n!==undefined&&Number.isFinite(Number(n))? Number(n).toLocaleString('zh-TW',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
 const integer=n=>Number.isFinite(Number(n))?Math.round(Number(n)).toLocaleString('zh-TW'):'—';
@@ -75,7 +75,47 @@ function institutionalBoard(){
  const mk=rows=>rows.length?rows.map((r,i)=>`<button type="button" class="inst-stock" data-inst-id="${esc(r.id)}"><span class="inst-rank">${i+1}</span><span class="inst-title"><b>${esc(r.code)} ${esc(r.name)}</b><small>${esc(r.market)}${r.assetType==='股票'?'':' · ' +esc(r.assetType)}｜外 ${fmtLots(r.foreign)}／投 ${fmtLots(r.trust)}／自 ${fmtLots(r.dealer)}</small></span><strong class="${r.net>0?'rising':'falling'}">${r.net>0?'+':''}${fmtLots(r.net)}張</strong></button>`).join(''):'<div class="inst-empty">尚未取得足夠同日官方法人資料；不能補虛構名單。</div>';
  $('#institutionalBuys').innerHTML=mk(lists.buys);$('#institutionalSells').innerHTML=mk(lists.sells);
  $('#instFoot').textContent=lists.ready?`同日完整法人資料 ${integer(lists.available)} 檔；買超顯示 ${lists.buys.length} 檔、賣超顯示 ${lists.sells.length} 檔。${lists.unnamed?`其中 ${lists.unnamed} 檔證券名稱待核對，請執行新版法人資料更新。`:``}未達20檔不湊數；此排行可能包含ETF，非即時，也不代表分點買進或持倉。`:'未取得與雷達同日、欄位完整的上市上櫃法人資料；請核對 data/market-intel.json 與盤後 Actions。';
- $$('#institutionalBoard [data-inst-id]').forEach(b=>b.onclick=()=>{if(allRows().some(c=>rowId(c)===b.dataset.instId))showDetails(b.dataset.instId);else toast(/^.*-0/.test(b.dataset.instId)?'此ETF不在一般股票突破雷達，法人排行資料仍有效':'此檔未納入個股診斷，請核對資料日')});
+ const rowById=new Map([...lists.buys,...lists.sells].map(r=>[r.id,r]));
+ $$('#institutionalBoard [data-inst-id]').forEach(b=>b.onclick=()=>{
+   const r=rowById.get(b.dataset.instId);if(!r)return;
+   const c=allRows().find(c=>rowId(c)===r.id);
+   if(c)showDetails(r.id);else showInstitutionalDetail(r);
+ });
+}
+
+function showInstitutionalDetail(r){
+ // A fund listed in official flow may be absent from equity breakout scanner.
+ // Never redirect it to another stock or generate stock-specific breakout levels.
+ state.detail=null;state.etfDetail=r;state.chartDays=60;
+ if($('#modalOverlay').hidden){history.pushState({chaopanDetail:true},'',location.href);state.detailHistory=true;}
+ renderInstitutionalDetail();$('#modalOverlay').hidden=false;document.body.style.overflow='hidden';
+}
+function renderInstitutionalDetail(){
+ const r=state.etfDetail;if(!r)return;
+ const intel=state.marketIntel||{},asOf=state.payload?.asOf||'—';
+ const history=intel.asOf===asOf?intel.etfOHLCV?.[r.id]:null;
+ const bars=Array.isArray(history?.bars)?history.bars:[];
+ const latest=bars.length?bars.at(-1):null;
+ const dated=Boolean(latest&&latest[0]===asOf&&history?.latestDate===asOf);
+ const official=dated&&bars.length>=10;
+ const fmtLots=x=>(x>0?'+':'')+Number(x).toLocaleString('zh-TW',{maximumFractionDigits:3});
+ const unit=(title,value)=>`<div><small>${title}</small><b class="${value>0?'rising':'falling'}">${fmtLots(value)}張</b></div>`;
+ const priceText=dated?price(latest[4]):'待同日收盤資料';
+ const ma=official?ChaopanExtrasV311.averages(bars):null;
+ const maText=ma?`MA5 ${price(ma.values[5])}／MA10 ${price(ma.values[10])}／MA20 ${price(ma.values[20])}`:'';
+ const chart=official?makeChart(bars,null,state.chartDays,[],[],null):
+   `<div class="battle-chart-empty">${history?.latestDate?`ETF歷史K線最新為 ${esc(history.latestDate)}，與排行交易日 ${esc(asOf)} 不一致。`:'尚未取得此ETF的已核對逐日開高低收行情。'}<br>法人買賣超仍可查看，但無法顯示同日K線或均線。</div>`;
+ $('#modalContent').innerHTML=`<div class="etf-detail"><div class="eyebrow">INSTITUTIONAL FLOW / ${esc(r.market)} · ${esc(r.assetType)}</div>
+ <h2 id="modalTitle">${esc(r.code)} ${esc(r.name)}</h2>
+ <div class="detail-sub">法人資料 ${esc(asOf)} 盤後｜${esc(r.assetType)}｜不等同主力真實持倉</div>
+ <div class="detail-price"><strong>${priceText}</strong><small>${dated?'官方收盤價':'未核對同日收盤價'}</small></div>
+ <div class="etf-stat-grid">${unit('外資',r.foreign)}${unit('投信',r.trust)}${unit('自營商',r.dealer)}</div>
+ <div class="settings-card"><b>三大法人合計 ${fmtLots(r.net)}張</b><p>這是當日淨買賣超，不代表買賣點或未來漲跌。名稱／代號依本次官方資料；ETF不套用個股頸線或起漲排名。</p></div>
+ <div class="chart-area"><div class="chart-top"><strong>${r.assetType.startsWith('ETF')?'ETF':'證券'} 走勢圖｜日K＋成交量</strong><div class="chart-range">
+ ${[20,60,120].map(d=>`<button type="button" class="etf-range-btn ${state.chartDays===d?'active':''}" data-etf-days="${d}">${d}日</button>`).join('')}</div></div>
+ <div id="etfChartSvg">${chart}</div><small class="chart-zoom-hint">${maText||'均線待歷史K線核對'}。上市ETF使用證交所月度日K，非即時；行情可能受分割、除權息影響。</small></div>
+ <p class="detail-note">${bars.length?'資料來源 '+esc(history.source||'待來源核對')+'｜有效交易日K線 '+bars.length+' 根。':'ETF K線盤後蒐集尚未完成或此證券缺少對應來源。'} 不能用單日法人流量推估未來價格。</p></div>`;
+ $$('#modalContent [data-etf-days]').forEach(b=>b.onclick=()=>{state.chartDays=Number(b.dataset.etfDays);renderInstitutionalDetail()});
 }
 function maPanel(c){
  const m=maReadout(c),maTag=m.maStage||'待資料',slope=v=>numeric(v)===null?'待資料':(Number(v)>=0?'↑':'↓')+Math.abs(Number(v)).toFixed(2)+'%';
@@ -408,37 +448,57 @@ let sectorPacked=[],sectorRanks=new Map(),sectorDate='';
 const sectorOpen=new Set(),sectorShown=new Map();
 let sectorInteracted=false;
 const SECTOR_BATCH=5;
+const sectorCardTabs=new Map();
 function sectorBattleCard(c){
  const p=deskEvidence(c),g=ChaopanGuidance.evaluate(c,p,supportLines(c));
  const seq=breakoutReadout(c),track=ChaopanExtrasV311.breakoutTracks(c);
  const ma=ChaopanExtrasV311.averages(c),hold=continuationReadout(c);
- const rank=sectorRanks.get(rowId(c));
- const rankText=Number.isInteger(rank)&&rank>0?`#${rank} 起漲雷達排名`:'未列入起漲排名';
- const phases={ready:'頸線預備',first:'突破第一根',second:'突破第二根',third:'突破第三根',reclaim:'舊頸線重新站回',surge:'主升段續強',reentry:'回測再發動',caution:'高波動警戒'};
- const stage=phases[p.stage]||phases[p.momentumStage]||phases[seq.phase]||'突破階段待核對';
- const n=v=>numeric(v)===null?'待核對':price(v);
- const s=v=>numeric(v)===null?'待核對':Number(v).toFixed(1);
- const MA=[5,10,20,60,120,240];
- const matags=MA.map(d=>`<span class="sector-ma ${numeric(ma.values?.[d])===null?'missing':ma.close>=ma.values[d]?'above':'below'}">MA${d} ${numeric(ma.values?.[d])===null?'待資料':ma.close>=ma.values[d]?'站上':'下方'}</span>`).join('');
- const trackRow=track.length&&track[0].days<=3?`<span class="sector-card-tag muted">紅K×${track[0].red}／綠K×${track[0].green}</span>`:'';
- const ma510=hold.strictMA510Hold===true?`<span class="sector-card-tag ok">${hold.source==='既有大量K突破事件'?'大量K首破':'歷史區間突破'}後全程守MA5／10</span>`:
-   hold.recentCloseHold10===true?'<span class="sector-card-tag muted">近10日守MA5／10（非全程）</span>':'';
- const riskTag=g.level==='danger'?'出場警戒':g.level==='warn'?'減碼警戒':g.level==='unknown'?'資料不足':'等待量價確認';
- const indicator=state.marketIntel?ChaopanIntel.miniLights(state.marketIntel,c,p):'';
- const dateOk=c.date===state.payload?.asOf;
- const levelsValid=g.level!=='unknown'&&dateOk;
- return `<article class="sector-battle-card" data-stock-id="${esc(rowId(c))}">
-  <div class="sector-card-eyebrow"><b>${esc(rankText)}</b><span>發動潛力 ${s(p.score?.potential)} · 進場品質 ${s(p.score?.entry)}（非勝率）</span></div>
-  <div class="sector-card-identity"><div><strong>${esc(c.code)} ${esc(c.name)}</strong><div class="sector-card-meta">${esc(c.market||'市場待核對')} · ${esc(c.industry||c.fundamentals?.industry||'產業待核對')}</div></div><div class="sector-card-quote"><b>${n(c.close)}</b><small class="${numeric(c.changePct)>0?'rising':numeric(c.changePct)<0?'falling':''}">${pct(c.changePct)}</small></div></div>
-  <div class="sector-card-tags"><span class="sector-card-tag phase">${esc(stage)}</span>${ma510}${trackRow}<span class="sector-card-tag ${g.level==='danger'?'danger':g.level==='warn'?'caution':'muted'}">${esc(riskTag)}</span></div>
-  <div class="sector-ma-row" aria-label="六條均線狀態">${matags}</div>
-  <div class="sector-card-decision"><div class="sector-decision-top"><b>${esc(g.title)}</b><span>${levelsValid?'收盤資料已核對':'數據未齊 · 不給交易確認'}</span></div><div class="sector-card-scores"><span>觀察 <b>${levelsValid?n(g.breakoutLevel):'待核對'}</b></span><span>追價警戒 <b>${levelsValid?n(p.chase):'待核對'}</b></span><span>頸線防守 <b>${levelsValid?n(p.defense):'待核對'}</b></span></div>
-   <div class="sector-card-lights">${indicator}</div>
-   <div class="sector-card-levels"><div><span>買點觀察</span><b>${levelsValid?n(g.pullbackZone?.[0]):'待核對'}</b><small>MA5回測止跌或突破確認</small></div><div><span>減碼警戒</span><b>${levelsValid?n(g.ma5):'待核對'}</b><small>收盤失守MA5／假突破</small></div><div><span>防守／賣點</span><b>${levelsValid?n(g.ma10):'待核對'}</b><small>MA10有效失守需評估</small></div><div><span>移動停利</span><b>${levelsValid?n(g.trailingStop):'待核對'}</b><small>${g.trailingStop===null?'缺少完整歷史事件':'歷史ATR規則參考'}</small></div></div>
-   <p class="sector-card-asof">${esc(c.date||'日期待核對')}盤後 · 價位僅為條件參考，非即時報價及買賣指令</p>
-   <details class="sector-card-reasons"><summary>展開買進／減碼／賣出判斷理由</summary><p><b>買點：</b>${esc(g.buy)}</p><p><b>減碼：</b>${esc(g.trim)}</p><p><b>賣出：</b>${esc(g.sell)}</p></details>
-  </div>
-  <div class="sector-card-actions"><button type="button" class="sector-open-detail" data-sector-detail="${esc(rowId(c))}">📈 查看K線關卡圖解</button><button type="button" class="sector-open-intraday" data-sector-intraday="${esc(rowId(c))}">✎ 盤中輸入價量試算</button></div>
+ const rank=sectorRanks.get(rowId(c)),key=rowId(c);
+ const rankText=Number.isInteger(rank)&&rank>0?`#${rank} 起漲排名`:'未列入起漲排名';
+ const phases={ready:'頸線預備',first:'第一根',second:'第二根',third:'第三根',reclaim:'舊頸線站回',surge:'主升續強',reentry:'回測再發動',caution:'高波動警戒'};
+ const stage=phases[p.stage]||phases[p.momentumStage]||phases[seq.phase]||'階段待核對';
+ const n=v=>numeric(v)===null?'—':price(v);
+ const score=v=>numeric(v)===null?null:Math.max(0,Math.min(100,Number(v)));
+ const barscore=(name,val)=>`<div class="sector-meter"><div><small>${name}</small><b>${val===null?'待核對':val.toFixed(0)}</b></div><span class="sector-meter-track"><i style="width:${val===null?'0':val}%"></i></span></div>`;
+ const six=[5,10,20,60,120,240].map(d=>{
+   const val=numeric(ma.values?.[d]);const tone=val===null?'missing':numeric(ma.close)!==null&&ma.close>=val?'above':'below';
+   return `<span class="sector-ma-dot ${tone}" title="MA${d}：${val===null?'缺歷史':n(val)}">${d}</span>`;
+ }).join('');
+ const label=g.level==='danger'?'出場警戒':g.level==='warn'?'減碼警戒':g.level==='unknown'?'資料不足':'待價量確認';
+ const levelOk=g.level!=='unknown'&&c.date===state.payload?.asOf;
+ const light=state.marketIntel?ChaopanIntel.miniLights(state.marketIntel,c,p):'<small>法人與量能依來源資料顯示</small>';
+ const allTabs=['summary','levels','evidence'];const active=allTabs.includes(sectorCardTabs.get(key))?sectorCardTabs.get(key):'summary';
+ const tabBtn=(id,label)=>`<button type="button" role="tab" data-sector-tab="${id}" aria-selected="${active===id}" class="${active===id?'active':''}">${label}</button>`;
+ const tabPanel=(id,content)=>`<div role="tabpanel" data-sector-panel="${id}" ${active===id?'':'hidden'}>${content}</div>`;
+ const ma510=hold.strictMA510Hold===true?'歷史突破後全程守5／10':hold.recentCloseHold10===true?'近10日守5／10':'逐日守線待核對';
+ const riskClass=g.level==='danger'?'danger':g.level==='warn'?'caution':'muted';
+ const overview=`<div class="sector-mini-status"><b>${esc(g.title)}</b><span class="sector-card-tag ${riskClass}">${esc(label)}</span></div>
+ <div class="sector-mini-stats"><span>觀察關卡 <b>${levelOk?n(g.breakoutLevel):'待核對'}</b></span><span>MA5 <b>${levelOk?n(g.ma5):'待核對'}</b></span><span>MA10 <b>${levelOk?n(g.ma10):'待核對'}</b></span></div>
+ <div class="sector-six-dots"><span>六均線</span>${six}</div>
+ <div class="sector-phase-note">${esc(ma510)} · ${esc(c.date||'資料日待核對')}盤後</div>`;
+ const levelVals=[
+  ['突破觀察',g.breakoutLevel],['回測觀察',g.pullbackZone?.[0]],['MA5減碼警戒',g.ma5],['MA10防守',g.ma10],['歷史支撐',g.support],['移動停利',g.trailingStop]
+ ];
+ const finite=levelVals.map(x=>numeric(x[1])).filter(v=>v!==null&&v>0);
+ const lo=finite.length?Math.min(...finite):null,hi=finite.length?Math.max(...finite):null;
+ const ruler=levelVals.map(([name,val])=>{const v=levelOk?numeric(val):null;
+  const w=v===null?0:hi===lo?60:12+(v-lo)/(hi-lo)*88;
+  return `<div class="sector-price-line"><small>${esc(name)}</small><span class="sector-price-track"><i style="width:${w.toFixed(1)}%"></i></span><b>${v===null?'—':n(v)}</b></div>`;
+ }).join('');
+ const levels=`<p class="sector-tab-note">條件價位，不是自動下單。股價觸及只預警，收盤才確認。</p><div class="sector-price-ruler">${ruler}</div>
+ <details class="sector-card-reasons"><summary>檢視買進／減碼／賣出理由</summary><p><b>買入觀察：</b>${esc(g.buy)}</p><p><b>減碼：</b>${esc(g.trim)}</p><p><b>防守出場：</b>${esc(g.sell)}</p></details>`;
+ const trackLine=track.length?`紅K×${track[0].red}／綠K×${track[0].green}；${esc(track[0].source)}`:'歷史突破K線事件尚未核對';
+ const evidence=`<div class="sector-mini-meters">${barscore('發動潛力',score(p.score?.potential))}${barscore('進場品質',score(p.score?.entry))}</div>
+ <div class="sector-card-lights">${light}</div>
+ <div class="sector-card-tags"><span class="sector-card-tag ok">${esc(ma510)}</span><span class="sector-card-tag muted">${trackLine}</span></div>
+ <div class="sector-ma-row">${[5,10,20,60,120,240].map(d=>`<span class="sector-ma ${numeric(ma.values?.[d])===null?'missing':ma.close>=ma.values[d]?'above':'below'}">MA${d} ${n(ma.values[d])}</span>`).join('')}</div>
+ <small>排名為研究排序，不是勝率；缺資料不補零。點「K線圖解」查看歷史證據。</small>`;
+ return `<article class="sector-battle-card sector-r9" data-stock-id="${esc(key)}">
+ <div class="sector-card-eyebrow"><b>${esc(rankText)}</b><span>${esc(stage)}</span></div>
+ <div class="sector-card-identity"><div><strong>${esc(c.code)} ${esc(c.name)}</strong><div class="sector-card-meta">${esc(c.industry||c.fundamentals?.industry||c.market||'產業待核對')}</div></div><div class="sector-card-quote"><b>${n(c.close)}</b><small class="${numeric(c.changePct)>0?'rising':numeric(c.changePct)<0?'falling':''}">${pct(c.changePct)}</small></div></div>
+ <div class="sector-r9-tabs" role="tablist" aria-label="${esc(c.code)}作戰資訊分頁">${tabBtn('summary','速覽')}${tabBtn('levels','買賣價位')}${tabBtn('evidence','技術證據')}</div>
+ ${tabPanel('summary',overview)}${tabPanel('levels',levels)}${tabPanel('evidence',evidence)}
+ <div class="sector-card-actions"><button type="button" class="sector-open-detail" data-sector-detail="${esc(key)}">📈 K線圖解</button><button type="button" class="sector-open-intraday" data-sector-intraday="${esc(key)}">✎ 盤中價量試算</button></div>
  </article>`;
 }
 function renderSectorPage(groupEl){
@@ -454,7 +514,7 @@ function sectorDirectory(){
  const valid=state.mode==='live'&&state.payload?.asOf===state.universe?.asOf&&!staleDeskSnapshot(state.payload?.asOf);
  if(!valid){out.innerHTML='<div class="desk-empty">全市場行情未核對為最近收盤，暫停當日強勢族群作戰卡；請查看資料日期。</div>';return;}
  const asOf=state.payload?.asOf||'';
- if(asOf!==sectorDate){sectorDate=asOf;sectorOpen.clear();sectorShown.clear();sectorInteracted=false;}
+ if(asOf!==sectorDate){sectorDate=asOf;sectorOpen.clear();sectorShown.clear();sectorCardTabs.clear();sectorInteracted=false;}
  const rows=allRows().filter(c=>{
    const p=deskEvidence(c),e=continuationReadout(c);
    return Boolean(p.liquid&&((p.qualified&&(p.stage||p.momentumStage))||e.strictMA510Hold===true||e.recentCloseHold10===true));
@@ -485,6 +545,10 @@ function sectorDirectory(){
  });
  // Delegated clicks work for cards appended by subsequent "load more" actions.
  out.onclick=e=>{
+   const tab=e.target.closest('[data-sector-tab]');if(tab){const card=tab.closest('.sector-battle-card');if(!card)return;
+     const type=tab.dataset.sectorTab;sectorCardTabs.set(card.dataset.stockId,type);
+     card.querySelectorAll('[data-sector-tab]').forEach(b=>{const selected=b.dataset.sectorTab===type;b.classList.toggle('active',selected);b.setAttribute('aria-selected',String(selected))});
+     card.querySelectorAll('[data-sector-panel]').forEach(p=>p.hidden=p.dataset.sectorPanel!==type);return;}
    const detail=e.target.closest('[data-sector-detail]');if(detail){showDetails(detail.dataset.sectorDetail);return;}
    const intraday=e.target.closest('[data-sector-intraday]');if(intraday){showDetails(intraday.dataset.sectorIntraday,true);return;}
    const more=e.target.closest('[data-sector-more]');if(more){const idx=Number(more.dataset.sectorMore),group=sectorPacked[idx];if(!group)return;
@@ -1188,7 +1252,7 @@ function detailNavigationIds(id){
 }
 function showDetails(id,jumpIntraday=false){
  const c=allRows().find(x=>rowId(x)===id);if(!c)return;
- state.detailIds=detailNavigationIds(id);
+ state.etfDetail=null;state.detailIds=detailNavigationIds(id);
  state.detail=c;state.chartDays=60;
  if($('#modalOverlay').hidden){history.pushState({chaopanDetail:true},'',location.href);state.detailHistory=true;}
  renderDetail();$('#modalOverlay').hidden=false;document.body.style.overflow='hidden';
@@ -1205,7 +1269,7 @@ function jumpToIntraday(){
  });
 }
 function hideDetails(fromPop=false){
- $('#modalOverlay').hidden=true;document.body.style.overflow='';state.detail=null;
+ $('#modalOverlay').hidden=true;document.body.style.overflow='';state.detail=null;state.etfDetail=null;
  if(state.detailHistory&&!fromPop){state.detailHistory=false;history.back();}
  if(fromPop)state.detailHistory=false;
 }
@@ -1489,5 +1553,5 @@ function setupDetailSwipe(){
 function openSettings(){const isReady=state.mode==='live';$('#modalContent').innerHTML=`<div class="eyebrow">APP STATUS / SETTINGS</div><h2 id="modalTitle">資料與安裝設定</h2><div class="settings-card"><strong>目前：${modeName()}</strong><p>最近盤後日期：${esc(state.payload?.asOf||'尚無')}<br>掃描歷史完整股票：${integer(state.payload?.eligibleCount||0)} 檔<br>已記錄股票：${integer(state.payload?.stockCount||0)} 檔</p></div><div class="settings-card"><strong>如何使用免費版？</strong><p>把本程式上傳 GitHub 公開 Repository，啟用 Actions，先手動執行「初次回補約220天」，設定 Pages 從 main /root 發布，再以 Android Chrome 的「新增至主畫面」安裝。GitHub Actions 依排程在13:30、14:30、18:30、23:00以及隔日06:00、08:30嘗試核對盤後資料（實際排程可能延遲），若交易所阻擋雲端 IP，需改用在台灣網路執行的收集主機。</p></div><div class="settings-card"><strong>即時版升級狀態</strong><p>目前沒有盤中報價或推播。未來串接授權即時行情、雲端首次突破判斷及 Firebase 推播後升級；不會使用盤後資料假裝盤中訊號。</p></div><div class="settings-card"><strong>網站隱私與密碼：目前仍是公開網站</strong><p>GitHub Pages 的 JavaScript 密碼視窗不能真正保護行情或阻止已取得網址的人查看檔案，亦不能安全撤銷別人的存取權。若需要可取消授權的真正私密網站，應遷移到有伺服端登入控管的部署方式（例如 Cloudflare Pages + Access），並關閉舊公開 Pages、保護行情資料來源。不要在此公開程式中設定真實密碼。</p></div><div class="action-row"><button id="reloadData" class="primary-action">重新檢查盤後資料</button>${isReady?'':'<button id="demoModeBtn" class="secondary-action">開啟示範畫面</button>'}</div>`;$('#reloadData').onclick=()=>{hideDetails();loadData()};if($('#demoModeBtn'))$('#demoModeBtn').onclick=()=>{hideDetails();demoMode()};$('#modalOverlay').hidden=false;document.body.style.overflow='hidden'}
 function navTo(page){$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(page==='list'){setTab('all');$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='star'){state.tab='star';const adv=$('.advanced-radar');if(adv)adv.open=true;$$('.tab').forEach(x=>x.classList.remove('active'));renderList();$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='guide')$('#institutionalBoard').scrollIntoView({behavior:'smooth'});else openSettings()}
 function wire(){loadWatch();setupSixtyToolbar();setupDetailSwipe();
- $$('.lens-scope').forEach(b=>b.onclick=()=>{state.rankLens=b.dataset.lens;state.rankView='20';state.stageView='all';state.tab='all';state.query='';$('#searchBox').value='';state.visible=30;renderList()});const liquidityToggle=$('#onlyLiquid');if(liquidityToggle){liquidityToggle.checked=state.liquidityOnly;liquidityToggle.addEventListener('change',e=>{state.liquidityOnly=e.target.checked;state.visible=30;renderList()})}$$('.rank-scope').forEach(b=>b.onclick=()=>{state.rankView=b.dataset.scope;state.visible=30;state.tab='all';renderList()});$$('.stage-scope').forEach(b=>b.onclick=()=>{state.stageView=b.dataset.stage;state.visible=30;state.tab='all';state.query='';$('#searchBox').value='';renderList()});const sort=$('#sortFilter');if(sort){sort.insertAdjacentHTML('afterbegin','<option value="trade">操盤品質與追高風險（預設）</option><option value="launch">第一根發動優先</option><option value="priority">基本面投資優先度</option>');sort.value='trade';state.sort='trade';}$$('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.stat-card').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.nav-item').forEach(b=>b.onclick=()=>navTo(b.dataset.page));$('#searchBox').oninput=e=>{state.query=e.target.value;state.visible=30;renderList()};$('#showMore').onclick=()=>{state.visible+=30;renderList()};$('#refreshBtn').onclick=()=>loadData();$('.advanced-radar')?.addEventListener('toggle',e=>{if(e.target.open&&state.payload){state.rankListDirty=false;renderList()}});$('#closeModal').onclick=()=>hideDetails();$('#modalOverlay').onclick=e=>{if(e.target===$('#modalOverlay'))hideDetails()};window.onkeydown=e=>{if(e.key==='Escape')hideDetails()};window.addEventListener('popstate',()=>{if(state.detail)hideDetails(true)});loadData();if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(console.warn)}}
+ $$('.lens-scope').forEach(b=>b.onclick=()=>{state.rankLens=b.dataset.lens;state.rankView='20';state.stageView='all';state.tab='all';state.query='';$('#searchBox').value='';state.visible=30;renderList()});const liquidityToggle=$('#onlyLiquid');if(liquidityToggle){liquidityToggle.checked=state.liquidityOnly;liquidityToggle.addEventListener('change',e=>{state.liquidityOnly=e.target.checked;state.visible=30;renderList()})}$$('.rank-scope').forEach(b=>b.onclick=()=>{state.rankView=b.dataset.scope;state.visible=30;state.tab='all';renderList()});$$('.stage-scope').forEach(b=>b.onclick=()=>{state.stageView=b.dataset.stage;state.visible=30;state.tab='all';state.query='';$('#searchBox').value='';renderList()});const sort=$('#sortFilter');if(sort){sort.insertAdjacentHTML('afterbegin','<option value="trade">操盤品質與追高風險（預設）</option><option value="launch">第一根發動優先</option><option value="priority">基本面投資優先度</option>');sort.value='trade';state.sort='trade';}$$('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.stat-card').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.nav-item').forEach(b=>b.onclick=()=>navTo(b.dataset.page));$('#searchBox').oninput=e=>{state.query=e.target.value;state.visible=30;renderList()};$('#showMore').onclick=()=>{state.visible+=30;renderList()};$('#refreshBtn').onclick=()=>loadData();$('.advanced-radar')?.addEventListener('toggle',e=>{if(e.target.open&&state.payload){state.rankListDirty=false;renderList()}});$('#closeModal').onclick=()=>hideDetails();$('#modalOverlay').onclick=e=>{if(e.target===$('#modalOverlay'))hideDetails()};window.onkeydown=e=>{if(e.key==='Escape')hideDetails()};window.addEventListener('popstate',()=>{if(state.detail||state.etfDetail)hideDetails(true)});loadData();if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(console.warn)}}
 document.addEventListener('DOMContentLoaded',wire);
