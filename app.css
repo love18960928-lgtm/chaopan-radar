@@ -538,3 +538,23 @@ html,body{overscroll-behavior-y:contain}
 .inst-stock .inst-title{min-width:0;flex:1}
 .inst-stock strong{font-variant-numeric:tabular-nums;font-size:12px;white-space:normal;text-align:right;min-width:85px}
 @media(max-width:390px){.inst-filter-group button{padding:7px 9px;font-size:11px}.inst-stock strong{min-width:78px;font-size:11px}}
+
+/* V3.1.1-r13 company fundamentals/valuation: lazy expanded, mobile friendly */
+.fin-r13-details{margin:12px 0;padding:0 12px;border:1px solid #315166;border-radius:16px;background:#0c1c2c}
+.fin-r13-details>summary{cursor:pointer;padding:15px 4px;color:#9eead8;font-weight:750}
+.fin-r13-details .visual-fin{margin:0 0 14px}
+.fin-r13-money{display:flex;gap:8px;flex-wrap:wrap;color:#b7cbd4;font-size:.88rem;line-height:1.6}
+.fin-r13-money strong{color:#f4f6f9}
+.fin-r13-warning{padding:10px;background:rgba(226,169,65,.11);border-radius:9px;color:#e9ce90;font-size:.83rem}
+.fin-r13-estimator{border-top:1px solid #315166;margin-top:15px;padding-top:12px}
+.fin-r13-estimator>strong{display:block;margin-bottom:12px}
+.fin-r13-estimator>small{display:block;color:#a5bdc8;margin-top:10px;font-size:.76rem}
+.fin-r13-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.fin-r13-fields label{font-size:.78rem;color:#a9cbd3;display:block;min-width:0}
+.fin-r13-fields input{width:100%;margin-top:5px;padding:10px 8px;border:1px solid #52717e;border-radius:8px;background:#0e2936;color:#f4fbff;font-size:1rem;box-sizing:border-box}
+.fin-r13-result{margin-top:12px;padding:12px;border:1px solid #315166;border-radius:10px;color:#c3d6df;font-size:.85rem;line-height:1.55}
+.fin-r13-prices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.fin-r13-prices span{display:flex;flex-direction:column;gap:3px;min-width:0;background:#123445;border-radius:8px;padding:10px 5px;text-align:center}
+.fin-r13-prices small{font-size:.7rem;color:#a3c4cc}
+.fin-r13-prices b{font-size:.94rem;color:#66d7ba}
+@media(max-width:380px){.fin-r13-prices b{font-size:.8rem}.fin-r13-fields{grid-template-columns:1fr 1fr}}
