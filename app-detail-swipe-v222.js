@@ -1,6 +1,6 @@
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
-const state={payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false};
+const state={payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false,instMarket:'all',instAsset:'stock',instSort:'amount'};
 const TAGS={first:'第一根發動',prep:'發動前預備',near:'接近頸線',volume:'新大量超越',limit:'20日多漲停',follow:'突破後追蹤'};
 const price=n=>n!==null&&n!==undefined&&Number.isFinite(Number(n))? Number(n).toLocaleString('zh-TW',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
 const integer=n=>Number.isFinite(Number(n))?Math.round(Number(n)).toLocaleString('zh-TW'):'—';
@@ -68,18 +68,37 @@ function breakoutTrackPanel(c){
 function institutionalBoard(){
  const board=$('#institutionalBoard');if(!board)return;
  const asOf=state.payload?.asOf;
- const names=Object.fromEntries(allRows().map(c=>[rowId(c),c.name]));
- const lists=ChaopanExtrasV311.institutionalRanking(state.marketIntel,asOf,names);
- $('#instDay').textContent=lists.ready?'交易日 '+asOf+'｜非即時':'法人資料尚未核對交易日';
- const fmtLots=x=>Number(x).toLocaleString('zh-TW',{minimumFractionDigits:Number.isInteger(x)?0:1,maximumFractionDigits:3});
- const mk=rows=>rows.length?rows.map((r,i)=>`<button type="button" class="inst-stock" data-inst-id="${esc(r.id)}"><span class="inst-rank">${i+1}</span><span class="inst-title"><b>${esc(r.code)} ${esc(r.name)}</b><small>${esc(r.market)}${r.assetType==='股票'?'':' · ' +esc(r.assetType)}｜外 ${fmtLots(r.foreign)}／投 ${fmtLots(r.trust)}／自 ${fmtLots(r.dealer)}</small></span><strong class="${r.net>0?'rising':'falling'}">${r.net>0?'+':''}${fmtLots(r.net)}張</strong></button>`).join(''):'<div class="inst-empty">尚未取得足夠同日官方法人資料；不能補虛構名單。</div>';
- $('#institutionalBuys').innerHTML=mk(lists.buys);$('#institutionalSells').innerHTML=mk(lists.sells);
- $('#instFoot').textContent=lists.ready?`同日完整法人資料 ${integer(lists.available)} 檔；買超顯示 ${lists.buys.length} 檔、賣超顯示 ${lists.sells.length} 檔。${lists.unnamed?`其中 ${lists.unnamed} 檔證券名稱待核對，請執行新版法人資料更新。`:``}未達20檔不湊數；此排行可能包含ETF，非即時，也不代表分點買進或持倉。`:'未取得與雷達同日、欄位完整的上市上櫃法人資料；請核對 data/market-intel.json 與盤後 Actions。';
+ if(!globalThis.ChaopanInstitutionV312){
+  $('#instDay').textContent='法人金額模組尚未載入';
+  $('#institutionalBuys').textContent='請確認 institutional-amount-v312.js 已部署。';
+  $('#institutionalSells').textContent='不可顯示未核對的金額排名。';return;
+ }
+ const options={market:state.instMarket,asset:state.instAsset,order:state.instSort};
+ const lists=ChaopanInstitutionV312.ranking(state.marketIntel,state.universe,asOf,options);
+ $('#instDay').textContent=lists.ready?'交易日 '+asOf+'｜非即時':'法人／收盤資料尚未全部核對日期';
+ const fmtLots=x=>Number(x).toLocaleString('zh-TW',{maximumFractionDigits:3});
+ const fmtAmount=x=>Number(x).toLocaleString('zh-TW',{minimumFractionDigits:2,maximumFractionDigits:2});
+ const mk=rows=>rows.length?rows.map((r,i)=>{
+  const value=lists.order==='amount'?`${fmtAmount(r.amountYi)} 億元（估）`:`${fmtLots(r.net)} 張`;
+  return `<button type="button" class="inst-stock" data-inst-id="${esc(r.id)}" aria-label="查看${esc(r.name)}法人與走勢詳情"><span class="inst-rank">${i+1}</span><span class="inst-title"><b>${esc(r.code)} ${esc(r.name)}</b><small>${esc(r.market)} · ${esc(r.assetType)}｜外 ${fmtLots(r.foreign)}／投 ${fmtLots(r.trust)}／自 ${fmtLots(r.dealer)} 張${r.close===null?'':`｜收盤 ${price(r.close)}`}</small></span><strong class="${r.net>0?'rising':'falling'}">${r.net>0?'+':''}${value}</strong></button>`;
+ }).join(''):'<div class="inst-empty">此分類沒有可核對的同日合格證券，不以舊資料或其他類別補足名單。</div>';
+ $('#institutionalBuys').innerHTML=lists.ready?mk(lists.buys):`<div class="inst-empty">${esc(lists.reason)}</div>`;
+ $('#institutionalSells').innerHTML=lists.ready?mk(lists.sells):`<div class="inst-empty">${esc(lists.reason)}</div>`;
+ const mode=lists.order==='amount'?'法人淨買賣超股數 × 同日收盤價之估算金額，非官方實際成交金額':'法人淨買賣超張數';
+ $('#instFoot').textContent=lists.ready?`範圍：${lists.market==='all'?'上市＋上櫃':lists.market==='listed'?'上市':'上櫃'}；${lists.asset==='stock'?'一般股票':lists.asset==='etf'?'ETF':'全部證券'}；依${mode}排名。來源上市 ${lists.sourceStatus.listed}／上櫃 ${lists.sourceStatus.otc}。同日法人欄位 ${integer(lists.available)} 檔，入選排序 ${integer(lists.quoted)} 檔，缺同日收盤 ${integer(lists.excludedNoQuote)} 檔，錯日期 ${integer(lists.excludedWrongDate)} 檔；買超 ${lists.buys.length}、賣超 ${lists.sells.length} 檔。${lists.reason} 非即時，不代表法人持有部位。`:
+  `等待來源驗證：${lists.reason}。未取得時保留缺資料提示，不改用單一市場偽稱合併排名。`;
  const rowById=new Map([...lists.buys,...lists.sells].map(r=>[r.id,r]));
  $$('#institutionalBoard [data-inst-id]').forEach(b=>b.onclick=()=>{
-   const r=rowById.get(b.dataset.instId);if(!r)return;
-   const c=allRows().find(c=>rowId(c)===r.id);
-   showInstitutionalDetail(r);
+  const r=rowById.get(b.dataset.instId);if(r)showInstitutionalDetail(r);
+ });
+ $$('#institutionalBoard [data-inst-filter]').forEach(btn=>{
+  btn.classList.toggle('active',({market:'instMarket',asset:'instAsset',order:'instSort'}[btn.dataset.instFilter] in state)
+   &&state[{market:'instMarket',asset:'instAsset',order:'instSort'}[btn.dataset.instFilter]]===btn.dataset.value);
+  btn.setAttribute('aria-pressed',String(btn.classList.contains('active')));
+  btn.onclick=()=>{
+   const key={market:'instMarket',asset:'instAsset',order:'instSort'}[btn.dataset.instFilter];
+   if(!key)return;state[key]=btn.dataset.value;institutionalBoard();
+  };
  });
 }
 
@@ -96,7 +115,7 @@ function renderInstitutionalDetail(){
  const match=allRows().find(c=>rowId(c)===r.id);
  if(match){
   const layout=sectorBattleCard(match,{source:'institution',rankText:'三大法人排行・股票',institutional:r});
-  $('#modalContent').innerHTML=`<h2 id="modalTitle" class="card-dialog-title">法人排行｜個股作戰卡</h2>${layout}<p class="detail-note">法人資料日期 ${esc(asOf)}。買賣超不代表主力持股；技術價位以個股歷史K為準。</p>`;
+  $('#modalContent').innerHTML=`<h2 id="modalTitle" class="card-dialog-title">法人排行｜個股作戰卡</h2>${layout}<p class="detail-note">法人資料日期 ${esc(asOf)}。金額排行按同日收盤價推估，不是實際成交金額；技術價位以個股歷史K為準。</p>`;
   return;
  }
  const intel=state.marketIntel||{};

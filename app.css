@@ -528,3 +528,13 @@ html,body{overscroll-behavior-y:contain}
 .unified-battle-card .sector-card-quote{flex-shrink:0}
 @media(min-width:800px){.candidate-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:390px){.unified-battle-card .sector-card-actions{grid-template-columns:1fr 1fr}}
+
+/* r12: institutional amount filters; tabs remain compact on small phones. */
+.inst-filters{display:grid;gap:8px;margin:13px 0 15px}
+.inst-filter-group{display:flex;flex-wrap:wrap;gap:5px}
+.inst-filter-group button{border:1px solid #35536a;color:#b2cedd;background:#122737;border-radius:9px;padding:8px 12px;font-size:12px;cursor:pointer}
+.inst-filter-group button.active{background:#267e78;color:#f2fffc;border-color:#54c8bb;font-weight:700}
+.inst-filter-group button:focus-visible,.inst-stock:focus-visible{outline:2px solid #83eedb;outline-offset:2px}
+.inst-stock .inst-title{min-width:0;flex:1}
+.inst-stock strong{font-variant-numeric:tabular-nums;font-size:12px;white-space:normal;text-align:right;min-width:85px}
+@media(max-width:390px){.inst-filter-group button{padding:7px 9px;font-size:11px}.inst-stock strong{min-width:78px;font-size:11px}}
