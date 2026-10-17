@@ -663,6 +663,7 @@ function guidanceCard(c){
  const ladder=levels.map(x=>`<div class="trade-level-row"><span>${esc(x.label)}</span><div class="trade-level-track"><i class="${x.color}" style="width:${ma===mi?60:(15+85*(x.value-mi)/(ma-mi)).toFixed(1)}%"></i></div><b>${n(x.value)}</b></div>`).join('');
  return `<section class="guidance-panel battle-panel" aria-label="買點賣點與移動停利作戰卡"><div class="guidance-title"><strong>◎ 超盤手｜買賣作戰卡</strong><span class="guidance-signal ${cls}">${esc(g.title)}</span></div>
  <p class="battle-asof">${esc(c.date||'日期待核對')} 收盤後情境｜${esc(g.stage)}｜非即時／非自動下單</p>
+ <p class="battle-asof">走勢結構：${esc(g.trendKind==='trend'?'高低點墊高／多頭續強':g.trendKind==='failed'?'原頸線失守':g.trendKind==='range'?'整理／未確認續強':g.trendKind==='weak'?'均線轉弱':g.trendKind==='pullback'?'回測觀察':'趨勢證據待核對')} ${g.anchorDate?'｜原突破日 '+esc(g.anchorDate):''}</p>
  ${annotatedBattleChart(c,g)}
  <div class="battle-grid"><div><small>觀察突破</small><b>${n(g.breakoutLevel)}</b><span>需價量確認</span></div><div><small>回測觀察區</small><b>${g.pullbackZone?`${n(g.pullbackZone[0])}～${n(g.pullbackZone[1])}`:'待資料'}</b><span>止跌才觀察</span></div><div><small>移動停利參考</small><b>${n(g.trailingStop)}</b><span>${g.trailingStop===null?'缺完整事件史':'非保證成交價'}</span></div></div>
  <div class="trade-levels" aria-label="買賣關卡價位圖">${ladder||'<p>資料不足，暫不推估價位</p>'}</div>

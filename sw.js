@@ -1,7 +1,7 @@
 'use strict';
-// V3.1.1-r10 network-first shell: network-first app shell; preserve existing EOD snapshot cache.
+// V3.1.1-r11 network-first shell: network-first app shell; preserve existing EOD snapshot cache.
 // This helps recover from older cache-first service workers after a successful GitHub Pages deploy.
-const STATIC = 'chaopan-static-v3.1.1-r10';
+const STATIC = 'chaopan-static-v3.1.1-r11';
 const DATA = 'chaopan-eod-data-v311-r3';
 const CORE = ['./index.html', './app.css', './app-detail-swipe-v222.js'];
 
