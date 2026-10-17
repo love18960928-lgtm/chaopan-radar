@@ -505,6 +505,46 @@ function verifiedValuation(c){
  if(targets.some((p,i)=>!(p>0&&Math.abs(p-t*pes[i])<=Math.max(.1,p*.002))))return null;
  return {eps:t,pes,targets,date:f.modelAsOf,period:f.epsTtmPeriod,samples:Number(f.peRiverSample),source:f.epsTtmSource};
 }
+// r15: verified published revenue/EPS may be shown even when a full
+// 4-quarter valuation is unavailable. No silent quarter-to-year extrapolation.
+function financeSnapshot(c){
+ const f=c?.fundamentals||{},as=String(c?.date||'');
+ const cur=/^\d{4}-\d{2}-\d{2}$/.test(as)?new Date(as+'T00:00:00Z'):null;
+ if(!cur||!Number.isFinite(cur.getTime()))return {revenue:null,eps:null,pe:null};
+ const rp=String(f.revenuePeriod||'');let revenue=null;
+ if(/^\d{4}-(0[1-9]|1[0-2])$/.test(rp)){
+  const months=(cur.getUTCFullYear()-Number(rp.slice(0,4)))*12+cur.getUTCMonth()+1-Number(rp.slice(5,7));
+  if(months>=0&&months<=4){
+   const yoy=numeric(f.revenueYoY),monthly=numeric(f.revenueMonthThousand);
+   if(yoy!==null||monthly!==null){revenue={period:rp,yoy,monthly:monthly!==null&&monthly>=0?monthly:null};}
+  }
+ }
+ const ep=String(f.epsPeriod||'');let eps=null;
+ const m=ep.match(/^(\d{4})Q([1-4])$/);
+ if(m){
+  const y=Number(m[1]),q=Number(m[2]),release=q===1?`${y}-05-16`:q===2?`${y}-08-16`:q===3?`${y}-11-16`:`${y+1}-04-01`;
+  const released=new Date(release+'T00:00:00Z'),age=(cur-released)/86400000,amount=numeric(f.eps);
+  if(amount!==null&&age>=0&&age<=520){eps={period:ep,amount};}
+ }
+ const pd=String(f.valuationDate||'');const d=/^\d{4}-\d{2}-\d{2}$/.test(pd)?new Date(pd+'T00:00:00Z'):null;
+ const pe=numeric(f.pe),peAge=d?(cur-d)/86400000:Infinity;
+ return {revenue,eps,pe:(pe!==null&&pe>0&&peAge>=0&&peAge<=40)?{value:pe,date:pd}:null};
+}
+function financeQuickCard(c){
+ const m=verifiedValuation(c),info=financeSnapshot(c);
+ if(!m&&!info.revenue&&!info.eps&&!info.pe)return '';
+ const bits=[];
+ if(info.revenue){const r=info.revenue;
+  const val=r.yoy!==null?`年增 ${pct(r.yoy)}`:r.monthly!==null?`${(r.monthly/100000).toFixed(2)} 億元`:null;
+  if(val)bits.push(`<span><small>月營收 ${esc(r.period)}</small><b>${esc(val)}</b></span>`);
+ }
+ if(info.eps)bits.push(`<span><small>已公告EPS ${esc(info.eps.period)}</small><b>${price(info.eps.amount)} 元</b></span>`);
+ if(info.pe)bits.push(`<span><small>官方本益比 ${esc(info.pe.date)}</small><b>${price(info.pe.value)} 倍</b></span>`);
+ const bands=m?`<div class="finance-glance-band" aria-label="歷史本益比模型估值三區間">
+   ${['便宜','合理','昂貴'].map((label,i)=>`<span class="${i===1?'fair':''}"><small>${label}情境</small><strong>${price(m.targets[i])} 元</strong></span>`).join('')}
+  </div><div class="finance-glance-caveat">模型合理價 ${price(m.targets[1])} 元｜近四季EPS ${price(m.eps)} × 歷史PE中位數；不是券商目標價</div>`:'';
+ return `<section class="finance-glance" aria-label="已核對公司營收與估值"><div class="finance-glance-title">公司研究 · 已取得資料 <small>${esc(c.date)} 盤後</small></div>${bits.length?`<div class="finance-glance-facts">${bits.join('')}</div>`:''}${bands}</section>`;
+}
 function valuationBadge(c){
  const m=verifiedValuation(c);
  if(!m)return '';
@@ -512,10 +552,9 @@ function valuationBadge(c){
  return `<div class="model-target-mini" aria-label="已驗證模型合理價"><span>模型合理價（非券商喊價）<small>歷史本益比中位數 × 近四季EPS</small></span><strong>${price(m.targets[1])} 元</strong>${diff}</div>`;
 }
 function financeCardPreview(c){
- const m=verifiedValuation(c);if(!m)return '';
- const f=c.fundamentals||{},caps=['便宜情境','合理情境','昂貴情境'];
- const vals=m.targets.map((v,i)=>`<span><small>${caps[i]}｜${price(m.pes[i])}倍</small><b>${price(v)}元</b></span>`).join('');
- return `<div class="model-target-prices"><div class="model-target-heading">目標價參考｜歷史本益比河流區間 <small>非外資券商目標價</small></div><div class="model-target-columns">${vals}</div><p>近四季EPS估算 ${price(m.eps)}元（截至${esc(m.period)}）・歷史PE有效樣本${m.samples}日・模型資料日${esc(m.date)}。</p><small>僅供估值研究，不保證達標；配股、分割及未來獲利變化會影響可比性。</small></div><button type="button" class="fin-card-open" data-card-finance-detail="${esc(rowId(c))}">查看營收與估值依據 →</button>`;
+ const m=verifiedValuation(c),info=financeSnapshot(c);
+ if(!m&&!info.revenue&&!info.eps&&!info.pe)return '';
+ return `${financeQuickCard(c)}<button type="button" class="fin-card-open" data-card-finance-detail="${esc(rowId(c))}">查看完整營收、獲利與模型來源 →</button>`;
 }
 
 function unifiedCardShell({key,rankText,stage,code,name,industry,closeText,changeText,changeClass,summary,levels,evidence,finance,actions}){
@@ -574,7 +613,7 @@ function sectorBattleCard(c,options={}){
  const overview=`<div class="sector-mini-status"><b>${esc(g.title)}</b><span class="sector-card-tag ${riskClass}">${esc(label)}</span></div>
  <div class="sector-mini-stats"><span>觀察關卡 <b>${levelOk?n(g.breakoutLevel):'待核對'}</b></span><span>MA5 <b>${levelOk?n(g.ma5):'待核對'}</b></span><span>MA10 <b>${levelOk?n(g.ma10):'待核對'}</b></span></div>
  <div class="sector-six-dots"><span>六均線</span>${six}</div>
- <div class="sector-phase-note">${esc(ma510)} · ${esc(c.date||'資料日待核對')}盤後</div>${valuationBadge(c)}`;
+ <div class="sector-phase-note">${esc(ma510)} · ${esc(c.date||'資料日待核對')}盤後</div>${financeQuickCard(c)}`;
  const levelVals=[
   ['突破觀察',g.breakoutLevel],['回測觀察',g.pullbackZone?.[0]],['MA5減碼警戒',g.ma5],['MA10防守',g.ma10],['歷史支撐',g.support],['移動停利',g.trailingStop]
  ];
@@ -1359,6 +1398,7 @@ function showDetails(id,jumpIntraday=false){
 function jumpToIntraday(){
  const sheet=$('#modalOverlay .sheet'),panel=$('#modalContent .intraday-panel');
  if(!sheet||!panel)return;
+ const fold=panel.closest('details');if(fold)fold.open=true;
  requestAnimationFrame(()=>{
    const rect=panel.getBoundingClientRect(),parent=sheet.getBoundingClientRect();
    sheet.scrollTop=Math.max(0,sheet.scrollTop+rect.top-parent.top-14);
@@ -1563,7 +1603,12 @@ function wireIntradayPanel(c){
 }
 
 function renderDetail(){const c=state.detail;if(!c)return;const starred=state.watch.has(c.market+'-'+c.code),cls=c.changePct>0?'rising':c.changePct<0?'falling':'neutral';
-  $('#modalContent').innerHTML=`${detailNav()}<div class="detail-title"><div><div class="eyebrow">STOCK ANALYSIS / ${esc(c.market)}</div><h2 id="modalTitle">${esc(c.code)} ${esc(c.name)}</h2><div class="detail-sub">${esc(c.date)} 盤後資料${state.mode==='demo'?' · 示範':''}</div></div><div class="detail-price"><strong>${price(c.close)}</strong><div class="${cls}">${pct(c.changePct)}</div></div></div><div class="priority-levels"><span>近期頸線 <b>${price(latestNeck(c))}</b></span><span>第一支撐 <b>${price(supportLines(c)[0]?.lower)}</b></span><span>盤中觸發 <b>${price(c.intradayPlan?.crossPrice)}</b></span></div>${guidanceCard(c)}${deskPlanHTML(c)}${ChaopanIntel.chipPanel(state.marketIntel,c,deskEvidence(c))}<div class="chart-area"><div class="chart-top"><strong>歷史K線／成交量／均線</strong><div class="chart-range"><button class="range-btn ${state.chartDays===20?'active':''}" data-days="20">20日</button><button class="range-btn ${state.chartDays===60?'active':''}" data-days="60">60日</button><button class="range-btn ${state.chartDays===120?'active':''}" data-days="120">120日</button><button type="button" class="zoom-btn" data-zoom="in" aria-label="K線放大">＋</button><button type="button" class="zoom-btn" data-zoom="out" aria-label="K線縮小">－</button></div></div><div id="chartSvg" aria-label="雙指捏合可縮放K線">${makeChart(c.bars||[],latestNeck(c),state.chartDays,supportLines(c),c.structureV23?.necklines||[],c.structureV23?.mainDefense)}</div><small class="chart-zoom-hint">雙指捏合或按 ＋／－ 放大縮小；只有現有歷史K棒，非即時。</small><div class="chart-legend"><span>━━ 橘色：最新頸線</span><span style="color:#c8a5e8">┄┄ 淺紫：其他頸線／最後防守</span><span style="color:#3dd9ba">━━ 第一支撐</span><span style="color:#76abfa">━━ 第二支撐</span><span style="color:#ffd36e">━━ MA5</span><span style="color:#8dafff">━━ MA10</span><span style="color:#eaa8ec">━━ MA20</span><span>紅漲綠跌</span></div></div><details class="fin-r13-details"><summary>📊 公司研究｜營收、EPS與估值情境</summary>${financialPanel(c)}</details>${maPanel(c)}${sixMaPanel(c)}${breakoutTrackPanel(c)}${trendModePanel(c)}${liquidityPanel(c)}${continuationPanel(c)}${confirmedStrengthPanel(c)}${phasePanel(c)}<div class="tagrow">${(c.tags||[]).map(t=>`<span class="signal-tag ${t}">${esc(TAGS[t]||t)}</span>`).join('')}${c.priceConfirmed?'<span class="signal-tag confirmed">價格收盤確認</span>':c.confirmed?'<span class="signal-tag confirmed">最大量確認</span>':''}</div><div class="detail-grid"><div class="detail-metric"><div class="small">近期主要突破頸線</div><strong>${price(latestNeck(c))} 元</strong><div class="small">${esc(c.structureV23?.necklineDate||c.neckDate||'尚無壓力點')}${c.priceConfirmed&&c.neck!==latestNeck(c)?'／突破當日參考 '+price(c.neck):''}</div></div><div class="detail-metric"><div class="small">距離近期頸線</div><strong>${pct(latestNeck(c)>0?100*(Number(c.close)/latestNeck(c)-1):null)}</strong><div class="small">正值代表已突破</div></div><div class="detail-metric"><div class="small">當日成交量</div><strong>${integer(c.lots)} 張</strong><div class="small">前10日均量 ${Number(c.volumeRatio).toFixed(2)} 倍</div></div><div class="detail-metric"><div class="small">近20日漲停估算</div><strong>${integer(c.limit20)} 次</strong><div class="small">含今天，依收盤價近似判定</div></div><div class="detail-metric"><div class="small">前120日最大量</div><strong>${integer(c.oldMaxLots)} 張</strong><div class="small">${esc(c.oldMaxDate||'—')}</div></div><div class="detail-metric"><div class="small">突破確認</div><strong>${c.priceConfirmed?'價格已突破':c.confirmed?'成交量創新高（非首破）':'尚未確認首破'}</strong><div class="small">低量一字漲停也可價格確認；大量另計</div></div></div>${summaryPanel(c)}<div class="intraday-shortcut"><button type="button" id="intradayJump">✎ 盤中輸入價格與成交量 →</button><small>前一天預算好條件；盤中用券商即時報價自行核對</small></div>${intradayPanel(c)}${cyclePanel(c)}<details class="intel-deep"><summary>進階研究：技術與風險細節</summary>${technicalVisual(c)}${riskPanel(c)}</details><details class="fin-notes secondary-details"><summary>大量K突破與其他技術細節</summary>${launchSummary(c)}${traderPanel(c)}</details><div class="detail-note">${c.tags?.includes('volume')?'✓ 今日成交量大於前120個交易日最大量，且收盤高於舊最大量K最高價。':''} ${c.tags?.includes('first')?'✓ 今日收盤首次突破仍有效的大量K高點。':''} ${c.overextended?'⚠ 收盤距頸線已逾8%，應留意追高風險。':''}<br>盤後訊號僅供觀察，不代表次日買點；除權息可能導致假突破。</div><div class="detail-actions"><button class="primary-action" id="starButton">${starred?'★ 移出自選':'☆ 加入自選'}</button><button class="secondary-action" id="shareButton">分享股票資訊</button></div>`;
+  $('#modalContent').innerHTML=`${detailNav()}<div class="detail-title"><div><div class="eyebrow">STOCK ANALYSIS / ${esc(c.market)}</div><h2 id="modalTitle">${esc(c.code)} ${esc(c.name)}</h2><div class="detail-sub">${esc(c.date)} 盤後資料${state.mode==='demo'?' · 示範':''}</div></div><div class="detail-price"><strong>${price(c.close)}</strong><div class="${cls}">${pct(c.changePct)}</div></div></div><div class="priority-levels"><span>近期頸線 <b>${price(latestNeck(c))}</b></span><span>第一支撐 <b>${price(supportLines(c)[0]?.lower)}</b></span><span>盤中觸發 <b>${price(c.intradayPlan?.crossPrice)}</b></span></div>${guidanceCard(c)}<div class="chart-area"><div class="chart-top"><strong>歷史K線／成交量／均線</strong><div class="chart-range"><button class="range-btn ${state.chartDays===20?'active':''}" data-days="20">20日</button><button class="range-btn ${state.chartDays===60?'active':''}" data-days="60">60日</button><button class="range-btn ${state.chartDays===120?'active':''}" data-days="120">120日</button><button type="button" class="zoom-btn" data-zoom="in" aria-label="K線放大">＋</button><button type="button" class="zoom-btn" data-zoom="out" aria-label="K線縮小">－</button></div></div><div id="chartSvg" aria-label="雙指捏合可縮放K線">${makeChart(c.bars||[],latestNeck(c),state.chartDays,supportLines(c),c.structureV23?.necklines||[],c.structureV23?.mainDefense)}</div><small class="chart-zoom-hint">雙指捏合或按 ＋／－ 放大縮小；只有現有歷史K棒，非即時。</small><div class="chart-legend"><span>━━ 橘色：最新頸線</span><span style="color:#c8a5e8">┄┄ 淺紫：其他頸線／最後防守</span><span style="color:#3dd9ba">━━ 第一支撐</span><span style="color:#76abfa">━━ 第二支撐</span><span style="color:#ffd36e">━━ MA5</span><span style="color:#8dafff">━━ MA10</span><span style="color:#eaa8ec">━━ MA20</span><span>紅漲綠跌</span></div></div><details class="fin-r13-details"><summary>📊 公司研究｜營收、EPS及合理價情境</summary>${financialPanel(c)}</details>
+ <details class="research-fold"><summary>▥ 均線強弱、六條均線與趨勢結構</summary>${maPanel(c)}${sixMaPanel(c)}${trendModePanel(c)}</details>
+ <details class="research-fold"><summary>▥ 突破紅綠K、量價與續強證據</summary>${breakoutTrackPanel(c)}${liquidityPanel(c)}${continuationPanel(c)}${confirmedStrengthPanel(c)}${phasePanel(c)}</details>
+ <details class="research-fold"><summary>▥ 完整價位計畫與法人風險</summary>${deskPlanHTML(c)}${ChaopanIntel.chipPanel(state.marketIntel,c,deskEvidence(c))}</details>
+ <details class="research-fold"><summary>▥ 歷史頸線、突破驗證與原始統計</summary><div class="tagrow">${(c.tags||[]).map(t=>`<span class="signal-tag ${t}">${esc(TAGS[t]||t)}</span>`).join('')}${c.priceConfirmed?'<span class="signal-tag confirmed">價格收盤確認</span>':c.confirmed?'<span class="signal-tag confirmed">最大量確認</span>':''}</div><div class="detail-grid"><div class="detail-metric"><div class="small">近期主要突破頸線</div><strong>${price(latestNeck(c))} 元</strong><div class="small">${esc(c.structureV23?.necklineDate||c.neckDate||'尚無壓力點')}${c.priceConfirmed&&c.neck!==latestNeck(c)?'／突破當日參考 '+price(c.neck):''}</div></div><div class="detail-metric"><div class="small">距離近期頸線</div><strong>${pct(latestNeck(c)>0?100*(Number(c.close)/latestNeck(c)-1):null)}</strong><div class="small">正值代表已突破</div></div><div class="detail-metric"><div class="small">當日成交量</div><strong>${integer(c.lots)} 張</strong><div class="small">前10日均量 ${Number(c.volumeRatio).toFixed(2)} 倍</div></div><div class="detail-metric"><div class="small">近20日漲停估算</div><strong>${integer(c.limit20)} 次</strong><div class="small">含今天，依收盤價近似判定</div></div><div class="detail-metric"><div class="small">前120日最大量</div><strong>${integer(c.oldMaxLots)} 張</strong><div class="small">${esc(c.oldMaxDate||'—')}</div></div><div class="detail-metric"><div class="small">突破確認</div><strong>${c.priceConfirmed?'價格已突破':c.confirmed?'成交量創新高（非首破）':'尚未確認首破'}</strong><div class="small">低量一字漲停也可價格確認；大量另計</div></div></div>${summaryPanel(c)}</details><div class="intraday-shortcut"><button type="button" id="intradayJump">✎ 盤中輸入價格與成交量 →</button><small>前一天預算好條件；盤中用券商即時報價自行核對</small></div><details class="research-fold intraday-fold"><summary>✎ 盤中價量試算（手動輸入）</summary>${intradayPanel(c)}</details>
+ <details class="research-fold"><summary>▥ 起漲循環與階段證據</summary>${cyclePanel(c)}</details><details class="intel-deep"><summary>進階研究：技術與風險細節</summary>${technicalVisual(c)}${riskPanel(c)}</details><details class="fin-notes secondary-details"><summary>大量K突破與其他技術細節</summary>${launchSummary(c)}${traderPanel(c)}</details><div class="detail-note">${c.tags?.includes('volume')?'✓ 今日成交量大於前120個交易日最大量，且收盤高於舊最大量K最高價。':''} ${c.tags?.includes('first')?'✓ 今日收盤首次突破仍有效的大量K高點。':''} ${c.overextended?'⚠ 收盤距頸線已逾8%，應留意追高風險。':''}<br>盤後訊號僅供觀察，不代表次日買點；除權息可能導致假突破。</div><div class="detail-actions"><button class="primary-action" id="starButton">${starred?'★ 移出自選':'☆ 加入自選'}</button><button class="secondary-action" id="shareButton">分享股票資訊</button></div>`;
   wireValuationScenario(c);
   wireIntradayPanel(c);
   if($('#intradayJump'))$('#intradayJump').onclick=jumpToIntraday;

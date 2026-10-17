@@ -587,3 +587,22 @@ html,body{overscroll-behavior-y:contain}
 .valuation-only-toggle{display:flex;gap:10px;align-items:center;padding:12px 11px;margin:12px 0;border:1px solid #3a6f68;border-radius:12px;background:#113137;color:#d1eee7;cursor:pointer}
 .valuation-only-toggle>input{accent-color:#53dbc0;width:19px;height:19px;flex-shrink:0}
 .valuation-only-toggle span{font-size:12px;line-height:1.55}.valuation-only-toggle small{display:block;color:#a9c3cb;font-size:10px;margin-top:4px}
+
+/* r15: compact financial visibility on the primary stock card. */
+.finance-glance{margin:11px 0 7px;padding:12px;background:#102f3b;border:1px solid #3a7180;border-radius:13px;line-height:1.45}
+.finance-glance-title{font-weight:750;color:#b8efdb;font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:5px;margin-bottom:9px}
+.finance-glance-title small{font-size:10px;color:#aac6d0;font-weight:400}
+.finance-glance-facts,.finance-glance-band{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.finance-glance-facts span,.finance-glance-band span{display:flex;flex-direction:column;gap:3px;padding:8px 5px;background:#173645;border:1px solid #355565;border-radius:9px;min-width:0;text-align:center}
+.finance-glance-facts small,.finance-glance-band small{color:#acc3cd;font-size:10px;line-height:1.35}
+.finance-glance-facts b{color:#f1f8ff;font-size:clamp(11px,3vw,15px);overflow-wrap:anywhere}
+.finance-glance-band{margin-top:9px}
+.finance-glance-band span.fair{background:#1b514c;border-color:#5cbb9d}
+.finance-glance-band strong{color:#e9fff6;font-size:clamp(12px,3.2vw,18px);overflow-wrap:anywhere}
+.finance-glance-caveat{color:#a9c5cb;font-size:10px;margin-top:8px;line-height:1.5}
+.research-fold{margin:13px 0;border:1px solid #31566c;border-radius:13px;background:#0e2335;overflow:hidden}
+.research-fold>summary{cursor:pointer;padding:15px 12px;color:#c0e8df;font-size:13px;font-weight:700;line-height:1.6;list-style:disclosure-closed}
+.research-fold[open]>summary{border-bottom:1px solid #31566c;list-style:disclosure-open}
+.research-fold>.ma-structure-panel,.research-fold>.cycle-panel,.research-fold>.intraday-panel,.research-fold>.guidance-panel{margin:11px}
+.research-fold .detail-grid,.research-fold>.tagrow{margin:12px}
+@media(max-width:420px){.finance-glance{padding:10px 7px}.finance-glance-facts,.finance-glance-band{gap:4px}.finance-glance-facts span,.finance-glance-band span{padding:8px 3px}}
