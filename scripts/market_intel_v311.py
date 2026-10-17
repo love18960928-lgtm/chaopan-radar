@@ -5,6 +5,8 @@ an index's latest date with a different date's institutional-flow data.
 This optional task cannot break the existing price-volume collector.
 """
 import argparse
+import csv
+import io
 import datetime as dt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import urllib.error
@@ -202,26 +204,155 @@ def twse_margin(payload,target):
         if out:return out
     return {}
 
-def tpex_otc_index(payload,target):
-    """TPEx indexSummary named table; reject if published date cannot match."""
-    if not isinstance(payload,dict):return None
-    dated=date_iso(payload.get('date') or payload.get('Date') or payload.get('reportDate'))
-    if dated!=target:return None
-    for table in payload.get('tables') or []:
-        fields=[str(x) for x in table.get('fields') or []]
-        if not all(any(key in f for f in fields) for key in ('指數','收市指數')):continue
-        labeli=next((i for i,f in enumerate(fields) if f=='指數'),None)
-        closei=next((i for i,f in enumerate(fields) if '收市指數' in f),None)
-        changei=next((i for i,f in enumerate(fields) if f=='漲跌'),None)
-        pcti=next((i for i,f in enumerate(fields) if '%' in f or '百分比' in f),None)
-        if None in (labeli,closei,changei,pcti):continue
-        for row in table.get('data') or []:
-            if not isinstance(row,list) or len(row)!=len(fields) or str(row[labeli]).strip()!='櫃買指數':continue
-            close,change,pct=[number(row[i]) for i in (closei,changei,pcti)]
-            if any(x is None for x in (close,change,pct)) or close<=0:return None
-            if abs(change/(close-change)*100-pct)>0.25:return None
-            return {'date':target,'close':close,'change':change,'pct':pct,'source':'TPEx indexSummary'}
+def tpex_otc_index(payload, target):
+    """Strictly verify TPEx OTC index as-of; percent is optional.
+
+    Official public historical columns include date, open, high, low, close,
+    change, and do not necessarily include a percent column. This parser
+    supports the named table representation and single-index dated records.
+    Unknown dates and inconsistent numbers never become a trading signal.
+    """
+    def col_index(fields, names):
+        for name in names:
+            for index, field in enumerate(fields):
+                if str(field).strip() == name:
+                    return index
+        return None
+
+    def change_number(raw):
+        if raw is None: return None
+        result = number(raw)
+        if result is not None: return result
+        label = str(raw).strip()
+        sign = -1 if ('▼' in label or '▽' in label or '跌' in label or label.startswith(('-', '−', '－'))) else 1
+        cleaned = re.sub(r'[▲△▼▽＋+\-－−,\s]', '', label)
+        parsed = number(cleaned)
+        return sign * parsed if parsed is not None else None
+
+    def verified(close_raw, change_raw, pct_raw, published, source):
+        if date_iso(published) != target:
+            return None
+        close, change = number(close_raw), change_number(change_raw)
+        if close is None or change is None or close <= 0 or close - change <= 0:
+            return None
+        computed = round(100 * change / (close - change), 2)
+        if pct_raw not in (None, '', '--', '—'):
+            given = number(str(pct_raw).rstrip('%％'))
+            if given is not None and abs(given - computed) > 0.25:
+                return None
+        return {'date':target, 'close':close, 'change':change,
+                'pct':computed, 'source':source}
+
+    if isinstance(payload, dict):
+        published = payload.get('date') or payload.get('Date') or payload.get('reportDate')
+        for table in (payload.get('tables') or []):
+            if not isinstance(table, dict): continue
+            fields = table.get('fields') or []
+            if not isinstance(fields, list): continue
+            label_i=col_index(fields,('指數','指數名稱','名稱'))
+            close_i=col_index(fields,('收市指數','收市','收盤指數','收盤'))
+            change_i=col_index(fields,('漲跌點數','指數漲跌','漲跌'))
+            pct_i=col_index(fields,('漲跌幅(%)','漲跌幅%','漲跌百分比','漲跌幅'))
+            date_i=col_index(fields,('資料日期','日期','交易日期'))
+            if close_i is None or change_i is None: continue
+            for row in (table.get('data') or []):
+                if not isinstance(row,list) or len(row)!=len(fields):continue
+                if label_i is not None:
+                    label=str(row[label_i]).strip()
+                    if label not in ('櫃買指數','櫃買指數(OTC)','上櫃指數'):
+                        continue
+                # A table with no explicit index label must have a matching
+                # published date and a unique row; otherwise its identity is
+                # ambiguous and we must reject it.
+                elif len(table.get('data') or [])!=1:
+                    continue
+                day=row[date_i] if date_i is not None else published
+                result=verified(row[close_i],row[change_i],
+                                row[pct_i] if pct_i is not None else None,
+                                day,'TPEx indexSummary')
+                if result:return result
+        # Public historical feed might be a single dated record.
+        row=payload
+        day=row.get('資料日期') or row.get('日期') or published
+        name=row.get('指數名稱') or row.get('指數') or '櫃買指數'
+        if name in ('櫃買指數','上櫃指數'):
+            return verified(row.get('收市') or row.get('收市指數'),
+                            row.get('漲跌') or row.get('指數漲跌'),
+                            row.get('漲跌幅'),day,'TPEx dated OTC record')
+    elif isinstance(payload,list):
+        for row in payload:
+            if not isinstance(row,dict):continue
+            day=row.get('資料日期') or row.get('日期') or row.get('Date')
+            if row.get('指數名稱') not in (None,'櫃買指數','上櫃指數'):
+                continue
+            result=verified(row.get('收市') or row.get('收市指數'),
+                            row.get('漲跌') or row.get('指數漲跌'),
+                            row.get('漲跌幅'),day,'TPEx historical OTC')
+            if result:return result
     return None
+
+def tpex_otc_historical_csv(raw, target):
+    """Fallback official open-data CSV: 日期/開市/最高/最低/收市/漲跌.
+
+    Open-data dataset 11391 links to TPEx /www/zh-tw/indexInfo/inx?response=data.
+    Never choose the last row, website crawl date, or the request day as an
+    implied source date: the *record* must explicitly match target.
+    """
+    if not isinstance(raw, str) or len(raw) > 6_000_000:
+        return None
+    fields = None
+    rows = csv.reader(io.StringIO(raw.lstrip('\ufeff')))
+    for raw_row in rows:
+        row = [str(v).replace('\ufeff', '').strip() for v in raw_row]
+        if not row or not any(row):
+            continue
+        if fields is None:
+            if any(h in row for h in ('資料日期', '日期')) and any(h in row for h in ('收市', '收市指數', '收盤')):
+                fields = row
+            continue
+        if len(row) < len(fields):
+            continue
+        rec = dict(zip(fields,row))
+        day = date_iso(rec.get('資料日期') or rec.get('日期'))
+        if day != target:
+            continue
+        close = number(rec.get('收市') or rec.get('收市指數') or rec.get('收盤'))
+        change_text = rec.get('漲跌') or rec.get('指數漲跌')
+        change = number(change_text)
+        if change is None and change_text:
+            label = str(change_text).strip()
+            if re.match(r'^[▼▽△▲]', label):
+                mag = number(label[1:])
+                change = (-1 if label.startswith(('▼','▽')) else 1)*mag if mag is not None else None
+        if close is None or change is None or close <= 0 or close-change <= 0:
+            return None
+        return {'date':target,'close':close,'change':change,
+                'pct':round(100*change/(close-change),2),
+                'source':'TPEx official open-data index history CSV'}
+    return None
+
+
+def fetch_official_csv(url, timeout=8):
+    """Bounded, optional official-source fallback; reject HTML denial pages."""
+    req=urllib.request.Request(url, headers={
+        'User-Agent':'Mozilla/5.0 (compatible; ChaopanRadar/3.1.1; public daily EOD)',
+        'Accept':'text/csv,text/plain;q=0.9,*/*;q=0.2'})
+    with urllib.request.urlopen(req,timeout=timeout) as response:
+        if response.status != 200:
+            raise IOError('TPEx historical CSV HTTP '+str(response.status))
+        raw = response.read(6_000_001)
+    if len(raw)>6_000_000:
+        raise ValueError('TPEx CSV exceeds bounded size')
+    for encoding in ('utf-8-sig','cp950'):
+        try:
+            data=raw.decode(encoding)
+            if '<html' in data[:200].lower() or '<!doctype' in data[:200].lower():
+                raise ValueError('TPEx returned HTML rather than CSV')
+            return data
+        except UnicodeDecodeError:
+            continue
+    raise ValueError('TPEx CSV encoding unrecognised')
+
 
 def fetch_json(url, timeout=9):
     """Two bounded attempts for transient official API errors; never invent data."""
@@ -240,7 +371,7 @@ def fetch_json(url, timeout=9):
             LOG.warning('Retry official feed after %s',type(err).__name__)
             time.sleep(.45)
 
-def build(target, fetch=fetch_json):
+def build(target, fetch=fetch_json, text_fetch=None):
     """Check independent official sources concurrently (max 3 at once).
 
     One slow/blocked endpoint must not delay all the other endpoints. Sources
@@ -297,6 +428,30 @@ def build(target, fetch=fetch_json):
         else:
             if data:out['indices'][{'taiex':'taiex','tx':'taifex','otc':'otc'}.get(key,key)]=data
             out['coverage'][key]=bool(data)
+    # The public indexSummary endpoint sometimes changes response shape or is
+    # blocked by the cloud runner. Fall back ONLY to the independently dated
+    # TPEx open-data index-history CSV, never to an undated third-party quote.
+    # An injected JSON fetch in tests does not silently perform real network IO.
+    if not out['indices'].get('otc') and (text_fetch is not None or fetch is fetch_json):
+        csv_source=text_fetch if text_fetch is not None else fetch_official_csv
+        fallback_url='https://www.tpex.org.tw/www/zh-tw/indexInfo/inx?response=data'
+        began=time.monotonic()
+        try:
+            recovered=tpex_otc_historical_csv(csv_source(fallback_url),target)
+            if recovered:
+                out['indices']['otc']=recovered
+                out['coverage']['otc']=True
+                out['sources']['otc_primary']=out['sources']['otc']
+                out['sources']['otc']={'status':'ok','durationMs':round((time.monotonic()-began)*1000),
+                                     'detail':'櫃買官方歷史CSV備援，同交易日已驗證'}
+            else:
+                out['sources']['otc_fallback']={'status':'invalid','detail':'官方歷史CSV未找到同交易日完整指數資料'}
+        except Exception as exc:
+            detail=type(exc).__name__
+            if isinstance(exc,urllib.error.HTTPError):
+                detail+=' HTTP '+str(exc.code)
+            out['sources']['otc_fallback']={'status':'error','detail':detail}
+            LOG.warning('TPEx index history fallback unsuccessful: %s',detail)
     return out
 
 
