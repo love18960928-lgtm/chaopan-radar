@@ -6,6 +6,7 @@ than the row's as-of trading day. Bars in 1,000-share lots.
 """
 from statistics import median, mean
 import datetime as dt
+import math
 from collections import defaultdict
 from rules import scan_stock
 from trader import trader_overlay
@@ -61,6 +62,29 @@ def published_fundamentals(raw, asof):
                 if f.get(k) is not None:out[k]=f[k]
     except (ValueError,TypeError,KeyError):
         pass
+    # A card may publish price estimates only when an independent four-quarter
+    # sequence and historical P/E distribution were verified against current
+    # official quarterly earnings, revenue, and the official P/E snapshot.
+    try:
+        model_date=dt.date.fromisoformat(str(f['modelAsOf']))
+        qperiod=str(f['epsTtmPeriod'])
+        eps_ttm=float(f['epsTtm'])
+        pes=[float(f[k]) for k in ('peRiverLow','peRiverMid','peRiverHigh')]
+        targets=[float(f[k]) for k in ('modelTargetLow','modelTargetMid','modelTargetHigh')]
+        count=int(f['peRiverSample'])
+        usable=(0<=(as_date-model_date).days<=40
+            and qperiod==out.get('epsPeriod')
+            and all(k in out for k in ('revenuePeriod','revenueYoY','eps','pe','valuationDate'))
+            and 0<eps_ttm<500 and count>=120
+            and all(math.isfinite(v) for v in [eps_ttm]+pes+targets)
+            and 3<=pes[0]<=pes[1]<=pes[2]<=100
+            and all(abs(eps_ttm*p-v)<=max(.1,v*.002) for p,v in zip(pes,targets)))
+        if usable:
+            for k in ('epsTtm','epsTtmPeriod','epsTtmSource','peRiverLow','peRiverMid',
+                      'peRiverHigh','peRiverSample','modelTargetLow','modelTargetMid',
+                      'modelTargetHigh','modelAsOf','modelType','modelCaveat'):
+                out[k]=f[k]
+    except (KeyError,ValueError,TypeError,OverflowError):pass
     return out
 
 

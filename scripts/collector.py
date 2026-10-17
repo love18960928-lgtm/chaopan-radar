@@ -26,6 +26,7 @@ from trader import trader_overlay,apply_sector_relative_strength
 from performance import update_diary
 from market_quality import breadth
 from risk_v22 import build_universe, published_fundamentals
+from valuation_verified_v14 import enrich_verified_targets
 
 ROOT = Path(__file__).resolve().parents[1]
 HISTORY = ROOT / 'storage' / 'history.json'
@@ -443,6 +444,13 @@ def run(days,delay,as_of=None):
         return
     financial_sources=enrich_financials(allstocks)
     snapshot=build_snapshot(allstocks)
+    # The optional historical EPS/PER estimator is strictly bounded and cannot
+    # prevent the technical EOD scan if its third-party source is unavailable.
+    # Pick liquid/active official candidates, not all 1,900+ stocks per day.
+    ranked_for_value=sorted(snapshot['candidates'], key=lambda c:(
+        float(c.get('volumeRatio') or 0), float(c.get('changePct') or 0)), reverse=True)
+    value_feed=enrich_verified_targets(allstocks,ranked_for_value,snapshot['asOf'])
+    snapshot['valuationCoverage']={**value_feed,'method':'Optional FinMind EPS/PER × officially checked quarterly/revenue figures; research estimate only.'}
     # Unvalidated external institutional endpoints are deliberately disabled.
     # No claims about foreign/trust buying can be made without a source check.
     for c in snapshot['candidates']:
