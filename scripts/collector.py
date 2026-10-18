@@ -222,6 +222,8 @@ FIN_SOURCES = (
  ('上櫃','revenue','https://mopsfin.twse.com.tw/opendata/t187ap05_O.csv','csv'),
  ('上市','valuation','https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL','json'),
  ('上市','income','https://openapi.twse.com.tw/v1/opendata/t187ap06_L_ci','json'),
+ # Official listed-company EPS fallback: free daily refreshed cumulative EPS.
+ ('上市','income','https://openapi.twse.com.tw/v1/opendata/t187ap14_L','json'),
  ('上櫃','income','https://mopsfin.twse.com.tw/opendata/t187ap06_O_ci.csv','csv'),
 )
 
@@ -249,6 +251,48 @@ def findval(row,*keys):
 def validnum(value,low=-1e12,high=1e12):
     x=num(value)
     return round(x,3) if x is not None and math.isfinite(x) and low<=x<=high else None
+
+
+def parse_financial_issue_date(value):
+    """Return the official record's *outgoing snapshot* date, not issuer filing time.
+
+    The snapshot date is a conservative not-before boundary, never a claim
+    about the company's exact filing timestamp.
+    """
+    text=str(value or '').strip()
+    try:
+        if re.fullmatch(r'\d{7}', text):
+            return dt.date(int(text[:3])+1911,int(text[3:5]),int(text[5:7])).isoformat()
+        if re.fullmatch(r'\d{8}', text):
+            return dt.date(int(text[:4]),int(text[4:6]),int(text[6:8])).isoformat()
+        if re.fullmatch(r'\d{4}[-/]\d{2}[-/]\d{2}',text):
+            return dt.date.fromisoformat(text.replace('/','-')).isoformat()
+    except ValueError:
+        return None
+    return None
+
+
+def earnings_available_at(fin,asof):
+    """Conservative availability check: official dated snapshot, otherwise deadline.
+
+    Publishing/filing time should be replaced by issuer-specific timestamps
+    when those are available. This function does not infer a filing timestamp.
+    """
+    try:
+        as_date=dt.date.fromisoformat(str(asof))
+        period=str(fin['epsPeriod'])
+        match=re.fullmatch(r'(\d{4})Q([1-4])',period)
+        if match is None:return False
+        year,q=map(int,match.groups())
+        end=(dt.date(year+1,1,1) if q==4 else dt.date(year,q*3+1,1))-dt.timedelta(days=1)
+        snapshot=str(fin.get('epsStatementDate') or '')
+        if snapshot:
+            release=dt.date.fromisoformat(snapshot)
+            if release<end:return False
+        else:
+            release=dt.date(year,5,16) if q==1 else dt.date(year,8,16) if q==2 else dt.date(year,11,16) if q==3 else dt.date(year+1,4,1)
+        return end<=release<=as_date and 0 <= (as_date-end).days<=245
+    except (ValueError,TypeError,KeyError):return False
 
 
 def financial_fields(kind,row):
@@ -280,7 +324,10 @@ def financial_fields(kind,row):
         gross=validnum(findval(row,'營業毛利（毛損）','營業毛利(毛損)','營業毛利淨額（毛損）'))
         sales=validnum(findval(row,'營業收入','收入'))
         margin=round(gross/sales*100,2) if gross is not None and sales is not None and sales>0 else None
-        return {'epsPeriod':f'{year}Q{int(season)}','eps':eps,'grossMargin':margin}
+        out={'epsPeriod':f'{year}Q{int(season)}','eps':eps,'epsBasis':'年初累計','grossMargin':margin}
+        issue=parse_financial_issue_date(findval(row,'出表日期','資料日期'))
+        if issue:out['epsStatementDate']=issue
+        return out
     return None
 
 
@@ -346,15 +393,7 @@ def score_company(stock, candidate):
         period=str(f.get('epsPeriod',''))
         yr,q=int(period[:4]),int(period[-1])
         if len(period)!=6 or period[4]!='Q' or q not in (1,2,3,4):raise ValueError
-        nextyear,nextmonth=(yr+1,1) if q==4 else (yr,q*3+1)
-        quarter_end=dt.date(nextyear,nextmonth,1)-dt.timedelta(days=1)
-        # Conservative regulatory-publication windows; no published-at timestamp
-        # is available in the feed. Never use a quarter before this cutoff.
-        if q==1: published_from=dt.date(yr,5,16)
-        elif q==2: published_from=dt.date(yr,8,16)
-        elif q==3: published_from=dt.date(yr,11,16)
-        else: published_from=dt.date(yr+1,4,1)
-        if td is None or td<published_from or (td-quarter_end).days > 245:
+        if td is None or not earnings_available_at(f,td.isoformat()):
             f.pop('eps',None);f.pop('grossMargin',None)
     except (ValueError,TypeError,UnboundLocalError):
         f.pop('eps',None);f.pop('grossMargin',None)

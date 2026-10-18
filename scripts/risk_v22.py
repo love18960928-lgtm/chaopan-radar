@@ -47,9 +47,19 @@ def published_fundamentals(raw, asof):
         year,q=int(period[:4]),int(period[-1])
         if q not in (1,2,3,4):raise ValueError
         end=(dt.date(year+1,1,1) if q==4 else dt.date(year,q*3+1,1))-dt.timedelta(days=1)
-        release=(dt.date(year,5,16) if q==1 else dt.date(year,8,16) if q==2 else dt.date(year,11,16) if q==3 else dt.date(year+1,4,1))
+        snapshot=f.get('epsStatementDate')
+        if snapshot:
+            # Official export issue date, not the company's original filing time.
+            release=dt.date.fromisoformat(str(snapshot))
+            if release<end:raise ValueError
+        else:
+            # Older snapshots without issue dates retain the conservative cutoff.
+            release=(dt.date(year,5,16) if q==1 else dt.date(year,8,16) if q==2
+                     else dt.date(year,11,16) if q==3 else dt.date(year+1,4,1))
         if release<=as_date and 0<=(as_date-end).days<=245:
             out['epsPeriod']=period
+            out['epsBasis']='年初累計'  # MOPS IFRS earnings statement is YTD.
+            if snapshot:out['epsStatementDate']=str(snapshot)
             for k in ('eps','grossMargin'):
                 if f.get(k) is not None:out[k]=f[k]
     except (ValueError,TypeError,KeyError):

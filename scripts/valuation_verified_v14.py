@@ -64,7 +64,13 @@ def derive_model(fin, price, eps_rows, pe_rows, asof):
         year,q=int(eq[:4]),int(eq[-1]); assert eq[4]=='Q' and q in (1,2,3,4)
         current=dt.date(year,q*3,31 if q in (1,4) else 30)
     except (TypeError,ValueError,AssertionError):return None
-    if not (0<=(d-vy).days<=20 and 0<=(d-ry).days<=100 and published_quarter(current)<=d):return None
+    # Dated government snapshot may be earlier than standard reporting deadline.
+    # When no official issue date is supplied, keep the conservative deadline.
+    try:
+        availability=dt.date.fromisoformat(str(fin['epsStatementDate'])) if fin.get('epsStatementDate') else published_quarter(current)
+    except ValueError:return None
+    if availability<current:return None
+    if not (0<=(d-vy).days<=20 and 0<=(d-ry).days<=100 and availability<=d):return None
     official_eps=finite(fin.get('eps'))
     if official_eps is None:return None
     dates=quarter_dates(current)
