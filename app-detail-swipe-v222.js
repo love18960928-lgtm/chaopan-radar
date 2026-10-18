@@ -483,7 +483,6 @@ const sectorOpen=new Set(),sectorShown=new Map();
 let sectorInteracted=false;
 const SECTOR_BATCH=5;
 const sectorCardTabs=new Map();
-let onlyVerifiedValuations=false;
 // r10 single source of truth for every expanded battle card (sector/rank/desk/institution/ETF).
 // Differences belong to the data and guarded fields, never to the card skeleton.
 // r14: Research tab on the SAME battle card, not hidden only inside the chart modal.
@@ -522,9 +521,9 @@ function financeSnapshot(c){
  const ep=String(f.epsPeriod||'');let eps=null;
  const m=ep.match(/^(\d{4})Q([1-4])$/);
  if(m){
-  const y=Number(m[1]),q=Number(m[2]),release=q===1?`${y}-05-16`:q===2?`${y}-08-16`:q===3?`${y}-11-16`:`${y+1}-04-01`;
+  const y=Number(m[1]),q=Number(m[2]),release=f.epsStatementDate|| (q===1?`${y}-05-16`:q===2?`${y}-08-16`:q===3?`${y}-11-16`:`${y+1}-04-01`);
   const released=new Date(release+'T00:00:00Z'),age=(cur-released)/86400000,amount=numeric(f.eps);
-  if(amount!==null&&age>=0&&age<=520){eps={period:ep,amount};}
+  if(amount!==null&&Number.isFinite(age)&&age>=0&&age<=520){eps={period:ep,amount};}
  }
  const pd=String(f.valuationDate||'');const d=/^\d{4}-\d{2}-\d{2}$/.test(pd)?new Date(pd+'T00:00:00Z'):null;
  const pe=numeric(f.pe),peAge=d?(cur-d)/86400000:Infinity;
@@ -538,7 +537,7 @@ function financeQuickCard(c){
   const val=r.yoy!==null?`年增 ${pct(r.yoy)}`:r.monthly!==null?`${(r.monthly/100000).toFixed(2)} 億元`:null;
   if(val)bits.push(`<span><small>月營收 ${esc(r.period)}</small><b>${esc(val)}</b></span>`);
  }
- if(info.eps)bits.push(`<span><small>已公告EPS ${esc(info.eps.period)}</small><b>${price(info.eps.amount)} 元</b></span>`);
+ if(info.eps)bits.push(`<span><small>累計EPS ${esc(info.eps.period)}</small><b>${price(info.eps.amount)} 元</b></span>`);
  if(info.pe)bits.push(`<span><small>官方本益比 ${esc(info.pe.date)}</small><b>${price(info.pe.value)} 倍</b></span>`);
  const bands=m?`<div class="finance-glance-band" aria-label="歷史本益比模型估值三區間">
    ${['便宜','合理','昂貴'].map((label,i)=>`<span class="${i===1?'fair':''}"><small>${label}情境</small><strong>${price(m.targets[i])} 元</strong></span>`).join('')}
@@ -613,7 +612,7 @@ function sectorBattleCard(c,options={}){
  const overview=`<div class="sector-mini-status"><b>${esc(g.title)}</b><span class="sector-card-tag ${riskClass}">${esc(label)}</span></div>
  <div class="sector-mini-stats"><span>觀察關卡 <b>${levelOk?n(g.breakoutLevel):'待核對'}</b></span><span>MA5 <b>${levelOk?n(g.ma5):'待核對'}</b></span><span>MA10 <b>${levelOk?n(g.ma10):'待核對'}</b></span></div>
  <div class="sector-six-dots"><span>六均線</span>${six}</div>
- <div class="sector-phase-note">${esc(ma510)} · ${esc(c.date||'資料日待核對')}盤後</div>${financeQuickCard(c)}`;
+ <div class="sector-phase-note">${esc(ma510)} · ${esc(c.date||'資料日待核對')}盤後</div>${valuationBadge(c)}${financeQuickCard(c)}`;
  const levelVals=[
   ['突破觀察',g.breakoutLevel],['回測觀察',g.pullbackZone?.[0]],['MA5減碼警戒',g.ma5],['MA10防守',g.ma10],['歷史支撐',g.support],['移動停利',g.trailingStop]
  ];
@@ -833,7 +832,6 @@ function activeSelection(){
  const independent=state.rankLens==='launch'&&HISTORY_510_STAGES.has(state.stageView);
  let records=independent?historicalMa510Candidates(state.stageView):lensRankedCandidates();
  if(state.liquidityOnly)records=records.filter(c=>liquidityEvidence(c).launch);
- if(onlyVerifiedValuations)records=records.filter(c=>verifiedValuation(c));
  if(!independent&&state.rankLens==='launch'&&state.stageView!=='all')records=records.filter(c=>deskEvidence(c).stage===state.stageView);
  const total=records.length;
  if(state.rankView!=='all'&&state.stageView==='all')records=records.slice(0,state.rankView==='60'?60:20);
@@ -1170,8 +1168,7 @@ function renderList(){
    const metricsReady=rawRank.some(c=>numeric(c.trading?.trend)!==null);
    const ma510Metrics=allRows().filter(c=>{const e=continuationReadout(c);return state.stageView==='ma510recent'?typeof e.recentCloseHold10==='boolean':typeof e.strictMA510Hold==='boolean'}).length;
    const ma510Raw=HISTORY_510_STAGES.has(state.stageView)?historicalMa510Candidates(state.stageView).length:0;
-   const note=onlyVerifiedValuations?'尚無股票通過完整近四季EPS＋歷史本益比核對，不能顯示模型合理價；其他技術雷達仍可繼續使用。':
-   HISTORY_510_STAGES.has(state.stageView)&&ma510Metrics===0?
+   const note=HISTORY_510_STAGES.has(state.stageView)&&ma510Metrics===0?
       '尚未取得完整逐日 MA5／MA10 守線證據；不能以零檔代表市場無股票。請更新 scripts 後執行 Actions 盤後重算。':
      HISTORY_510_STAGES.has(state.stageView)&&ma510Raw>0&&state.liquidityOnly?`全市場有 ${ma510Raw} 檔符合歷史守線，但全部被成交活躍度門檻排除；請關閉篩選核對，不代表能直接交易。`:
      (isTrend||(!stageFilter&&['stable','balanced'].includes(state.rankLens)))&&trace.available===0?
@@ -1299,7 +1296,7 @@ function financialPanel(c){
   <p class="fin-r13-money">當月營收 <strong>${fmtRevenue(fin.revenueMonthThousand)}</strong> · 累計營收 <strong>${fmtRevenue(fin.revenueCumThousand)}</strong></p>
   ${percentBar(fin.revenueYoY,'當月營收年增',fin.revenuePeriod)}${percentBar(fin.revenueCumYoY,'累計營收年增','')}
   <div class="fin-subhead">獲利與估值 <small>${esc(fin.epsPeriod||'最新可用季報待核對')}</small></div>
-  <div class="fin-metrics">${item(fin.eps,'已公告EPS')}${item(fin.grossMargin,'毛利率','pct')}${item(fin.pe,'官方本益比')}${item(fin.pb,'淨值比')}</div>
+  <div class="fin-metrics">${item(fin.eps,'累計EPS（年初起）')}${item(fin.grossMargin,'毛利率','pct')}${item(fin.pe,'官方本益比')}${item(fin.pb,'淨值比')}</div>
   ${verifiedValuation(c)?`<div class="model-target-prices"><div class="model-target-heading">已驗證歷史本益比估值（非券商喊價）</div><div class="model-target-columns">${verifiedValuation(c).targets.map((p,i)=>`<span><small>${['便宜','合理','昂貴'][i]}</small><b>${price(p)}元</b></span>`).join('')}</div><small>估算近四季 EPS ${price(verifiedValuation(c).eps)} 元；與財報和歷史PE樣本核對通過。</small></div>`:'<p class="fin-r13-warning">缺少可核對的近四季EPS或歷史PE，暫不顯示模型目標價。單季EPS不可當全年EPS。</p>'}
   <div class="fin-r13-estimator">
    <strong>估值情境試算｜預估全年 EPS × 假設本益比</strong>
@@ -1310,7 +1307,7 @@ function financialPanel(c){
    <div id="valuationScenarioResult" class="fin-r13-result" aria-live="polite">輸入可核對的全年EPS假設，才會計算價格情境；預設倍數是範例，應依產業與景氣調整。</div>
    <small>這只是估值敏感度試算，不是券商目標價、獲利保證或自動買點。EPS成長與營收年增不可直接等同。</small>
   </div>
-  <details class="fin-notes"><summary>官方期別、資料來源與估值限制</summary><p>上市月營收：TWSE t187ap05_L；上櫃：TPEx／MOPS；季報EPS：MOPS公開財報（僅支援目前已串接的報表類型）。</p><p>營收：${esc(fin.revenuePeriod||'未取得')}；EPS：${esc(fin.epsPeriod||'未取得')}；估值日期：${esc(fin.valuationDate||'未取得')}。財務公告時點以來源披露為準，盤後程式採保守揭露日假設。缺資料不補零或推算單季為全年。</p></details>
+  <details class="fin-notes"><summary>官方期別、資料來源與估值限制</summary><p>上市月營收：TWSE t187ap05_L；上櫃：TPEx／MOPS；季報EPS：MOPS公開財報（僅支援目前已串接的報表類型）。</p><p>營收：${esc(fin.revenuePeriod||'未取得')}；累計EPS：${esc(fin.epsPeriod||'未取得')}；官方出表日：${esc(fin.epsStatementDate||'未提供')}；估值日期：${esc(fin.valuationDate||'未取得')}。財務公告時點以來源披露為準，盤後程式採保守揭露日假設。缺資料不補零或推算單季為全年。</p></details>
  </section>`;
 }
 function wireValuationScenario(c){
@@ -1345,7 +1342,7 @@ function extraTechnical(c){
  const institutionalHtml=ins?
    `<div class="settings-card"><strong>三大法人｜日期核對後展示（不參與操盤評分）</strong><p>法人交易日 ${esc(ins.date)}；首次取得時間 ${esc(ins.firstObservedAt)}<br>外資 ${lotsNet(ins.foreignNetShares)} ／ 投信 ${lotsNet(ins.trustNetShares)} ／ 自營商 ${lotsNet(ins.dealerNetShares)}<br>三大法人合計 ${lotsNet(ins.totalNetShares)}<br>⚠ 法人數據可能在收盤後或隔日才取得，不代表該交易日收盤前已知；現階段來源接法仍待正式線上驗證。</p></div>`:
    `<div class="settings-card"><strong>三大法人</strong><p>正式版暫未接入經實際連線驗證的每日資料；不以0張替代，也不納入分數。</p></div>`;
- const growthHtml=`<div class="settings-card"><strong>基本面與投資優先度｜公開資料</strong><p>技術分 ${i.technical??'待資料'} ／ 基本面觀察分 ${i.growth??'待資料'} ／ 投資優先度 ${i.overall??'待資料'}<br>分級 ${esc(i.grade||'待資料')} ／ 財務資料覆蓋 ${i.coverage??0}%<br>月營收年增 ${fp(fin.revenueYoY)}（${esc(fin.revenuePeriod||'未取得')}） ／ 累計營收年增 ${fp(fin.revenueCumYoY)}<br>EPS ${fstr(fin.eps)}（${esc(fin.epsPeriod||'未取得')}） ／ 毛利率 ${fp(fin.grossMargin)}<br>本益比 ${fstr(fin.pe)} ／ 淨值比 ${fstr(fin.pb)} ／ 殖利率 ${fp(fin.dividendYield)}<br>產業類別 ${esc(fin.industry||'待資料')} ／ 本益比資料日期 ${esc(fin.valuationDate||'待資料')}<br>評分方法 ${esc(i.methodNote||'舊版資料，待新版掃描')}<br>資料可用日期 ${esc(i.datePolicy||'待重算')}<br>法人交易資訊如有來源核對一致僅供檢視、不參與評分；產業消息及EPS年增率尚未正式串接。</p><p>⚠ 分數是規則式研究排序，不是股價上漲機率或保證買點。資料不足時不給投資優先度。</p></div>`;
+ const growthHtml=`<div class="settings-card"><strong>基本面與投資優先度｜公開資料</strong><p>技術分 ${i.technical??'待資料'} ／ 基本面觀察分 ${i.growth??'待資料'} ／ 投資優先度 ${i.overall??'待資料'}<br>分級 ${esc(i.grade||'待資料')} ／ 財務資料覆蓋 ${i.coverage??0}%<br>月營收年增 ${fp(fin.revenueYoY)}（${esc(fin.revenuePeriod||'未取得')}） ／ 累計營收年增 ${fp(fin.revenueCumYoY)}<br>累計EPS ${fstr(fin.eps)}（${esc(fin.epsPeriod||'未取得')}） ／ 毛利率 ${fp(fin.grossMargin)}<br>本益比 ${fstr(fin.pe)} ／ 淨值比 ${fstr(fin.pb)} ／ 殖利率 ${fp(fin.dividendYield)}<br>產業類別 ${esc(fin.industry||'待資料')} ／ 本益比資料日期 ${esc(fin.valuationDate||'待資料')}<br>評分方法 ${esc(i.methodNote||'舊版資料，待新版掃描')}<br>資料可用日期 ${esc(i.datePolicy||'待重算')}<br>法人交易資訊如有來源核對一致僅供檢視、不參與評分；產業消息及EPS年增率尚未正式串接。</p><p>⚠ 分數是規則式研究排序，不是股價上漲機率或保證買點。資料不足時不給投資優先度。</p></div>`;
  return `<details class="fin-notes institutional-note"><summary>三大法人資料與來源狀態</summary>${institutionalHtml}</details>`;
 }
 
@@ -1697,5 +1694,5 @@ function setupDetailSwipe(){
 function openSettings(){const isReady=state.mode==='live';$('#modalContent').innerHTML=`<div class="eyebrow">APP STATUS / SETTINGS</div><h2 id="modalTitle">資料與安裝設定</h2><div class="settings-card"><strong>目前：${modeName()}</strong><p>最近盤後日期：${esc(state.payload?.asOf||'尚無')}<br>掃描歷史完整股票：${integer(state.payload?.eligibleCount||0)} 檔<br>已記錄股票：${integer(state.payload?.stockCount||0)} 檔</p></div><div class="settings-card"><strong>如何使用免費版？</strong><p>把本程式上傳 GitHub 公開 Repository，啟用 Actions，先手動執行「初次回補約220天」，設定 Pages 從 main /root 發布，再以 Android Chrome 的「新增至主畫面」安裝。GitHub Actions 依排程在13:30、14:30、18:30、23:00以及隔日06:00、08:30嘗試核對盤後資料（實際排程可能延遲），若交易所阻擋雲端 IP，需改用在台灣網路執行的收集主機。</p></div><div class="settings-card"><strong>即時版升級狀態</strong><p>目前沒有盤中報價或推播。未來串接授權即時行情、雲端首次突破判斷及 Firebase 推播後升級；不會使用盤後資料假裝盤中訊號。</p></div><div class="settings-card"><strong>網站隱私與密碼：目前仍是公開網站</strong><p>GitHub Pages 的 JavaScript 密碼視窗不能真正保護行情或阻止已取得網址的人查看檔案，亦不能安全撤銷別人的存取權。若需要可取消授權的真正私密網站，應遷移到有伺服端登入控管的部署方式（例如 Cloudflare Pages + Access），並關閉舊公開 Pages、保護行情資料來源。不要在此公開程式中設定真實密碼。</p></div><div class="action-row"><button id="reloadData" class="primary-action">重新檢查盤後資料</button>${isReady?'':'<button id="demoModeBtn" class="secondary-action">開啟示範畫面</button>'}</div>`;$('#reloadData').onclick=()=>{hideDetails();loadData()};if($('#demoModeBtn'))$('#demoModeBtn').onclick=()=>{hideDetails();demoMode()};$('#modalOverlay').hidden=false;document.body.style.overflow='hidden'}
 function navTo(page){$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(page==='list'){setTab('all');$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='star'){state.tab='star';const adv=$('.advanced-radar');if(adv)adv.open=true;$$('.tab').forEach(x=>x.classList.remove('active'));renderList();$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='guide')$('#institutionalBoard').scrollIntoView({behavior:'smooth'});else openSettings()}
 function wire(){loadWatch();setupSixtyToolbar();setupDetailSwipe();document.addEventListener('click',unifiedCardEvents);
- $$('.lens-scope').forEach(b=>b.onclick=()=>{state.rankLens=b.dataset.lens;state.rankView='20';state.stageView='all';state.tab='all';state.query='';$('#searchBox').value='';state.visible=30;renderList()});const liquidityToggle=$('#onlyLiquid');if(liquidityToggle){liquidityToggle.checked=state.liquidityOnly;liquidityToggle.addEventListener('change',e=>{state.liquidityOnly=e.target.checked;state.visible=30;renderList()})}const verifiedValuationsToggle=$('#onlyValued');if(verifiedValuationsToggle){verifiedValuationsToggle.checked=onlyVerifiedValuations;verifiedValuationsToggle.addEventListener('change',e=>{onlyVerifiedValuations=e.target.checked;state.visible=30;renderList()})}$$('.rank-scope').forEach(b=>b.onclick=()=>{state.rankView=b.dataset.scope;state.visible=30;state.tab='all';renderList()});$$('.stage-scope').forEach(b=>b.onclick=()=>{state.stageView=b.dataset.stage;state.visible=30;state.tab='all';state.query='';$('#searchBox').value='';renderList()});const sort=$('#sortFilter');if(sort){sort.insertAdjacentHTML('afterbegin','<option value="trade">操盤品質與追高風險（預設）</option><option value="launch">第一根發動優先</option><option value="priority">基本面投資優先度</option>');sort.value='trade';state.sort='trade';}$$('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.stat-card').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.nav-item').forEach(b=>b.onclick=()=>navTo(b.dataset.page));$('#searchBox').oninput=e=>{state.query=e.target.value;state.visible=30;renderList()};$('#showMore').onclick=()=>{state.visible+=30;renderList()};$('#refreshBtn').onclick=()=>loadData();$('.advanced-radar')?.addEventListener('toggle',e=>{if(e.target.open&&state.payload){state.rankListDirty=false;renderList()}});$('#closeModal').onclick=()=>hideDetails();$('#modalOverlay').onclick=e=>{if(e.target===$('#modalOverlay'))hideDetails()};window.onkeydown=e=>{if(e.key==='Escape')hideDetails()};window.addEventListener('popstate',()=>{if(state.detail||state.etfDetail)hideDetails(true)});loadData();if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(console.warn)}}
+ $$('.lens-scope').forEach(b=>b.onclick=()=>{state.rankLens=b.dataset.lens;state.rankView='20';state.stageView='all';state.tab='all';state.query='';$('#searchBox').value='';state.visible=30;renderList()});const liquidityToggle=$('#onlyLiquid');if(liquidityToggle){liquidityToggle.checked=state.liquidityOnly;liquidityToggle.addEventListener('change',e=>{state.liquidityOnly=e.target.checked;state.visible=30;renderList()})}$$('.rank-scope').forEach(b=>b.onclick=()=>{state.rankView=b.dataset.scope;state.visible=30;state.tab='all';renderList()});$$('.stage-scope').forEach(b=>b.onclick=()=>{state.stageView=b.dataset.stage;state.visible=30;state.tab='all';state.query='';$('#searchBox').value='';renderList()});const sort=$('#sortFilter');if(sort){sort.insertAdjacentHTML('afterbegin','<option value="trade">操盤品質與追高風險（預設）</option><option value="launch">第一根發動優先</option><option value="priority">基本面投資優先度</option>');sort.value='trade';state.sort='trade';}$$('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.stat-card').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.nav-item').forEach(b=>b.onclick=()=>navTo(b.dataset.page));$('#searchBox').oninput=e=>{state.query=e.target.value;state.visible=30;renderList()};$('#showMore').onclick=()=>{state.visible+=30;renderList()};$('#refreshBtn').onclick=()=>loadData();$('.advanced-radar')?.addEventListener('toggle',e=>{if(e.target.open&&state.payload){state.rankListDirty=false;renderList()}});$('#closeModal').onclick=()=>hideDetails();$('#modalOverlay').onclick=e=>{if(e.target===$('#modalOverlay'))hideDetails()};window.onkeydown=e=>{if(e.key==='Escape')hideDetails()};window.addEventListener('popstate',()=>{if(state.detail||state.etfDetail)hideDetails(true)});loadData();if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(console.warn)}}
 document.addEventListener('DOMContentLoaded',wire);
