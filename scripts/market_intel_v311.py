@@ -55,16 +55,18 @@ def twse_t86(payload, target):
     if dated != target: return {}
     columns=payload.get('fields') or []
     rows=payload.get('data') or []
-    def index(*patterns):
-        for pat in patterns:
-            for j,key in enumerate(columns):
-                if pat in str(key):return j
-        return None
-    col=index('證券代號','股票代號')
-    name_col=index('證券名稱','股票名稱')
-    fr=index('外陸資買賣超股數(不含外資自營商)','外陸資買賣超股數')
-    tr=index('投信買賣超股數')
-    dl=index('自營商買賣超股數')
+    fields = [re.sub(r'\s+', '', str(x)).replace('（','(').replace('）',')') for x in columns]
+    # Exact column names are critical: 外資自營商買賣超股數 and
+    # 自營商買賣超股數 are distinct. A substring match silently returns
+    # the former (often zero), corrupting the listed dealer total.
+    def exact(*candidates):
+        return next((i for candidate in candidates for i, field in enumerate(fields)
+                     if field == candidate), None)
+    col=exact('證券代號','股票代號')
+    name_col=exact('證券名稱','股票名稱')
+    fr=exact('外陸資買賣超股數(不含外資自營商)', '外陸資買賣超股數')
+    tr=exact('投信買賣超股數')
+    dl=exact('自營商買賣超股數')
     if None in (col,fr,tr,dl):return {}
     result={}
     for row in rows:
@@ -274,8 +276,18 @@ def twse_margin_total(payload,target):
 
     Never equate an equity subset with the official market subtotal.
     """
-    if not isinstance(payload,dict) or payload.get('stat') not in (None,'OK') or date_iso(payload.get('date'))!=target:return None
-    tables=payload.get('tables') or ([payload] if payload.get('fields') else [])
+    if not isinstance(payload,dict) or payload.get('stat') not in (None,'OK'):return None
+    # Legacy public TWSE MI_MARGN JSON: creditTitle/creditFields/creditList.
+    # Recent responses may alternatively contain named tables or fields/data.
+    title=str(payload.get('creditTitle') or '')
+    stamp=re.search(r'\d{2,4}年\d{1,2}月\d{1,2}日', title)
+    dated=date_iso(payload.get('date')) or (date_iso(stamp.group()) if stamp else None)
+    if dated != target:return None
+    tables=list(payload.get('tables') or [])
+    if payload.get('fields') and payload.get('data'):
+        tables.append({'fields':payload['fields'],'data':payload['data']})
+    if payload.get('creditFields') and payload.get('creditList'):
+        tables.append({'fields':payload['creditFields'],'data':payload['creditList']})
     for tab in tables:
         fields=[str(f).strip() for f in tab.get('fields') or []]
         if not all(k in fields for k in ('項目','前日餘額','今日餘額')):continue
