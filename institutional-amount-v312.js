@@ -35,7 +35,11 @@
    return {...empty,reason:'法人資料、全市場收盤資料與指定交易日未全部一致'};
   const health=intel.sources||{},status={listed:health.twse_t86?.status||'missing',otc:health.tpex?.status||'missing'};
   const relevant=market==='listed'?['listed']:market==='otc'?['otc']:['listed','otc'];
-  if(relevant.some(s=>!validStatuses.has(status[s])))return {...empty,sourceStatus:status,reason:'所選市場法人來源尚未通過同交易日核對（上市／上櫃須各自成功）'};
+  const usable=relevant.filter(s=>validStatuses.has(status[s]));
+  const missing=relevant.filter(s=>!validStatuses.has(status[s]));
+  if(!usable.length)return {...empty,sourceStatus:status,reason:'所選市場法人來源尚未通過同交易日核對'};
+  // Combined view can show VERIFIED partial records, but it must say partial.
+  if(market!=='all'&&missing.length)return {...empty,sourceStatus:status,reason:'指定市場的法人資料尚未核對'};
   const quotes=new Map();
   for(const c of universe.rows||[]){
    if(!c||!['上市','上櫃'].includes(c.market))continue;
@@ -47,7 +51,7 @@
    if(seen.has(id)||!r)continue;
    const p=/^(上市|上櫃)-(.+)$/.exec(id);if(!p)continue;
    const m=p[1]==='上市'?'listed':'otc',code=p[2];
-   if(!relevant.includes(m)||!equityRecord(id,asset))continue;
+   if(!usable.includes(m)||!equityRecord(id,asset))continue;
    if(r.date!==asOf){wrongDate++;continue;}
    const lots=netLots(r);if(lots===null)continue;
    dated++;
@@ -71,9 +75,10 @@
   const buys=result.filter(x=>x.value>0).sort(sortBuy).slice(0,20);
   const sells=result.filter(x=>x.value<0).sort(sortSell).slice(0,20);
   const etfPartial=asset!=='stock'&&order==='amount';
+  const marketPartial=missing.length>0;
   return {...empty,ready:true,buys,sells,available:dated,quoted:result.length,excludedNoQuote:noQuote,
-    excludedWrongDate:wrongDate,sourceStatus:status,partial:etfPartial,
-    reason:etfPartial?'ETF價格可能只有部分官方歷史資料，無法保證全市場ETF依金額完整排序':'',
+    excludedWrongDate:wrongDate,sourceStatus:status,partial:etfPartial||marketPartial,
+    reason:[marketPartial?'部分市場的官方法人資料未取得，這份排行不是完整上市＋上櫃清單':'',etfPartial?'ETF價格僅部分官方歷史資料，無法保證ETF金額排序完整':''].filter(Boolean).join('；'),
     unit:order==='amount'?'億元（估算）':'張',market,asset,order};
  }
  return {ranking,netLots,stockCode,lastBar};
