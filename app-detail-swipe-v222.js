@@ -478,7 +478,7 @@ function renderSectorPulse(rows){
 // r8: Expanded sectors use data-driven battle cards, not the old compact rows.
 // Keep expansion and pagination in memory; refreshing the same EOD snapshot does
 // not trigger another fetch or re-render unexpanded stock cards.
-let sectorPacked=[],sectorRanks=new Map(),sectorDate='';
+let sectorPacked=[],sectorRanks=new Map(),sectorDate='',sectorMode='strong',sectorAudit=null,sectorAuditSource=null;
 const sectorOpen=new Set(),sectorShown=new Map();
 let sectorInteracted=false;
 const SECTOR_BATCH=5;
@@ -608,12 +608,13 @@ function sectorBattleCard(c,options={}){
  const label=g.level==='danger'?'出場警戒':g.level==='warn'?'減碼警戒':g.level==='unknown'?'資料不足':'待價量確認';
  const levelOk=g.level!=='unknown'&&c.date===state.payload?.asOf;
  const light=state.marketIntel?ChaopanIntel.miniLights(state.marketIntel,c,p):'<small>法人與量能依來源資料顯示</small>';
+ const marginBrief=state.marketIntel&&globalThis.ChaopanIntel?.marginPreview?ChaopanIntel.marginPreview(state.marketIntel,c):'';
  const ma510=hold.strictMA510Hold===true?'歷史突破後全程守5／10':hold.recentCloseHold10===true?'近10日守5／10':'逐日守線待核對';
  const riskClass=g.level==='danger'?'danger':g.level==='warn'?'caution':'muted';
  const overview=`<div class="sector-mini-status"><b>${esc(g.title)}</b><span class="sector-card-tag ${riskClass}">${esc(label)}</span></div>
  <div class="sector-mini-stats"><span>觀察關卡 <b>${levelOk?n(g.breakoutLevel):'待核對'}</b></span><span>MA5 <b>${levelOk?n(g.ma5):'待核對'}</b></span><span>MA10 <b>${levelOk?n(g.ma10):'待核對'}</b></span></div>
  <div class="sector-six-dots"><span>六均線</span>${six}</div>
- <div class="sector-phase-note">${esc(ma510)} · ${esc(c.date||'資料日待核對')}盤後</div>${financeQuickCard(c)}`;
+ <div class="sector-phase-note">${esc(ma510)} · ${esc(c.date||'資料日待核對')}盤後</div>${marginBrief}${financeQuickCard(c)}`;
  const levelVals=[
   ['突破觀察',g.breakoutLevel],['回測觀察',g.pullbackZone?.[0]],['MA5減碼警戒',g.ma5],['MA10防守',g.ma10],['歷史支撐',g.support],['移動停利',g.trailingStop]
  ];
@@ -649,14 +650,22 @@ function renderSectorPage(groupEl){
 }
 function sectorDirectory(){
  const out=$('#sectorDirectory');if(!out)return;
- const valid=state.mode==='live'&&state.payload?.asOf===state.universe?.asOf&&!staleDeskSnapshot(state.payload?.asOf);
- if(!valid){out.innerHTML='<div class="desk-empty">全市場行情未核對為最近收盤，暫停當日強勢族群作戰卡；請查看資料日期。</div>';return;}
  const asOf=state.payload?.asOf||'';
- if(asOf!==sectorDate){sectorDate=asOf;sectorOpen.clear();sectorShown.clear();sectorCardTabs.clear();sectorInteracted=false;}
- const rows=allRows().filter(c=>{
-   const p=deskEvidence(c),e=continuationReadout(c);
-   return Boolean(p.liquid&&((p.qualified&&(p.stage||p.momentumStage))||e.strictMA510Hold===true||e.recentCloseHold10===true));
- });
+ const valid=state.mode==='live'&&asOf===state.universe?.asOf&&!staleDeskSnapshot(asOf);
+ if(!valid){out.innerHTML='<div class="desk-empty">全市場行情日期尚未核對，暫停逐檔強勢判定；不把舊資料當最新盤勢。</div>';return;}
+ if(!globalThis.ChaopanStageV318){out.innerHTML='<div class="desk-empty">分類模組尚未載入，請確認 stock-stage-v318.js 已部署。</div>';return;}
+ if(asOf!==sectorDate){sectorDate=asOf;sectorOpen.clear();sectorShown.clear();sectorCardTabs.clear();sectorInteracted=false;sectorMode='strong';sectorAudit=null;sectorAuditSource=null;}
+ // Classify EVERY same-day universe member. Cache as long as the data array remains identical.
+ const source=allRows();
+ if(!sectorAudit||sectorAuditSource!==source){sectorAuditSource=source;sectorAudit=ChaopanStageV318.classify(source,asOf,c=>{
+   const p=deskEvidence(c),g=ChaopanGuidance.evaluate(c,p,supportLines(c)),audit=confirmedStrengthAudit(c),hold=continuationReadout(c);
+   return {liquid:Boolean(p.liquid),strongApproved:audit.confirmed,danger:g.level==='danger',
+     watch:Boolean(p.qualified&&(p.stage||p.momentumStage)||hold.strictMA510Hold===true||hold.recentCloseHold10===true)};
+ });}
+ const counts=sectorAudit.counts;
+ const names={strong:'已確認強勢',watch:'起漲觀察',danger:'轉弱警戒'};
+ const mode=sectorMode;
+ const rows=sectorAudit.rows.filter(x=>x.kind===mode).map(x=>x.row);
  const groups=new Map();
  for(const c of rows){const industry=String(c.industry||c.fundamentals?.industry||'').trim();const name=industry&&!/未分類|不詳|未知|待分類/.test(industry)?industry:'其他（待分類）';
   if(!groups.has(name))groups.set(name,[]);groups.get(name).push(c);
@@ -664,16 +673,17 @@ function sectorDirectory(){
  const median=a=>{if(!a.length)return null;const b=a.slice().sort((x,y)=>x-y);return (b[Math.floor((b.length-1)/2)]+b[Math.floor(b.length/2)])/2};
  sectorRanks=new Map(deskRankedCandidates('launch').map((c,i)=>[rowId(c),i+1]));
  sectorPacked=[...groups].map(([name,arr])=>{
-  arr.sort((a,b)=>Number(Boolean(deskEvidence(b).priority))-Number(Boolean(deskEvidence(a).priority))||
-    (deskEvidence(b).score.entry??0)-(deskEvidence(a).score.entry??0)||
+  arr.sort((a,b)=>(deskEvidence(b).score.entry??0)-(deskEvidence(a).score.entry??0)||
     (deskEvidence(b).score.potential??0)-(deskEvidence(a).score.potential??0)||String(a.code).localeCompare(String(b.code),'zh-Hant',{numeric:true}));
   const pct5=arr.map(c=>{const bars=c.bars||[],old=bars.length>=6?numeric(bars.at(-6)[4]):null;return old&&numeric(c.close)!==null?100*(Number(c.close)/old-1):null}).filter(v=>v!==null);
   return {name,arr,median:median(pct5)};
  }).sort((a,b)=>Number(b.name!=='其他（待分類）')-Number(a.name!=='其他（待分類）')||b.arr.length-a.arr.length||(b.median??-999)-(a.median??-999));
- if(!sectorPacked.length){out.innerHTML='<div class="desk-empty">本交易日目前沒有核對通過流動性與突破／均線續強條件的族群股票，請到進階搜尋核對。</div>';return;}
- if(!sectorInteracted&&sectorOpen.size===0)sectorOpen.add(sectorPacked[0].name);
- out.innerHTML='<p class="sector-headline">按族群展開個股作戰卡：買點、減碼、移動停利與六線狀態。每次先顯示5檔；非即時。</p>'+sectorPacked.map(({name,arr,median},i)=>
-  `<details class="sector-group" data-sector-index="${i}" ${sectorOpen.has(name)?'open':''}><summary><span class="sector-nom">${esc(name)}</span><span class="sector-sum">${arr.length}檔 · 近5日 ${median===null?'—':pct(median)}</span><span class="sector-arrow">⌄</span></summary><div class="sector-rows"></div></details>`).join('');
+ if(!sectorInteracted&&sectorOpen.size===0&&sectorPacked.length)sectorOpen.add(sectorPacked[0].name);
+ const summary=`<section class="stage-audit" aria-label="全市場逐檔判定結果"><b>全市場已檢查 ${integer(sectorAudit.total)} 檔｜${esc(asOf)} 盤後</b><small>已確認強勢 ${integer(counts.strong)}｜起漲觀察 ${integer(counts.watch)}｜轉弱警戒 ${integer(counts.danger)}｜一般 ${integer(counts.neutral)}｜資料不足 ${integer(counts.unknown)}</small><div class="stage-audit-actions">${Object.entries(names).map(([k,v])=>`<button type="button" class="${mode===k?'active':''}" data-sector-mode="${k}" aria-pressed="${mode===k}">${esc(v)} ${integer(counts[k])}</button>`).join('')}<button type="button" data-sector-export="all">下載全市場分類CSV</button></div></section>`;
+ const contents=sectorPacked.length?sectorPacked.map(({name,arr,median},i)=>
+  `<details class="sector-group" data-sector-index="${i}" ${sectorOpen.has(name)?'open':''}><summary><span class="sector-nom">${esc(name)}</span><span class="sector-sum">${arr.length}檔 · 近5日 ${median===null?'—':pct(median)}</span><span class="sector-arrow">⌄</span></summary><div class="sector-rows"></div></details>`).join(''):
+  `<div class="desk-empty">本交易日沒有符合「${names[mode]}」的可核對股票。可以切換到其他分類；全市場搜尋仍保留全部個股。</div>`;
+ out.innerHTML=summary+'<p class="sector-headline">本區只顯示目前選定的「'+names[mode]+'」；依原頸線、均線及風險燈號作判定，非即時、非買進建議。</p>'+contents;
  out.querySelectorAll('.sector-group').forEach(el=>{
    if(el.open)renderSectorPage(el);
    el.addEventListener('toggle',()=>{const group=sectorPacked[Number(el.dataset.sectorIndex)];if(!group)return;
@@ -681,11 +691,15 @@ function sectorDirectory(){
      if(el.open){sectorOpen.add(group.name);renderSectorPage(el)}else{sectorOpen.delete(group.name);el.querySelector('.sector-rows').replaceChildren()}
    });
  });
- // Delegated clicks work for cards appended by subsequent "load more" actions.
  out.onclick=e=>{
+   const modeBtn=e.target.closest('[data-sector-mode]');if(modeBtn){sectorMode=modeBtn.dataset.sectorMode;sectorOpen.clear();sectorShown.clear();sectorInteracted=false;sectorDirectory();return;}
+   const exportBtn=e.target.closest('[data-sector-export]');if(exportBtn){
+     if(!sectorAudit)return;const cell=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+     const csv='\uFEFF交易日,市場,代號,名稱,產業,類別,判定理由\n'+sectorAudit.rows.map(x=>[x.date,x.market,x.code,x.name,x.industry,{strong:'已確認強勢',watch:'起漲觀察',danger:'轉弱警戒',neutral:'一般',unknown:'資料不足'}[x.kind],x.reason].map(cell).join(',')).join('\n');
+     const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='超盤手_全市場分類_'+asOf+'.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);return;
+   }
    const more=e.target.closest('[data-sector-more]');if(more){const idx=Number(more.dataset.sectorMore),group=sectorPacked[idx];if(!group)return;
-     sectorShown.set(group.name,Math.min(group.arr.length,(sectorShown.get(group.name)||SECTOR_BATCH)+SECTOR_BATCH));
-     renderSectorPage(more.closest('.sector-group'));
+     sectorShown.set(group.name,Math.min(group.arr.length,(sectorShown.get(group.name)||SECTOR_BATCH)+SECTOR_BATCH));renderSectorPage(more.closest('.sector-group'));
    }
  };
 }
