@@ -29,21 +29,24 @@ def number(value):
     except (ValueError, TypeError): return None
 
 def date_iso(value):
+    """Recognise ISO/Gregorian/ROC dates without confusing 2026/10/16 and ROC 115/10/16."""
     s = str(value or '').strip()
-    m = re.fullmatch(r'(\d{4})-(\d{1,2})-(\d{1,2})', s)
-    if m: y,mo,d = map(int,m.groups())
+    m = re.fullmatch(r'(\d{3,4})[-/\.](\d{1,2})[-/\.](\d{1,2})', s)
+    if m:
+        y, mo, d = map(int,m.groups())
+        if y < 1911: y += 1911
     else:
-        m = re.search(r'(\d{2,3})[年/\-.](\d{1,2})[月/\-.](\d{1,2})',s)
-        if m: y,mo,d = map(int,m.groups());y+=1911
+        m = re.fullmatch(r'(\d{2,3})年(\d{1,2})月(\d{1,2})日?',s)
+        if m:
+            y,mo,d = map(int,m.groups());y+=1911
         else:
-            m = re.fullmatch(r'(\d{3})(\d{2})(\d{2})',s)
-            if m:y,mo,d=map(int,m.groups());y+=1911
-            else:
-                m = re.fullmatch(r'(\d{4})(\d{2})(\d{2})',s)
-                if not m:return None
-                y,mo,d=map(int,m.groups())
-    try:return dt.date(y,mo,d).isoformat()
-    except ValueError:return None
+            m=re.fullmatch(r'(\d{7,8})',s)
+            if not m:return None
+            q=m.group(1); y=int(q[:-4]);mo=int(q[-4:-2]);d=int(q[-2:]);
+            if y<1911:y+=1911
+    try: return dt.date(y,mo,d).isoformat()
+    except ValueError: return None
+
 
 def twse_t86(payload, target):
     """Parse the named-column TWSE T86; figures are in shares, not lots."""
@@ -58,6 +61,7 @@ def twse_t86(payload, target):
                 if pat in str(key):return j
         return None
     col=index('證券代號','股票代號')
+    name_col=index('證券名稱','股票名稱')
     fr=index('外陸資買賣超股數(不含外資自營商)','外陸資買賣超股數')
     tr=index('投信買賣超股數')
     dl=index('自營商買賣超股數')
@@ -69,18 +73,20 @@ def twse_t86(payload, target):
         if not re.fullmatch(r'\d{4}',code):continue
         vals=[number(row[i]) for i in (fr,tr,dl)]
         if any(v is None for v in vals):continue
-        result['上市-'+code]={'date':target,'foreignLots':round(vals[0]/1000,3),'trustLots':round(vals[1]/1000,3),'dealerLots':round(vals[2]/1000,3),'source':'TWSE T86','broker':None}
+        result['上市-'+code]={'date':target,'foreignLots':round(vals[0]/1000,3),'trustLots':round(vals[1]/1000,3),'dealerLots':round(vals[2]/1000,3),'source':'TWSE T86','broker':None,
+            'name':str(row[name_col]).strip() if name_col is not None and len(row)>name_col else ''}
     return result
 
 def tpex_3insti(payload, target):
     """Accept only explicitly recognised, day-stamped official TPEx fields."""
     if not isinstance(payload,list):return {}
     result={}
-    keys={'code':('證券代號','股票代號','SecuritiesCompanyCode','SecuritiesCode'),
+    keys={'code':('證券代號','股票代號','代號','SecuritiesCompanyCode','SecuritiesCode'),
           'foreign':('外資及陸資買賣超股數','外資及陸資買賣超','Foreign Investors include Mainland Area Investors (Foreign Dealers excluded)-Difference'),
           'trust':('投信買賣超股數','投信買賣超','SecuritiesInvestmentTrustCompanies-Difference'),
           'dealer':('自營商買賣超股數合計','自營商買賣超股數','自營商買賣超','Dealers-Difference'),
-          'date':('資料日期','日期','Date','TradeDate')}
+          'date':('資料日期','日期','Date','TradeDate'),
+          'name':('名稱','證券名稱','CompanyName','Name')}
     def pick(row, names):
         for name in names:
             if name in row:return row[name]
@@ -91,7 +97,8 @@ def tpex_3insti(payload, target):
         if not re.fullmatch(r'\d{4}',code):continue
         vals=[number(pick(row,keys[k])) for k in ('foreign','trust','dealer')]
         if any(v is None for v in vals):continue
-        result['上櫃-'+code]={'date':target,'foreignLots':round(vals[0]/1000,3),'trustLots':round(vals[1]/1000,3),'dealerLots':round(vals[2]/1000,3),'source':'TPEx 3insti','broker':None}
+        result['上櫃-'+code]={'date':target,'foreignLots':round(vals[0]/1000,3),'trustLots':round(vals[1]/1000,3),'dealerLots':round(vals[2]/1000,3),'source':'TPEx 3insti','broker':None,
+            'name':str(pick(row,keys['name']) or '').strip()}
     return result
 
 def twse_fmtqik(payload,target):
@@ -243,8 +250,77 @@ def fetch_csv_text(url,timeout=18):
         if resp.status!=200:raise IOError('HTTP status '+str(resp.status))
         return resp.read(2000000).decode('utf-8-sig')
 
-def build(target, fetch=fetch_json, fetch_text=fetch_csv_text):
+def taifex_foreign_tx_oi(payload, target):
+    """TX ONLY, foreign open interest ONLY. Net is checked against gross long-short."""
+    if not isinstance(payload,list):return None
+    matches=[]
+    for row in payload:
+        if not isinstance(row,dict):continue
+        if date_iso(row.get('Date'))!=target:continue
+        if str(row.get('ContractCode','')).strip() not in ('臺股期貨','台股期貨'):continue
+        if str(row.get('Item','')).strip() not in ('外資及陸資','外資'):continue
+        long=number(row.get('OpenInterest(Long)'))
+        short=number(row.get('OpenInterest(Short)'))
+        net=number(row.get('OpenInterest(Net)'))
+        if any(x is None or x!=int(x) for x in (long,short,net)) or min(long,short)<0 or net!=long-short:continue
+        matches.append({'date':target,'contract':'臺股期貨 TX','trader':'外資及陸資',
+            'longLots':int(long),'shortLots':int(short),'netLots':int(net),
+            'unit':'口','source':'TAIFEX institutional futures by contract'})
+    return matches[0] if len(matches)==1 else None
+
+
+def twse_margin_total(payload,target):
+    """TWSE market-wide official financing turnover/stock in lots and TWD thousand.
+
+    Never equate an equity subset with the official market subtotal.
+    """
+    if not isinstance(payload,dict) or payload.get('stat') not in (None,'OK') or date_iso(payload.get('date'))!=target:return None
+    tables=payload.get('tables') or ([payload] if payload.get('fields') else [])
+    for tab in tables:
+        fields=[str(f).strip() for f in tab.get('fields') or []]
+        if not all(k in fields for k in ('項目','前日餘額','今日餘額')):continue
+        label_idx=fields.index('項目');prev_idx=fields.index('前日餘額');today_idx=fields.index('今日餘額')
+        items={}
+        for row in tab.get('data') or []:
+            if not isinstance(row,list) or len(row)<=max(label_idx,prev_idx,today_idx):continue
+            label=str(row[label_idx]).replace(' ','').strip()
+            prior=number(row[prev_idx]);today=number(row[today_idx])
+            if prior is None or today is None or min(prior,today)<0:continue
+            if label.startswith('融資(交易單位)') or label.startswith('融資（交易單位）'):
+                items['lots']=(prior,today)
+            if label.startswith('融資金額') and ('仟元' in label or '千元' in label):
+                items['thousand']=(prior,today)
+        if 'lots' in items and 'thousand' in items:
+            prev_lots,lots=items['lots'];prev_k,k=items['thousand']
+            return {'date':target,'market':'上市','marginLots':int(lots),'marginDeltaLots':int(lots-prev_lots),
+             'marginAmountYi':round(k/100000,3),'marginAmountDeltaYi':round((k-prev_k)/100000,3),
+             'unitLots':'張','unitAmount':'億元','provisional':True,'source':'TWSE MI_MARGN MS'}
+    return None
+
+
+def tpex_otc_historical_csv(csv_text, target):
+    """Official TPEx fallback CSV: named Date / Close / Change, strict date."""
+    if not isinstance(csv_text,str) or '<html' in csv_text.lower():return None
+    lines = csv_text.lstrip('\ufeff').splitlines()
+    header = next((i for i, line in enumerate(lines) if '資料日期' in line and '收市' in line and '漲跌' in line),None)
+    if header is None:return None
+    for row in csv.DictReader(lines[header:]):
+        day = date_iso(row.get('資料日期'))
+        if day != target:continue
+        close=number(row.get('收市'))
+        raw=str(row.get('漲跌') or '').strip().replace('▼','-').replace('▲','+')
+        change=number(raw)
+        if close is None or change is None or close<=0 or close-change<=0:return None
+        return {'date':target,'close':close,'change':change,'pct':round(change/(close-change)*100,2),
+                'source':'TPEx official OTC index historical CSV'}
+    return None
+
+
+def build(target, fetch=fetch_json, fetch_text=fetch_csv_text, text_fetch=None):
+    """Source-fault isolation with per-endpoint status; no blank-as-zero substitution."""
+    if date_iso(target)!=target:raise ValueError('Invalid target trading date')
     compact=target.replace('-','')
+    roc_month=f'{int(target[:4])-1911}/{target[5:7]}/{target[8:10]}'
     urls={
       'twse_t86':f'https://www.twse.com.tw/rwd/zh/fund/T86?response=json&date={compact}&selectType=ALLBUT0999',
       'tpex': 'https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading',
@@ -252,17 +328,23 @@ def build(target, fetch=fetch_json, fetch_text=fetch_csv_text):
       'twse_bfi':f'https://www.twse.com.tw/rwd/zh/fund/BFI82U?response=json&dayDate={compact}&type=day',
       'tx':'https://openapi.taifex.com.tw/v1/DailyMarketReportFut',
       'twse_margin':f'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date={compact}&response=json&selectType=ALL',
-      'otc':f'https://www.tpex.org.tw/www/zh-tw/afterTrading/indexSummary?date={int(target[:4])-1911}/{target[5:7]}&response=json',
+      'otc':f'https://www.tpex.org.tw/www/zh-tw/afterTrading/indexSummary?date={roc_month}&response=json',
     }
-    out={'schema':SCHEMA,'asOf':target,'indices':{},'institutional':{},'stocks':{},'coverage':{},'notice':'官方盤後；不同資料源可能延遲。未取得則顯示待資料；分點不能推斷多空持倉。'}
-    mapping={'twse_t86':lambda x:twse_t86(x,target),'tpex':lambda x:tpex_3insti(x,target),'taiex':lambda x:twse_fmtqik(x,target),'twse_bfi':lambda x:twse_bfi(x,target),'tx':lambda x:taifex_tx(x,target),'twse_margin':lambda x:twse_margin(x,target),'otc':lambda x:tpex_otc_index(x,target)}
+    out={'schema':SCHEMA,'asOf':target,'indices':{},'institutional':{},'stocks':{},'margin':{},'coverage':{},'sources':{},
+         'notice':'官方盤後；日期/單位分開核對；缺值不等於零。融資今日餘額暫定，以次日更正為準。'}
+    mapping={'twse_t86':lambda x:twse_t86(x,target),'tpex':lambda x:tpex_3insti(x,target),
+       'taiex':lambda x:twse_fmtqik(x,target),'twse_bfi':lambda x:twse_bfi(x,target),
+       'tx':lambda x:taifex_tx(x,target),'twse_margin':lambda x:twse_margin(x,target),'otc':lambda x:tpex_otc_index(x,target)}
     for key,url in urls.items():
-        try:data=mapping[key](fetch(url));LOG.info('%s accepted=%s',key,len(data) if isinstance(data,dict) else bool(data))
-        except Exception as ex:LOG.warning('%s skipped: %s',key,str(ex)[:150]);data=None
+        start=time.monotonic();status='invalid';data=None
+        try:
+            data=mapping[key](fetch(url));status='ok' if data else 'invalid'
+        except Exception as ex:
+            LOG.warning('%s skipped: %s',key,str(ex)[:150]);status='error'
+        out['sources'][key]={'status':status,'durationMs':round((time.monotonic()-start)*1000)}
+        if key=='otc':out['sources']['otc_primary']={'status':status}
         if key=='twse_margin':
-            if data:
-                for code,record in data.items():
-                    out.setdefault('margin',{})[code]=record
+            if data:out['margin'].update(data)
             out['coverage'][key]=len(data or {})
         elif key=='twse_bfi':
             if data:out['institutional']['listed']=data
@@ -271,18 +353,71 @@ def build(target, fetch=fetch_json, fetch_text=fetch_csv_text):
             if data:out['stocks'].update(data)
             out['coverage'][key]=len(data or {})
         else:
-            if data:out['indices'][{'taiex':'taiex','tx':'taifex','otc':'otc'}.get(key,key)]=data
+            if data:out['indices'][{'tx':'taifex'}.get(key,key)]=data
             out['coverage'][key]=bool(data)
-        time.sleep(.25)
-    # VIX independent of Taiwan market data: US session date must stay visible.
-    try:
-        csv_text=fetch_text('https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv')
-        record=cboe_vix_close(csv_text,target)
-        if record:out['indices']['usVix']=record
-        out['coverage']['usVix']=bool(record)
-    except Exception as ex:
-        LOG.warning('usVix skipped: %s',str(ex)[:150]);out['coverage']['usVix']=False
+        if fetch is fetch_json:time.sleep(.1)
+    # Optional additional authoritative sources. Noncritical failures do not block trading snapshots.
+    # Stock/OTC data must not be replaced by stale or other-product totals.
+    if fetch is fetch_json:
+        extras={
+          'twse_margin_total':(f'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date={compact}&response=json&selectType=MS',twse_margin_total),
+          'taifex_foreign_tx':('https://openapi.taifex.com.tw/v1/MarketDataOfMajorInstitutionalTradersDetailsOfFuturesContractsBytheDate',taifex_foreign_tx_oi),
+        }
+        for key,(url,parser) in extras.items():
+            try:
+                record=parser(fetch(url),target)
+                out['sources'][key]={'status':'ok' if record else 'invalid'}
+                out['coverage'][key]=bool(record)
+                if key=='twse_margin_total' and record:out['marginMarket']=record
+                if key=='taifex_foreign_tx' and record:out.setdefault('derivatives',{})['foreignTxOI']=record
+            except Exception as ex:
+                LOG.warning('%s skipped: %s',key,str(ex)[:150]);out['sources'][key]={'status':'error'};out['coverage'][key]=False
+    # Official TPEx index fallback; a failed primary must not erase other working sources.
+    if not out['coverage']['otc']:
+        try:
+            getter = text_fetch or fetch_text
+            record=tpex_otc_historical_csv(getter('https://www.tpex.org.tw/www/zh-tw/indexInfo/inx?response=data'),target)
+            if record:out['indices']['otc']=record
+            out['sources']['otc_fallback']={'status':'ok' if record else 'invalid'}
+            if record:out['sources']['otc']={'status':'ok','detail':'官方同交易日 CSV 備援'};out['coverage']['otc']=True
+        except Exception as ex:
+            LOG.warning('otc_fallback skipped: %s',str(ex)[:150]);out['sources']['otc_fallback']={'status':'error'}
+    # Only fetch live VIX with real I/O, or explicit isolated CSV source injection.
+    # text_fetch is the legacy TPEx fallback injectable and is NOT the VIX source.
+    if fetch is fetch_json or (fetch_text is not fetch_csv_text and text_fetch is None):
+        try:
+            record=cboe_vix_close(fetch_text('https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv'),target)
+            if record:out['indices']['usVix']=record
+            out['sources']['usVix']={'status':'ok' if record else 'invalid'};out['coverage']['usVix']=bool(record)
+        except Exception as ex:
+            LOG.warning('usVix skipped: %s',str(ex)[:150]);out['sources']['usVix']={'status':'error'};out['coverage']['usVix']=False
+    else:out['sources']['usVix']={'status':'not_checked'};out['coverage']['usVix']=False
+    if out['margin']:
+        balances=[v['marginLots'] for v in out['margin'].values() if v.get('date')==target and number(v.get('marginLots')) is not None]
+        prev=[v['marginPreviousLots'] for v in out['margin'].values() if v.get('date')==target and number(v.get('marginPreviousLots')) is not None]
+        if balances and len(balances)==len(prev):
+            out['marginCoverage']={'date':target,'market':'上市','source':'TWSE MI_MARGN 個股小計（非上市全市場正式餘額）',
+              'matchedStocks':len(balances),'marginLotsSubtotal':round(sum(balances),3),
+              'marginPreviousLotsSubtotal':round(sum(prev),3),'marginDeltaLotsSubtotal':round(sum(balances)-sum(prev),3),
+              'provisional':True}
     return out
+
+def verified_trading_days(target, path=ROOT / 'data' / 'universe.json'):
+    """Cross-check days against the real OHLCV calendar, not arbitrary snapshot count.
+
+    If the source file is absent or stale, return [] and do not label N records N days.
+    """
+    try:
+        data=json.loads(path.read_text('utf8'))
+        if data.get('asOf')!=target:return []
+        counts={}
+        for row in (data.get('rows') or [])[:300]:
+            for bar in row.get('bars') or []:
+                if isinstance(bar,list) and date_iso(bar[0])==bar[0] and bar[0]<=target:
+                    counts[bar[0]]=counts.get(bar[0],0)+1
+        return sorted(day for day,count in counts.items() if count>=min(100,max(1,len(data.get('rows',[]))//10)))
+    except (OSError,ValueError,TypeError,IndexError):return []
+
 
 def save(out, path=DEST):
     if not out['stocks'] and not out['indices'] and not out['institutional'] and not out.get('margin'):
@@ -300,6 +435,15 @@ def save(out, path=DEST):
                 for key,value in old.get('institutional',{}).items():out['institutional'].setdefault(key,value)
                 for key,value in old.get('stocks',{}).items():out['stocks'].setdefault(key,value)
                 for key,value in old.get('margin',{}).items():out.setdefault('margin',{}).setdefault(key,value)
+                for key,value in old.get('sources',{}).items():
+                    if value.get('status') in ('ok','retained') and out.setdefault('sources',{}).get(key,{}).get('status') not in ('ok','retained'):
+                        out['sources'][key]={**value,'status':'retained'}
+                for key,value in old.get('coverage',{}).items():
+                    if not out.setdefault('coverage',{}).get(key):out['coverage'][key]=value
+                for optional in ('marginMarket','derivatives'):
+                    if old.get(optional) and not out.get(optional):out[optional]=old[optional]
+                if old.get('marginCoverage') and not out.get('marginCoverage'):
+                    out['marginCoverage']=old['marginCoverage']
         except (ValueError,OSError,TypeError):pass
     # Historical margin is a separate official-EOD time series. Incomplete past days
     # never become artificial zeros, and 5/20-day changes require 6/21 actual records.
@@ -318,16 +462,19 @@ def save(out, path=DEST):
             if isinstance(v,dict) and v.get('date')==out['asOf'] and number(v.get('marginLots')) is not None}
     history={k:history[k] for k in sorted(history)[-30:]}
     out['marginHistory']=history
-    margin_days=sorted(history)
-    if out.get('asOf') in margin_days:
-        day_index=margin_days.index(out['asOf'])
+    trading_days=verified_trading_days(out['asOf'])
+    if out['asOf'] in trading_days:
+        day_index=trading_days.index(out['asOf'])
         for code,record in out.get('margin',{}).items():
             if not isinstance(record,dict) or record.get('date')!=out['asOf']:continue
             for days in (5,20):
-                if day_index>=days:
-                    past=history[margin_days[day_index-days]].get(code)
-                    cur=number(record.get('marginLots'))
-                    if past is not None and cur is not None:record[f'margin{days}DayDeltaLots']=round(cur-past,1)
+                # Missing any real trading day invalidates the comparison.
+                if day_index<days:continue
+                expected=trading_days[day_index-days:day_index+1]
+                if any(day not in history or code not in history[day] for day in expected):continue
+                past=number(history[expected[0]].get(code));cur=number(record.get('marginLots'))
+                if past is not None and cur is not None:
+                    record[f'margin{days}DayDeltaLots']=round(cur-past,1)
     tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(out,ensure_ascii=False,separators=(',',':'))+'\n',encoding='utf8');tmp.replace(path)
     return True
 
