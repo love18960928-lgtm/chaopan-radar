@@ -5,6 +5,8 @@ probability or an automatic sell order. Every comparison uses data no later
 than the row's as-of trading day. Bars in 1,000-share lots.
 """
 from statistics import median, mean
+import datetime as dt
+import math
 from collections import defaultdict
 from rules import scan_stock
 from trader import trader_overlay
@@ -13,6 +15,87 @@ from intraday_plan_v26 import build_intraday_plan
 from structure_v25 import cycle_judgement
 from ma_strength_v30 import moving_average_context
 from continuation_v303 import continuation_context
+
+
+def published_fundamentals(raw, asof):
+    """For a public EOD card, expose only plausibly available, recent reports.
+
+    Period cutoffs are conservative *assumptions*, not exact filing timestamps;
+    source rows must still be checked against official disclosure dates.
+    """
+    f=dict(raw or {})
+    out={'industry': f.get('industry') or ''}
+    try:
+        as_date=dt.date.fromisoformat(asof)
+    except (TypeError,ValueError):
+        return out
+    try:
+        period=str(f['revenuePeriod'])
+        rd=dt.date.fromisoformat(period+'-01')
+        next_month=(rd.replace(day=28)+dt.timedelta(days=4)).replace(day=1)
+        public_after=next_month.replace(day=11)
+        age=(as_date.year-rd.year)*12+as_date.month-rd.month
+        if public_after<=as_date and 1<=age<=3:
+            out['revenuePeriod']=period
+            for k in ('revenueMonthThousand','revenueCumThousand','revenueYoY','revenueCumYoY'):
+                if f.get(k) is not None:out[k]=f[k]
+    except (ValueError,TypeError,KeyError):
+        pass
+    try:
+        period=str(f['epsPeriod'])
+        if len(period)!=6 or period[4]!='Q':raise ValueError
+        year,q=int(period[:4]),int(period[-1])
+        if q not in (1,2,3,4):raise ValueError
+        end=(dt.date(year+1,1,1) if q==4 else dt.date(year,q*3+1,1))-dt.timedelta(days=1)
+        snapshot=f.get('epsStatementDate')
+        if snapshot:
+            # Official export issue date, not the company's original filing time.
+            release=dt.date.fromisoformat(str(snapshot))
+            if release<end:raise ValueError
+        else:
+            # Older snapshots without issue dates retain the conservative cutoff.
+            release=(dt.date(year,5,16) if q==1 else dt.date(year,8,16) if q==2
+                     else dt.date(year,11,16) if q==3 else dt.date(year+1,4,1))
+        if release<=as_date and 0<=(as_date-end).days<=245:
+            out['epsPeriod']=period
+            out['epsBasis']='年初累計'  # MOPS IFRS earnings statement is YTD.
+            if snapshot:out['epsStatementDate']=str(snapshot)
+            for k in ('eps','grossMargin'):
+                if f.get(k) is not None:out[k]=f[k]
+    except (ValueError,TypeError,KeyError):
+        pass
+    try:
+        d=dt.date.fromisoformat(str(f['valuationDate']))
+        if 0<=(as_date-d).days<=20:
+            out['valuationDate']=d.isoformat()
+            for k in ('pe','pb','dividendYield'):
+                if f.get(k) is not None:out[k]=f[k]
+    except (ValueError,TypeError,KeyError):
+        pass
+    # A card may publish price estimates only when an independent four-quarter
+    # sequence and historical P/E distribution were verified against current
+    # official quarterly earnings, revenue, and the official P/E snapshot.
+    try:
+        model_date=dt.date.fromisoformat(str(f['modelAsOf']))
+        qperiod=str(f['epsTtmPeriod'])
+        eps_ttm=float(f['epsTtm'])
+        pes=[float(f[k]) for k in ('peRiverLow','peRiverMid','peRiverHigh')]
+        targets=[float(f[k]) for k in ('modelTargetLow','modelTargetMid','modelTargetHigh')]
+        count=int(f['peRiverSample'])
+        usable=(0<=(as_date-model_date).days<=40
+            and qperiod==out.get('epsPeriod')
+            and all(k in out for k in ('revenuePeriod','revenueYoY','eps','pe','valuationDate'))
+            and 0<eps_ttm<500 and count>=120
+            and all(math.isfinite(v) for v in [eps_ttm]+pes+targets)
+            and 3<=pes[0]<=pes[1]<=pes[2]<=100
+            and all(abs(eps_ttm*p-v)<=max(.1,v*.002) for p,v in zip(pes,targets)))
+        if usable:
+            for k in ('epsTtm','epsTtmPeriod','epsTtmSource','peRiverLow','peRiverMid',
+                      'peRiverHigh','peRiverSample','modelTargetLow','modelTargetMid',
+                      'modelTargetHigh','modelAsOf','modelType','modelCaveat'):
+                out[k]=f[k]
+    except (KeyError,ValueError,TypeError,OverflowError):pass
+    return out
 
 
 def _ret(bars,days):
@@ -220,7 +303,7 @@ def build_universe(stocks, snapshot, asof):
           'riskLevel','riskStatus','riskReasons','riskEvidence','supportEvidence','structureV23','unifiedStage','unifiedScore','unifiedReasons','legacyNeck','relMarket5Pct','relSector5Pct',
           'marketProxyNote','decision','opportunityScore','industry','trading','intradayPlan','lineContext','maAll',
           'cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview','continuationContext')}
-        slim['fundamentals']={'industry':record['industry']}
+        slim['fundamentals']=published_fundamentals(record.get('fundamentals'),asof)
         slim['bars']=record['bars']
         rows.append(slim)
     rows.sort(key=lambda c:(c['opportunityScore'] if c['opportunityScore'] is not None else -1), reverse=True)

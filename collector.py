@@ -25,7 +25,8 @@ from rules import build_snapshot
 from trader import trader_overlay,apply_sector_relative_strength
 from performance import update_diary
 from market_quality import breadth
-from risk_v22 import build_universe
+from risk_v22 import build_universe, published_fundamentals
+from valuation_verified_v14 import enrich_verified_targets
 
 ROOT = Path(__file__).resolve().parents[1]
 HISTORY = ROOT / 'storage' / 'history.json'
@@ -221,6 +222,8 @@ FIN_SOURCES = (
  ('上櫃','revenue','https://mopsfin.twse.com.tw/opendata/t187ap05_O.csv','csv'),
  ('上市','valuation','https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL','json'),
  ('上市','income','https://openapi.twse.com.tw/v1/opendata/t187ap06_L_ci','json'),
+ # Official listed-company EPS fallback: free daily refreshed cumulative EPS.
+ ('上市','income','https://openapi.twse.com.tw/v1/opendata/t187ap14_L','json'),
  ('上櫃','income','https://mopsfin.twse.com.tw/opendata/t187ap06_O_ci.csv','csv'),
 )
 
@@ -250,6 +253,48 @@ def validnum(value,low=-1e12,high=1e12):
     return round(x,3) if x is not None and math.isfinite(x) and low<=x<=high else None
 
 
+def parse_financial_issue_date(value):
+    """Return the official record's *outgoing snapshot* date, not issuer filing time.
+
+    The snapshot date is a conservative not-before boundary, never a claim
+    about the company's exact filing timestamp.
+    """
+    text=str(value or '').strip()
+    try:
+        if re.fullmatch(r'\d{7}', text):
+            return dt.date(int(text[:3])+1911,int(text[3:5]),int(text[5:7])).isoformat()
+        if re.fullmatch(r'\d{8}', text):
+            return dt.date(int(text[:4]),int(text[4:6]),int(text[6:8])).isoformat()
+        if re.fullmatch(r'\d{4}[-/]\d{2}[-/]\d{2}',text):
+            return dt.date.fromisoformat(text.replace('/','-')).isoformat()
+    except ValueError:
+        return None
+    return None
+
+
+def earnings_available_at(fin,asof):
+    """Conservative availability check: official dated snapshot, otherwise deadline.
+
+    Publishing/filing time should be replaced by issuer-specific timestamps
+    when those are available. This function does not infer a filing timestamp.
+    """
+    try:
+        as_date=dt.date.fromisoformat(str(asof))
+        period=str(fin['epsPeriod'])
+        match=re.fullmatch(r'(\d{4})Q([1-4])',period)
+        if match is None:return False
+        year,q=map(int,match.groups())
+        end=(dt.date(year+1,1,1) if q==4 else dt.date(year,q*3+1,1))-dt.timedelta(days=1)
+        snapshot=str(fin.get('epsStatementDate') or '')
+        if snapshot:
+            release=dt.date.fromisoformat(snapshot)
+            if release<end:return False
+        else:
+            release=dt.date(year,5,16) if q==1 else dt.date(year,8,16) if q==2 else dt.date(year,11,16) if q==3 else dt.date(year+1,4,1)
+        return end<=release<=as_date and 0 <= (as_date-end).days<=245
+    except (ValueError,TypeError,KeyError):return False
+
+
 def financial_fields(kind,row):
     if kind=='revenue':
         period=str(findval(row,'資料年月','資料月份','年月') or '').strip()
@@ -257,6 +302,9 @@ def financial_fields(kind,row):
         month=int(period[-2:]); year=int(period[:-2])+1911
         if not (2000<=year<=2100 and 1<=month<=12):return None
         return {'revenuePeriod':f'{year:04d}-{month:02d}',
+                # Official open-data revenue amounts are in NT$1,000 (NOT NT$1).
+                'revenueMonthThousand':validnum(findval(row,'營業收入-當月營收','當月營收'),0),
+                'revenueCumThousand':validnum(findval(row,'累計營業收入-當月累計營收','當年累計營收'),0),
                 'revenueYoY':validnum(findval(row,'營業收入-去年同月增減(%)','營業收入-去年同月增減％','當月營收較去年同期增減(%)'),-1000,10000),
                 'revenueCumYoY':validnum(findval(row,'累計營業收入-前期比較增減(%)','累計營業收入-前期比較增減％','累計營收較去年同期增減(%)'),-1000,10000),
                 'industry':str(findval(row,'產業別','產業類別') or '')[:60]}
@@ -276,7 +324,10 @@ def financial_fields(kind,row):
         gross=validnum(findval(row,'營業毛利（毛損）','營業毛利(毛損)','營業毛利淨額（毛損）'))
         sales=validnum(findval(row,'營業收入','收入'))
         margin=round(gross/sales*100,2) if gross is not None and sales is not None and sales>0 else None
-        return {'epsPeriod':f'{year}Q{int(season)}','eps':eps,'grossMargin':margin}
+        out={'epsPeriod':f'{year}Q{int(season)}','eps':eps,'epsBasis':'年初累計','grossMargin':margin}
+        issue=parse_financial_issue_date(findval(row,'出表日期','資料日期'))
+        if issue:out['epsStatementDate']=issue
+        return out
     return None
 
 
@@ -342,15 +393,7 @@ def score_company(stock, candidate):
         period=str(f.get('epsPeriod',''))
         yr,q=int(period[:4]),int(period[-1])
         if len(period)!=6 or period[4]!='Q' or q not in (1,2,3,4):raise ValueError
-        nextyear,nextmonth=(yr+1,1) if q==4 else (yr,q*3+1)
-        quarter_end=dt.date(nextyear,nextmonth,1)-dt.timedelta(days=1)
-        # Conservative regulatory-publication windows; no published-at timestamp
-        # is available in the feed. Never use a quarter before this cutoff.
-        if q==1: published_from=dt.date(yr,5,16)
-        elif q==2: published_from=dt.date(yr,8,16)
-        elif q==3: published_from=dt.date(yr,11,16)
-        else: published_from=dt.date(yr+1,4,1)
-        if td is None or td<published_from or (td-quarter_end).days > 245:
+        if td is None or not earnings_available_at(f,td.isoformat()):
             f.pop('eps',None);f.pop('grossMargin',None)
     except (ValueError,TypeError,UnboundLocalError):
         f.pop('eps',None);f.pop('grossMargin',None)
@@ -403,7 +446,9 @@ def run(days,delay,as_of=None):
     now=(dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()) if as_of is None else dt.date.fromisoformat(as_of)
     allstocks=read_existing()
     # Keep prospective signal diary when rebuilding/updating history.
-    historical_signals=(json.loads(HISTORY.read_text('utf-8')).get('signalEvents',[]) if HISTORY.exists() else [])
+    prior_history=json.loads(HISTORY.read_text('utf-8')) if HISTORY.exists() else {}
+    historical_signals=prior_history.get('signalEvents',[])
+    structure_journal=prior_history.get('structureJournal',{})
     known={(s['market'],row[0]) for s in allstocks.values() for row in s.get('bars',[])}
     if days>0:
         dates=[now-dt.timedelta(days=i) for i in range(days-1,-1,-1)]
@@ -438,11 +483,18 @@ def run(days,delay,as_of=None):
         return
     financial_sources=enrich_financials(allstocks)
     snapshot=build_snapshot(allstocks)
+    # The optional historical EPS/PER estimator is strictly bounded and cannot
+    # prevent the technical EOD scan if its third-party source is unavailable.
+    # Pick liquid/active official candidates, not all 1,900+ stocks per day.
+    ranked_for_value=sorted(snapshot['candidates'], key=lambda c:(
+        float(c.get('volumeRatio') or 0), float(c.get('changePct') or 0)), reverse=True)
+    value_feed=enrich_verified_targets(allstocks,ranked_for_value,snapshot['asOf'])
+    snapshot['valuationCoverage']={**value_feed,'method':'Optional FinMind EPS/PER × officially checked quarterly/revenue figures; research estimate only.'}
     # Unvalidated external institutional endpoints are deliberately disabled.
     # No claims about foreign/trust buying can be made without a source check.
     for c in snapshot['candidates']:
         st=allstocks.get(c['market']+c['code'],{})
-        c['fundamentals']=st.get('fundamentals',{})
+        c['fundamentals']=published_fundamentals(st.get('fundamentals',{}),snapshot['asOf'])
         c['investment']=score_company(st,c)
         c['trading']=trader_overlay(c)
         c['institutional']=None
@@ -472,16 +524,39 @@ def run(days,delay,as_of=None):
                                for c in sorted(snapshot['candidates'],key=rank_trade,reverse=True)[:60]]
     snapshot['generatedAt']=dt.datetime.now(dt.timezone.utc).isoformat()
     universe=build_universe(allstocks,snapshot,snapshot['asOf'])
-    snapshot['rulesVersion']='eod-v2.3-structure'
-    snapshot['rankMethod']='V2.3: independent historical necklines and retained supports; unadjusted EOD only; institutional/global feeds disabled'
+    snapshot['rulesVersion']='eod-v3.0.3-continuation'
+    snapshot['rankMethod']='V3.0.3: recent neckline plus historical price-range continuation, early breakout and pullback tracked separately; EOD only'
+    snapshot['performanceCaveat']='歷史績效日誌仍為舊版候選股規則，不能用來宣稱V2.5有獲利優勢；需另做樣本外、含交易成本回測'
     snapshot['universeCount']=universe['coverage']
+    snapshot['unifiedCandidatesCount']=sum(x.get('unifiedStage') not in ('一般觀察','資料不足') for x in universe['rows'])
+    snapshot['priorityTop60']=[{'code':x['code'],'market':x['market'],
+      'tradeScore':x.get('unifiedScore'),'status':x.get('unifiedStage')}
+      for x in sorted(universe['rows'],key=lambda x: (x.get('unifiedScore') if x.get('unifiedScore') is not None else -1), reverse=True)[:60]]
     # Safety: don't replace the public radar with partial market/insufficient history.
     # Keep raw observations for later recovery, but only write new public snapshot if healthy.
     if snapshot['mode']!='live':
-        atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values()),'signalEvents':historical_signals})
+        atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values()),'signalEvents':historical_signals,'structureJournal':structure_journal})
         LOG.warning('BLOCKED public snapshot: market coverage/date inconsistent: %s',snapshot['marketAsOf'])
         return
-    atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values()),'signalEvents':updated_signals})
+    # Track stage CHANGES prospectively in source history (up to 90 events).
+    # Do not manufacture observations for missed dates or recompute old results
+    # with today's newer algorithm. A restart without history simply starts fresh.
+    for row in universe['rows']:
+        key=row['market']+row['code']
+        record={'date':row['date'],'stage':row.get('unifiedStage'),
+                'neck':row.get('neck'),'risk':row.get('riskLevel'),
+                'score':row.get('unifiedScore'),
+                'origin':(row.get('cycle') or {}).get('initialDate'),
+                'strengthPhase':(row.get('continuationContext') or {}).get('kind'),
+                'historicalBreakout':(row.get('continuationContext') or {}).get('breakoutDate')}
+        events=structure_journal.setdefault(key,[])
+        if events and events[-1]['date']==record['date']:
+            events[-1]=record
+        elif not events or events[-1].get('stage')!=record['stage'] or events[-1].get('neck')!=record['neck'] or events[-1].get('strengthPhase')!=record['strengthPhase']:
+            events.append(record)
+        if len(events)>90:del events[:-90]
+        row['stageHistory']=events[-12:]
+    atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values()),'signalEvents':updated_signals,'structureJournal':structure_journal})
     atomic_json(UNIVERSE,universe)
     atomic_json(SNAPSHOT,snapshot)
     LOG.info('Wrote %s records, %s eligible stocks, %s candidates on %s',modified,snapshot['eligibleCount'],snapshot['candidateCount'],snapshot['asOf'])
