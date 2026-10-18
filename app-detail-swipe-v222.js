@@ -483,6 +483,7 @@ const sectorOpen=new Set(),sectorShown=new Map();
 let sectorInteracted=false;
 const SECTOR_BATCH=5;
 const sectorCardTabs=new Map();
+// Verified model valuation is displayed per card when available; never filters the radar list.
 // r10 single source of truth for every expanded battle card (sector/rank/desk/institution/ETF).
 // Differences belong to the data and guarded fields, never to the card skeleton.
 // r14: Research tab on the SAME battle card, not hidden only inside the chart modal.
@@ -612,7 +613,7 @@ function sectorBattleCard(c,options={}){
  const overview=`<div class="sector-mini-status"><b>${esc(g.title)}</b><span class="sector-card-tag ${riskClass}">${esc(label)}</span></div>
  <div class="sector-mini-stats"><span>觀察關卡 <b>${levelOk?n(g.breakoutLevel):'待核對'}</b></span><span>MA5 <b>${levelOk?n(g.ma5):'待核對'}</b></span><span>MA10 <b>${levelOk?n(g.ma10):'待核對'}</b></span></div>
  <div class="sector-six-dots"><span>六均線</span>${six}</div>
- <div class="sector-phase-note">${esc(ma510)} · ${esc(c.date||'資料日待核對')}盤後</div>${valuationBadge(c)}${financeQuickCard(c)}`;
+ <div class="sector-phase-note">${esc(ma510)} · ${esc(c.date||'資料日待核對')}盤後</div>${financeQuickCard(c)}`;
  const levelVals=[
   ['突破觀察',g.breakoutLevel],['回測觀察',g.pullbackZone?.[0]],['MA5減碼警戒',g.ma5],['MA10防守',g.ma10],['歷史支撐',g.support],['移動停利',g.trailingStop]
  ];
@@ -1168,7 +1169,8 @@ function renderList(){
    const metricsReady=rawRank.some(c=>numeric(c.trading?.trend)!==null);
    const ma510Metrics=allRows().filter(c=>{const e=continuationReadout(c);return state.stageView==='ma510recent'?typeof e.recentCloseHold10==='boolean':typeof e.strictMA510Hold==='boolean'}).length;
    const ma510Raw=HISTORY_510_STAGES.has(state.stageView)?historicalMa510Candidates(state.stageView).length:0;
-   const note=HISTORY_510_STAGES.has(state.stageView)&&ma510Metrics===0?
+   const note=
+   HISTORY_510_STAGES.has(state.stageView)&&ma510Metrics===0?
       '尚未取得完整逐日 MA5／MA10 守線證據；不能以零檔代表市場無股票。請更新 scripts 後執行 Actions 盤後重算。':
      HISTORY_510_STAGES.has(state.stageView)&&ma510Raw>0&&state.liquidityOnly?`全市場有 ${ma510Raw} 檔符合歷史守線，但全部被成交活躍度門檻排除；請關閉篩選核對，不代表能直接交易。`:
      (isTrend||(!stageFilter&&['stable','balanced'].includes(state.rankLens)))&&trace.available===0?

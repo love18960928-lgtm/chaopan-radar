@@ -10,7 +10,7 @@
 <div class="app-shell">
 <header class="topbar">
   <div class="brandmark"><span class="logo-pulse">◉</span></div>
-  <div class="brandtext"><div class="brandname">超盤手 <span>RADAR</span> <b aria-label="超盤手 V3.1.1 盤後版" style="display:inline-block;vertical-align:middle;font-size:12px;line-height:1.3;letter-spacing:0;color:#a6f3df;background:#204c46;border:1px solid #3b9c8c;border-radius:8px;padding:3px 7px;margin-left:5px">V3.1.1-r16a-auto-target</b></div><div class="branddesc">兩大操盤雷達・起漲第一至第三根與飆股追蹤 <span class="tinysep">/</span> 盤後計畫＋手動盤中檢查</div></div>
+  <div class="brandtext"><div class="brandname">超盤手 <span>RADAR</span> <b aria-label="超盤手 V3.1.1 盤後版" style="display:inline-block;vertical-align:middle;font-size:12px;line-height:1.3;letter-spacing:0;color:#a6f3df;background:#204c46;border:1px solid #3b9c8c;border-radius:8px;padding:3px 7px;margin-left:5px">V3.1.1-r17-optional-target</b></div><div class="branddesc">兩大操盤雷達・起漲第一至第三根與飆股追蹤 <span class="tinysep">/</span> 盤後計畫＋手動盤中檢查</div></div>
   <button id="refreshBtn" class="icon-button" aria-label="重新載入資料" title="重新載入資料"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 1 0-2.7 6M20 4v7h-7"/></svg></button>
 </header>
 <main>
@@ -52,6 +52,7 @@
     </div>
     <div class="rank-toolbar" role="group" aria-label="顯示名次範圍"><button type="button" class="rank-scope active" data-scope="20" aria-pressed="true">前20名</button><button type="button" class="rank-scope" data-scope="60" aria-pressed="false">前60名</button><button type="button" class="rank-scope" data-scope="all" aria-pressed="false">全部候選</button></div>
     <details class="desk-options"><summary>進階：成交量篩選與完整下載</summary><label class="liquidity-toggle"><input type="checkbox" id="onlyLiquid" checked><span><b>只顯示成交活躍股票</b><small>依股價分級檢查張數與成交金額；低價股須均量千張以上。搜尋仍可查全部。</small></span></label></details>
+    <p class="rank-tip valuation-optional-hint">模型估值是附加資訊：資料完整時在個股速覽自動顯示「便宜／合理／昂貴」，缺資料不影響原股票排名。</p>
     <p id="rankSummary" class="rank-summary">正在評估全市場…</p>
     <div class="rank-tip">點股票可看頸線、K線、MA5／10／20、歷史大量K及手動盤中試算。排行不是勝率，資料日期以上方為準。</div>
     <div id="infoBanner" class="info-banner" hidden></div><div id="marketHealth" class="info-banner" hidden></div><div id="universeHealth" class="info-banner"></div>
@@ -85,5 +86,5 @@
 <script src="trade-desk-v310.js?v=20261018-v311-r15" defer></script>
 <script src="trade-guidance-v311.js?v=20261018-v311-r15" defer></script>
 <script src="market-intel-v311.js?v=20261018-v311-r15" defer></script>
-<script src="app-detail-swipe-v222.js?v=20261018-v311-r16a-auto-target" defer></script>
+<script src="app-detail-swipe-v222.js?v=20261018-v311-r17-optional-target" defer></script>
 </body></html>
