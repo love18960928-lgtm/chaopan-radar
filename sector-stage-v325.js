@@ -1,4 +1,4 @@
-/* Chaopan RADAR r26 - decoupled group breadth + pre-breakout MA5/10 from individual entry EOD sector and neckline observation radar.
+/* Chaopan RADAR r27 - prioritized setups, decoupled group breadth + pre-breakout MA5/10 from individual entry EOD sector and neckline observation radar.
    Self-contained, testable; this is NOT a certified entry signal or live feed.
    The curated passive component tag is a limited, explicitly disclosed sample.
 */
@@ -76,6 +76,24 @@
      v.close>=v.ma10&&v.position>=.45&&v.ratio>=.60&&trendOK){
    x.stage='third';x.reason='有效突破事件後第三根仍守住原頸線；屬續強觀察而非保證買點';return x;
   }
+  // Independent continuation of an established above-neckline MA5/MA10 slope.
+  // This is deliberately an observation phase: no official market history is available.
+  const trailingHold=bars.length>=35&&Array.from({length:6},(_,j)=>bars.length-1-j).every(k=>{
+   const close=num(bars[k][4]);const ma5=mean(bars.slice(k-4,k+1).map(b=>num(b[4]))),ma10=mean(bars.slice(k-9,k+1).map(b=>num(b[4])));
+   return close!==null&&ma5!==null&&ma10!==null&&close>=ma5*.997&&close>=ma10*.997;
+  });
+  if(trailingHold&&v.close>v.neck*1.005&&v.prev>v.neck&&
+     v.ma5>=v.ma10&&v.ma5>=v.old5&&v.ma10>=v.old10&&v.ma20>v.old20*1.002&&
+     v.close/v.ma10<=1.065&&v.ratio>=.6&&v.position>=.45){
+   x.stage='hold';x.reason='已在歷史頸線上方，近6根K線持續守住MA5／MA10且均線上彎；需沿線管理停利，非保證主升';return x;
+  }
+  // Volume + price ignition below the major neckline is distinct from the first neckline breakout.
+  const prior15High=bars.length>=20?Math.max(...bars.slice(-16,-1).map(b=>num(b[4]))):null;
+  if(v.close<v.neck&&prior15High!==null&&v.close>prior15High&&
+     v.changePct>=2&&v.ratio>=1.5&&v.ratio<=5&&v.position>=.65&&v.upper<.3&&
+     v.ma5>=v.ma10&&v.close>=v.ma20&&v.ma20>=v.old20*.985&&v.close/v.ma10<=1.08){
+   x.stage='launch';x.reason='放量站上近15根K線收盤高點，但尚未突破主要大量K頸線；僅屬量價啟動觀察';return x;
+  }
   if(v.close<v.neck&&v.close>=v.neck*.96&&v.close>=v.ma10*.995&&maGrowing&&v.ratio>=.60&&v.position>=.35&&
      (c.preLaunch===true||/接近|預備|頸線/.test([c.unifiedStage,c.followStatus].join(' ')))){
    x.stage='ready';x.reason='距歷史頸線不足4%，均線與量價仍在觀察區；不是已突破';return x;
@@ -121,9 +139,22 @@
   const byStrength=(a,b)=>b.median-a.median||b.breadth-a.breadth||b.count-a.count;
   const strong=coverage.filter(g=>hasBreadth(g)&&g.median>=.8).sort(byStrength);
   const warming=coverage.filter(g=>hasBreadth(g)&&g.median>=.4&&g.median<.8).sort(byStrength);
-  const priority={first:0,second:1,third:2,ready:3,ma510:4,reentry:5,trend:6};
-  observations.sort((a,b)=>priority[a.stage]-priority[b.stage]||(b.snapshot.ratio-a.snapshot.ratio)||String(a.row.code).localeCompare(String(b.row.code)));
-  for(const g of strong)g.stocks.sort((a,b)=>priority[a.stage]-priority[b.stage]||(b.snapshot.ratio-a.snapshot.ratio));
+  // Rank by setup class first and quality within that class. This is not a win rate.
+  // A breakout with high slippage/extension should rank below a cleaner peer in the same class.
+  const priority={reentry:0,trend:1,hold:2,second:3,third:4,launch:5,first:6,ma510:7,ready:8};
+  const quality=(o)=>{const v=o.snapshot;
+   const gap10=(v.close/v.ma10-1)*100, gap20=(v.close/v.ma20-1)*100;
+   const up20=v.old20>0?(v.ma20/v.old20-1)*100:0;
+   const volGood=Math.min(Math.max(v.ratio,0),2.5);
+   const candle=v.position*18 + Math.max(-5,Math.min(8,up20))*2;
+   const stretch=Math.max(0,gap10-3)*5+Math.max(0,gap20-7)*4;
+   const strongWick=Math.max(0,v.upper-.20)*24;
+   return Math.round((candle+volGood*6-stretch-strongWick)*10)/10;
+  };
+  for(const o of observations)o.quality=quality(o);
+  const compare=(a,b)=>priority[a.stage]-priority[b.stage]||b.quality-a.quality||String(a.row.code).localeCompare(String(b.row.code));
+  observations.sort(compare);
+  for(const g of coverage)g.stocks.sort(compare);
   return {asOf,strong,warming,watch:observations,coverage,counts:observations.reduce((a,x)=>(a[x.stage]=(a[x.stage]||0)+1,a),{})};
  }
  return {sectorName,validate,inspect,analyze,themeCodes:[...themeCodes]};

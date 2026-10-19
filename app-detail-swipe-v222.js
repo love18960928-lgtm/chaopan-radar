@@ -597,7 +597,7 @@ function sectorBattleCard(c,options={}){
  const rank=sectorRanks.get(rowId(c)),key=rowId(c);
  const rankText=options.rankText||(Number.isInteger(rank)&&rank>0?`#${rank} 起漲排名`:'未列入起漲排名');
  const cardKey=(options.source||'sector')+'|'+key;
- const phases={ready:'頸線預備',first:'第一根',second:'第二根',third:'第三根',reclaim:'舊頸線站回',surge:'主升續強',reentry:'回測再發動',caution:'高波動警戒'};
+ const phases={launch:'量價啟動',hold:'沿MA5／MA10續強',ready:'頸線預備',first:'第一根',second:'第二根',third:'第三根',reclaim:'舊頸線站回',surge:'主升續強',reentry:'回測再發動',caution:'高波動警戒'};
  const stage=options.stageLabel||phases[p.stage]||phases[p.momentumStage]||phases[seq.phase]||'階段待核對';
  const n=v=>numeric(v)===null?'—':price(v);
  const score=v=>numeric(v)===null?null:Math.max(0,Math.min(100,Number(v)));
@@ -661,7 +661,8 @@ function sectorRadar(){
   {asOf,strong:[],watch:[],counts:{},coverage:[]};
  return sectorRadarCache;
 }
-const OBS_STAGE={ma510:'突破前站上MA5／MA10',ready:'預備突破頸線',first:'突破第一根觀察',second:'突破第二根觀察',third:'突破第三根觀察',reentry:'回測再起觀察',trend:'主升延續觀察'};
+const OBS_STAGE={reentry:'回測再起／主升機會',trend:'主升段延續觀察',hold:'沿MA5／MA10續強',second:'突破第二根確認觀察',third:'突破第三根續強觀察',launch:'量價啟動（未破大量K頸線）',first:'突破第一根觀察',ma510:'突破前站上MA5／MA10',ready:'預備突破頸線'};
+const R27_PRIORITY=['reentry','trend','hold','second','third','launch','first','ma510','ready'];
 // r26: restore the pre-r23 unified full battle card; keep radar stage classification independent.
 // The old compact r23 observe card removed 速覽/價位/技術/公司研究 and must not replace the full card.
 const R26_CARD_BATCH=3;
@@ -670,7 +671,7 @@ function radarObserveCard(o){
  const c=o.row,group=String(o.sector||'產業待核對');
  const stage=OBS_STAGE[o.stage]||'價量觀察';
  const ratio=Number(o.snapshot?.ratio);
- const note=`<div class="r26-context"><b>${esc(stage)} · ${esc(group)}</b><span>${esc(o.reason||'確認價量與支撐後再觀察')} · 歷史頸線 ${price(o.snapshot?.neck)} · 量比 ${Number.isFinite(ratio)?ratio.toFixed(2):'待資料'}</span><small>盤後觀察，非已認證進場或保證獲利；個股買賣價位仍須核對有效資料日。</small></div>`;
+ const note=`<div class="r26-context"><b>${esc(stage)} · ${esc(group)}</b><span>${esc(o.reason||'確認價量與支撐後再觀察')} · 歷史頸線 ${price(o.snapshot?.neck)} · 量比 ${Number.isFinite(ratio)?ratio.toFixed(2):'待資料'} · 同階段品質 ${Number.isFinite(o.quality)?o.quality.toFixed(1):'待核對'}（非勝率）</span><small>盤後觀察，非已認證進場或保證獲利；個股買賣價位仍須核對有效資料日。</small></div>`;
  return `<div class="r26-card-wrap">${note}${sectorBattleCard(c,{source:'r26-observe-'+o.stage,rankText:'超盤手｜'+stage,stageLabel:stage})}</div>`;
 }
 function r26GroupMarkup(id,arr,open){
@@ -702,22 +703,27 @@ function sectorDirectory(){
  }
  const radar=sectorRadar(),asOf=radar.asOf||'日期待核對';
  r26ObserveGroups=new Map();
- const sectorBlock=(g,i,label)=>`<details class="sector-group" data-r26-group="sector-${label}-${i}" ${i<2&&label==='strong'?'open':''}><summary><span class="sector-nom">${esc(g.name)}</span><span class="sector-sum">中位漲幅 ${pct(g.median)} · 上漲 ${g.advancers}/${g.total} · 通過個股觀察 ${g.count}</span><span class="sector-arrow">⌄</span></summary>${r26GroupMarkup('sector-'+label+'-'+i,g.stocks,i<2&&label==='strong')}</details>`;
+ const sectorBlock=(g,i,label)=>`<details class="sector-group" data-r26-group="sector-${label}-${i}"><summary><span class="sector-nom">${esc(g.name)}</span><span class="sector-sum">中位漲幅 ${pct(g.median)} · 上漲 ${g.advancers}/${g.total} · 個股觀察 ${g.count}</span><span class="sector-arrow">⌄</span></summary>${r26GroupMarkup('sector-'+label+'-'+i,g.stocks,false)}</details>`;
  const groups=radar.strong.map((g,i)=>sectorBlock(g,i,'strong')).join('');
  const warmingGroups=(radar.warming||[]).map((g,i)=>sectorBlock(g,i,'warming')).join('');
- const order=['ma510','ready','first','second','third','reentry','trend'];
- const staged=order.map(s=>{const arr=radar.watch.filter(x=>x.stage===s);
-  return `<details class="sector-group" data-r26-group="stage-${s}" ${s==='ma510'||s==='ready'||s==='first'?'open':''}><summary><span class="sector-nom">${esc(OBS_STAGE[s])}</span><span class="sector-sum">${arr.length} 檔</span><span class="sector-arrow">⌄</span></summary>${r26GroupMarkup('stage-'+s,arr,s==='ma510'||s==='ready'||s==='first')}</details>`;}).join('');
- out.innerHTML=`<div class="r23-note">交易日 ${esc(asOf)} 的盤後觀察，非即時行情。<b>觀察名單不是已認證買點。</b>缺大盤長期資料只禁止宣稱可進場，不清空頸線／族群雷達。</div>`+
- `<h3 class="r23-section-title">當日強勢族群（漲幅廣度） <small>${radar.strong.length} 組</small></h3>`+
- (groups||'<div class="r23-empty">本交易日沒有通過族群漲幅與廣度門檻的完整族群，並非沒有頸線觀察股。</div>')+
- `<p class="r23-caption">強勢族群以同交易日成員漲幅中位數≥0.8%、上漲比例≥55%及足夠樣本判定；<b>不要求一定有合格個股</b>。族群上漲不代表每檔股票值得買入。「被動元件」目前是5檔有限代表股，並非全族群。</p>`+
- `<h3 class="r23-section-title">族群轉強觀察（尚未達強勢門檻） <small>${(radar.warming||[]).length} 組</small></h3>`+
- (warmingGroups||'<div class="r23-empty">本交易日未偵測到符合本輪轉強觀察門檻的族群。</div>')+
- `<p class="r23-caption">轉強觀察採漲幅中位數≥0.4%且小於0.8%、上漲比例≥55%；不代表突破確認或建議買進。個股仍逐檔篩除假突破與疑似賣壓。</p>`+
- `<h3 class="r23-section-title">自動頸線／突破／回測觀察 <small>${radar.watch.length} 檔</small></h3>`+
- (staged||'<div class="r23-empty">當日未找到通過個股價量與風險防護的頸線／趨勢觀察股。</div>')+
- `<p class="r23-caption">結構或賣壓風險個股不列候選；盤整但接近頸線可列「預備觀察」，不給已確認買點。仍須實盤核對日期、除權息和支撐。</p>`;
+ const activeStages=R27_PRIORITY.filter(s=>radar.watch.some(o=>o.stage===s));
+ const inactiveStages=R27_PRIORITY.filter(s=>!activeStages.includes(s));
+ const stageBlock=(s,opened)=>{const arr=radar.watch.filter(x=>x.stage===s);
+  return `<details class="sector-group" data-r26-group="stage-${s}" ${opened?'open':''}><summary><span class="sector-nom">${esc(OBS_STAGE[s])}</span><span class="sector-sum">${arr.length} 檔</span><span class="sector-arrow">⌄</span></summary>${r26GroupMarkup('stage-'+s,arr,opened)}</details>`;};
+ const staged=activeStages.map((s,i)=>stageBlock(s,i===0)).join('');
+ const emptyStages=inactiveStages.map(s=>stageBlock(s,false)).join('');
+ out.innerHTML=`<div class="r23-note"><b>先按技術階段，再按同階段量價品質自動排序。</b> 交易日 ${esc(asOf)}，非即時。順序不是勝率、不是買入推薦；有疑似賣壓、假突破或缺價量的個股仍被排除。大盤資料不足不會清空觀察雷達。</div>`+
+ `<h3 class="r23-section-title">依機會／風險自動排序的個股階段 <small>${radar.watch.length} 檔觀察</small></h3>`+
+ (staged||'<div class="r23-empty">目前無符合價量觀察條件的股票。</div>')+
+ `<details class="r27-idle"><summary>未出現訊號的其他階段（${inactiveStages.length} 類，功能保留）</summary>${emptyStages}</details>`+
+ `<p class="r23-caption">優先級：回測再起／主升段 → 沿MA5／MA10續強 → 第二／三根 → 量價啟動／第一根 → 均線預備／頸線預備。較早期訊號有風險，已突破過遠也可能不宜追價。<b>只有明確核對的證據才標示階段；0檔不是功能消失。</b></p>`+
+ `<details class="r27-sector-reference"><summary class="r23-section-title">市場背景：當日強勢族群、轉強族群 <small>${radar.strong.length}＋${(radar.warming||[]).length} 組</small></summary>`+
+ `<div class="r23-note">族群漲幅廣度僅作個股的產業背景，不能取代獨立買點判斷。被動元件目前僅5檔代表股，非全部成員。</div>`+
+ `<h3 class="r23-section-title">當日強勢族群 <small>${radar.strong.length} 組</small></h3>`+
+ (groups||'<div class="r23-empty">本交易日無完整符合條件的強勢族群。</div>')+
+ `<h3 class="r23-section-title">轉強觀察族群 <small>${(radar.warming||[]).length} 組</small></h3>`+
+ (warmingGroups||'<div class="r23-empty">本交易日無符合條件的轉強族群。</div>')+
+ `</details>`;
  // Lazily construct the real unified cards only for visible expanded groups.
  out.querySelectorAll('details[data-r26-group][open]').forEach(e=>r26FillCards(e.dataset.r26Group));
 }
