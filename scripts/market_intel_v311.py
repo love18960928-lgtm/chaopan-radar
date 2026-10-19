@@ -10,6 +10,7 @@ import io
 import datetime as dt
 import json
 import logging
+from html.parser import HTMLParser
 import re
 import time
 import urllib.parse
@@ -328,6 +329,72 @@ def tpex_otc_historical_csv(csv_text, target):
     return None
 
 
+
+class _TableRows(HTMLParser):
+    """Collect only table cell text, including nested spans, from public HTML."""
+    def __init__(self):
+        super().__init__();self.rows=[];self.cur=None;self.cell=None;self.depth=0
+    def handle_starttag(self,tag,attrs):
+        if tag=='tr':self.cur=[]
+        elif tag in ('td','th') and self.cur is not None:self.cell=[]
+    def handle_data(self,data):
+        if self.cell is not None:self.cell.append(data)
+    def handle_endtag(self,tag):
+        if tag in ('td','th') and self.cur is not None and self.cell is not None:
+            self.cur.append(''.join(self.cell).strip());self.cell=None
+        elif tag=='tr' and self.cur is not None:
+            if self.cur:self.rows.append(self.cur)
+            self.cur=None
+
+
+def tpex_margin_html(html,target):
+    """Official TPEx margin_bal_result HTML, strict dated layout, amounts in lots.
+
+    Accept only rows with known positions and arithmetic check. No totals synthesized
+    from partial coverage. This is a cautious fallback for official HTML documents.
+    """
+    if not isinstance(html,str) or len(html)<200:return {}
+    # Date label may be split by HTML elements; strip tags before scanning.
+    plain=re.sub(r'<[^>]*>', ' ', html)
+    m=re.search(r'資料日期\s*[:：]?\s*(\d{2,4}[/-]\d{1,2}[/-]\d{1,2})',plain)
+    if not m or date_iso(m.group(1))!=target:return {}
+    parser=_TableRows();parser.feed(html)
+    records={}
+    for row in parser.rows:
+        if len(row)<15:continue
+        code=row[0].strip();name=row[1].strip()
+        if not re.fullmatch(r'\d{4}',code) or not name:continue
+        numbers=[number(row[j]) for j in (2,3,4,5,6,10,11,12,13,14)]
+        if any(x is None or x<0 or x!=int(x) for x in numbers):continue
+        prev,buy,sell,cash,today,shortprev,shortsell,shortbuy,shortreturn,shorttoday=numbers
+        if prev+buy-sell-cash != today:continue
+        if shortprev+shortsell-shortbuy-shortreturn != shorttoday:continue
+        records['上櫃-'+code]={'date':target,'name':name,'marginPreviousLots':int(prev),
+            'marginLots':int(today),'marginDeltaLots':int(today-prev),
+            'shortPreviousLots':int(shortprev),'shortLots':int(shorttoday),
+            'shortDeltaLots':int(shorttoday-shortprev),'source':'TPEx margin_bal_result (official HTML)',
+            'provisional':True}
+    return records
+
+
+def sanitize_retained_stocks(old,out,target):
+    """Never reintroduce known misparsed historical dealer=0 for every TWSE stock.
+
+    A same-day previous snapshot is NOT a certificate of validity. Once a new
+    all-market official fetch succeeds, it wins. If it fails and previous values
+    have all-zero dealer for a large listed stock cohort, quarantine that cohort.
+    """
+    old_stocks=old.get('stocks') or {}
+    group=[v for k,v in old_stocks.items() if k.startswith('上市-') and isinstance(v,dict)
+          and v.get('date')==target and re.fullmatch(r'上市-\d{4}',k)]
+    suspect=len(group)>=100 and all(number(v.get('dealerLots'))==0 for v in group)
+    if suspect:
+        out.setdefault('sources',{})['legacy_dealer_quarantine']={
+            'status':'rejected','reason':'舊版上市自營商整批零值，疑似誤抓外資自營商欄位'}
+    for key,val in old_stocks.items():
+        if key.startswith('上市-') and suspect and key not in out.get('stocks',{}):continue
+        out.setdefault('stocks',{}).setdefault(key,val)
+
 def build(target, fetch=fetch_json, fetch_text=fetch_csv_text, text_fetch=None):
     """Source-fault isolation with per-endpoint status; no blank-as-zero substitution."""
     if date_iso(target)!=target:raise ValueError('Invalid target trading date')
@@ -384,6 +451,22 @@ def build(target, fetch=fetch_json, fetch_text=fetch_csv_text, text_fetch=None):
                 if key=='taifex_foreign_tx' and record:out.setdefault('derivatives',{})['foreignTxOI']=record
             except Exception as ex:
                 LOG.warning('%s skipped: %s',key,str(ex)[:150]);out['sources'][key]={'status':'error'};out['coverage'][key]=False
+    # Official TPEx margin fallback. It remains an optional, independently gated
+    # source; never let a layout change corrupt the market panel or the base EOD.
+    if fetch is fetch_json:
+        try:
+            roc=f'{int(target[:4])-1911}/{target[5:7]}/{target[8:10]}'
+            url='https://www.tpex.org.tw/web/stock/margin_trading/margin_balance/margin_bal_result.php?l=zh-tw&o=htm&d='+urllib.parse.quote(roc,safe='/')
+            text_data=(text_fetch or fetch_text)(url)
+            records=tpex_margin_html(text_data,target)
+            out.setdefault('margin',{}).update(records)
+            out['sources']['tpex_margin']={'status':'ok' if records else 'invalid',
+              'detail':'官方同日逐股融資；非市場融資金額總額' if records else '官方頁面格式／日期不符'}
+            out['coverage']['tpex_margin']=len(records)
+        except Exception as ex:
+            out['sources']['tpex_margin']={'status':'error','reason':str(ex)[:120]}
+            out['coverage']['tpex_margin']=0
+            LOG.warning('tpex_margin skipped: %s',str(ex)[:150])
     # Official TPEx index fallback; a failed primary must not erase other working sources.
     if not out['coverage']['otc']:
         try:
@@ -445,11 +528,16 @@ def save(out, path=DEST):
             if old.get('asOf')==out['asOf']:
                 for key,value in old.get('indices',{}).items():out['indices'].setdefault(key,value)
                 for key,value in old.get('institutional',{}).items():out['institutional'].setdefault(key,value)
-                for key,value in old.get('stocks',{}).items():out['stocks'].setdefault(key,value)
+                sanitize_retained_stocks(old,out,out['asOf'])
                 for key,value in old.get('margin',{}).items():out.setdefault('margin',{}).setdefault(key,value)
                 for key,value in old.get('sources',{}).items():
+                    if key == 'twse_t86' and out['sources'].get('legacy_dealer_quarantine'):
+                        continue  # never certify a formerly misparsed all-zero dealer cohort
                     if value.get('status') in ('ok','retained') and out.setdefault('sources',{}).get(key,{}).get('status') not in ('ok','retained'):
                         out['sources'][key]={**value,'status':'retained'}
+                if out['sources'].get('legacy_dealer_quarantine') and sum(k.startswith('上市-') for k in out.get('stocks',{}))<100:
+                    out['sources']['twse_t86']={'status':'rejected','reason':'舊版上市自營商欄位混淆；等待正式重新核對'}
+                    out.setdefault('coverage',{})['twse_t86']=0
                 for key,value in old.get('coverage',{}).items():
                     if not out.setdefault('coverage',{}).get(key):out['coverage'][key]=value
                 for optional in ('marginMarket','derivatives'):
