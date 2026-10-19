@@ -626,8 +626,7 @@ function sectorBattleCard(c,options={}){
   const w=v===null?0:hi===lo?60:12+(v-lo)/(hi-lo)*88;
   return `<div class="sector-price-line"><small>${esc(name)}</small><span class="sector-price-track"><i style="width:${w.toFixed(1)}%"></i></span><b>${v===null?'—':n(v)}</b></div>`;
  }).join('');
- const levels=`<p class="sector-tab-note">條件價位，不是自動下單。股價觸及只預警，收盤才確認。</p><div class="sector-price-ruler">${ruler}</div>
- <details class="sector-card-reasons"><summary>檢視買進／減碼／賣出理由</summary><p><b>買入觀察：</b>${esc(g.buy)}</p><p><b>減碼：</b>${esc(g.trim)}</p><p><b>防守出場：</b>${esc(g.sell)}</p></details>`;
+ const levels=r38PlanCard(c,g,true);
  const trackLine=track.length?`紅K×${track[0].red}／綠K×${track[0].green}；${esc(track[0].source)}`:'歷史突破K線事件尚未核對';
  const institutional=options.institutional;
  const institutionFacts=institutional?`<div class="sector-card-institution">三大法人淨買賣超：外資 ${Number(institutional.foreign).toLocaleString('zh-TW')} 張／投信 ${Number(institutional.trust).toLocaleString('zh-TW')} 張／自營商 ${Number(institutional.dealer).toLocaleString('zh-TW')} 張；交易日 ${esc(state.payload?.asOf||'待核對')}。</div>`:'';
@@ -792,28 +791,33 @@ function annotatedBattleChart(c,g){
  svg+=`<text x="${l}" y="${H-8}" fill="#94b2c5" font-size="10">${esc(String(data[0][0]).slice(5,10))}</text><text x="${r}" y="${H-8}" text-anchor="end" fill="#94b2c5" font-size="10">${esc(String(data.at(-1)[0]).slice(5,10))}</text></svg>`;
  return `<div class="battle-chart-wrap"><div class="battle-chart-head"><b>📈 ${esc(c.code)} ${esc(c.name)}｜關卡圖解</b><span>${esc(c.date)} 盤後</span></div>${svg}<div class="battle-chart-caption">紅漲綠跌・淡綠帶為 MA5 附近回測觀察區；水平線均為條件參考，非盤中即時成交價。點開下方歷史K線可查看更多日期。</div></div>`;
 }
+/* r38: Preserve historical chart and the original annotated K-line image. Only replace duplicated action prose. */
+function r38SixPlan(c,g){
+ if(!globalThis.ChaopanBattleSixV138)return null;
+ const valid=String(c.code||'').match(/^\d{4}$/)&&!String(c.code||'').startsWith('00');
+ const lastTen=(c.bars||[]).slice(-11,-1);
+ const recentHigh=lastTen.length?Math.max(...lastTen.map(b=>Number(b[2]))):null;
+ return ChaopanBattleSixV138.model({
+  market:c.market,instrument:valid?'stock':'unverified',date:c.date,snapshotDate:state.payload?.asOf,
+  close:c.close,bars:c.bars,neck:latestNeck(c),breakout:g.breakoutLevel,
+  support:g.support,ma5:g.ma5,ma10:g.ma10,ma20:c.trading?.ma20,
+  atr:c.trading?.atr14,recentHigh,held:false,
+  adjusted:false,stale:staleDeskSnapshot(c.date),marketVerified:false,
+  volumeVerified:false,candleVerified:false,ma240Verified:false
+ });
+}
+function r38PlanCard(c,g,compact=false){
+ const plan=r38SixPlan(c,g);
+ return plan?ChaopanBattleSixV138.render(plan,{compact}):'<div class="six-battle">六價位模組尚未載入；不得沿用不完整的舊買賣價</div>';
+}
 function guidanceCard(c){
- const p=deskEvidence(c),g=ChaopanGuidance.evaluate(c,p,supportLines(c));
- const n=v=>price(v),available=g.level!=='unknown';
- const cls=g.level==='danger'?'danger':g.level==='warn'?'warn':'good';
- const levels=[
-  {label:'突破觀察',value:g.breakoutLevel,color:'breakout'},
-  {label:'參考收盤',value:g.close,color:'current'},
-  {label:'MA5 警戒',value:g.ma5,color:'ma5'},
-  {label:'MA10 防守',value:g.ma10,color:'ma10'},
-  {label:'歷史結構支撐',value:g.support,color:'support'},
-  {label:'已驗證移動停利',value:g.trailingStop,color:'trailing'}
- ].filter(x=>x.value!==null&&Number.isFinite(x.value)&&x.value>0);
- const mi=Math.min(...levels.map(x=>x.value)),ma=Math.max(...levels.map(x=>x.value));
- const ladder=levels.map(x=>`<div class="trade-level-row"><span>${esc(x.label)}</span><div class="trade-level-track"><i class="${x.color}" style="width:${ma===mi?60:(15+85*(x.value-mi)/(ma-mi)).toFixed(1)}%"></i></div><b>${n(x.value)}</b></div>`).join('');
- return `<section class="guidance-panel battle-panel" aria-label="買點賣點與移動停利作戰卡"><div class="guidance-title"><strong>◎ 超盤手｜買賣作戰卡</strong><span class="guidance-signal ${cls}">${esc(g.title)}</span></div>
- <p class="battle-asof">${esc(c.date||'日期待核對')} 收盤後情境｜${esc(g.stage)}｜非即時／非自動下單</p>
- <p class="battle-asof">走勢結構：${esc(g.trendKind==='trend'?'高低點墊高／多頭續強':g.trendKind==='failed'?'原頸線失守':g.trendKind==='range'?'整理／未確認續強':g.trendKind==='weak'?'均線轉弱':g.trendKind==='pullback'?'回測觀察':'趨勢證據待核對')} ${g.anchorDate?'｜原突破日 '+esc(g.anchorDate):''}</p>
- ${annotatedBattleChart(c,g)}
- <div class="battle-grid"><div><small>觀察突破</small><b>${n(g.breakoutLevel)}</b><span>需價量確認</span></div><div><small>回測觀察區</small><b>${g.pullbackZone?`${n(g.pullbackZone[0])}～${n(g.pullbackZone[1])}`:'待資料'}</b><span>止跌才觀察</span></div><div><small>移動停利參考</small><b>${n(g.trailingStop)}</b><span>${g.trailingStop===null?'缺完整事件史':'非保證成交價'}</span></div></div>
- <div class="trade-levels" aria-label="買賣關卡價位圖">${ladder||'<p>資料不足，暫不推估價位</p>'}</div>
- <div class="battle-action-grid"><div class="battle-buy"><b>入場觀察</b><p>${esc(g.buy)}</p></div><div class="battle-trim"><b>減碼／停利</b><p>${esc(g.trim)}</p></div><div class="battle-exit"><b>防守／賣出</b><p>${esc(g.sell)}</p></div></div>
- <p class="guidance-note">MA5 ${n(g.ma5)}｜MA10 ${n(g.ma10)}｜${esc(g.holdText)}。紅綠K、突破根數與歷史頸線須各自核對；本卡不推估勝率或保證買賣價。${available?'':' ⚠ 資料不足，不能據此交易。'}</p></section>`;
+ const g=ChaopanGuidance.evaluate(c,deskEvidence(c),supportLines(c));
+ return `<section class="guidance-panel battle-panel" aria-label="六大作戰價位與原始關卡圖解">
+  <div class="guidance-title"><strong>◎ 超盤手｜六價位與關卡圖解</strong><span class="guidance-signal">研究版</span></div>
+  ${r38PlanCard(c,g,false)}
+  ${annotatedBattleChart(c,g)}
+  <p class="guidance-note">K線走勢圖、關卡圖解與原四分頁保持原功能；缺核對來源不給可執行買賣結論。所有情境價位僅為盤後研究。</p>
+ </section>`;
 }
 // r22: This is the single automated home-screen gate, not a manually selected ranking lens.
 // Only a VERIFIED same-day index+market-breadth feed may authorize a new-entry candidate.
@@ -1233,6 +1237,7 @@ function filtered(){
 }
 function renderList(){
  const list=$('#candidateList'),more=$('#showMore');if(!list)return;
+ if(globalThis.ChaopanPortfolioR140)ChaopanPortfolioR140.mount({visible:state.tab==='star',container:document.querySelector('.content-area'),asOf:state.payload?.asOf||'',rows:state.universe?.rows||[],onOpen:(id)=>showDetails(id)});
  const cards=filtered(),search=state.query.trim()||state.tab==='star';
  const summary=$('#rankSummary');if(summary)summary.textContent=search?
   `這是全市場查詢，結果 ${cards.length} 檔；不等於自動合格買點。`:
