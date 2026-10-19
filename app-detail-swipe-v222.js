@@ -648,20 +648,43 @@ function renderSectorPage(groupEl){
  container.innerHTML=group.arr.slice(0,limit).map(sectorBattleCard).join('')+(limit<group.arr.length?
   `<button class="sector-load-more" type="button" data-sector-more="${idx}">再顯示 ${Math.min(SECTOR_BATCH,group.arr.length-limit)} 檔（${limit}／${group.arr.length}） ↓</button>`:'');
 }
+// r23: SEPARATE verified-entry shortlist from independent, risk-vetted EOD observation radar.
+// Missing index/breadth suppresses ONLY "qualified new entry", not neckline/sector observations.
+let sectorRadarCacheRows=null,sectorRadarCacheDate='',sectorRadarCache=null;
+function sectorRadar(){
+ const rows=state.universe?.rows||[],asOf=state.payload?.asOf||'';
+ if(rows===sectorRadarCacheRows&&asOf===sectorRadarCacheDate&&sectorRadarCache)return sectorRadarCache;
+ sectorRadarCacheRows=rows;sectorRadarCacheDate=asOf;
+ sectorRadarCache=globalThis.ChaopanSectorV324&&globalThis.ChaopanStageV318&&state.universe?.asOf===asOf&&state.mode!=='demo'?
+  ChaopanSectorV324.analyze(rows,asOf,c=>ChaopanStageV318.inspect(c,asOf)):
+  {asOf,strong:[],watch:[],counts:{},coverage:[]};
+ return sectorRadarCache;
+}
+const OBS_STAGE={ready:'預備突破頸線',first:'突破第一根觀察',second:'突破第二根觀察',third:'突破第三根觀察',reentry:'回測再起觀察',trend:'主升延續觀察'};
+function radarObserveCard(o){
+ const c=o.row,group=String(o.sector||'產業待核對');
+ return `<div class="r23-observe-card"><div><b>${esc(c.code)} ${esc(c.name)}</b><small>${esc(OBS_STAGE[o.stage]||'價量觀察')}｜${esc(group)}</small><small>${esc(o.reason)}</small></div><div class="r23-observe-right"><strong>${price(c.close)}</strong><small>${pct(o.snapshot.changePct)}｜量比 ${o.snapshot.ratio.toFixed(2)}</small><small>頸線 ${price(o.snapshot.neck)}</small><button type="button" data-card-detail="${esc(rowId(c))}" aria-label="開啟${esc(c.name)}技術K線">查看K線與風險</button></div></div>`;
+}
 function sectorDirectory(){
  const out=$('#sectorDirectory');if(!out)return;
- const asOf=state.payload?.asOf||'';
- const picks=autoQualifiedEntries();
- const counts=picks.length;
- if(!counts){out.innerHTML=`<section class="stage-audit"><b>自動選股結果：0 檔｜${esc(asOf||'資料日待核對')}</b>`+
- `<small>${esc(autoPendingReason())}。這不代表所有股票都不會上漲，而是目前不能認證合格新買點。</small></section>`;return;}
- const groups=new Map();
- for(const p of picks){const key=String(p.row.industry||p.row.fundamentals?.industry||'其他產業').trim()||'其他產業';
-  if(!groups.has(key))groups.set(key,[]);groups.get(key).push(p);}
- out.innerHTML=`<section class="stage-audit"><b>系統自動核對 ${integer(allRows().length)} 檔｜符合完整進場觀察 ${integer(counts)} 檔</b>`+
- `<small>排除盤整、放量賣壓、假突破、下跌及資料不足；依相對強度與風險排序，非保證獲利。市場資料日 ${esc(asOf)}。</small></section>`+
- [...groups].map(([name,entries])=>`<details class="sector-group" open><summary><span class="sector-nom">${esc(name)}</span><span class="sector-sum">${entries.length} 檔</span><span class="sector-arrow">⌄</span></summary>`+
- `<div class="sector-rows">${entries.map(e=>autoTradingCard(e,picks.indexOf(e))).join('')}</div></details>`).join('');
+ if(!globalThis.ChaopanSectorV324||!globalThis.ChaopanStageV318){
+  out.innerHTML='<div class="r23-empty">族群／頸線計算模組未載入，請確認 GitHub 主目錄 index.html、sector-stage-v324.js、stock-stage-v318.js 與 Service Worker 已同步更新。這不是當日無合格股票。</div>';return;
+ }
+ if(!state.universe||state.universe.asOf!==state.payload?.asOf||state.mode==='demo'){
+  out.innerHTML='<div class="r23-empty">全市場交易日或資料模式未核對；暫停族群／頸線名單，不以舊資料當當日信號。</div>';return;
+ }
+ const radar=sectorRadar(),asOf=radar.asOf||'日期待核對';
+ const groups=radar.strong.map((g,i)=>`<details class="sector-group" ${i<3?'open':''}><summary><span class="sector-nom">${esc(g.name)}</span><span class="sector-sum">中位漲幅 ${pct(g.median)} · 上漲 ${g.advancers}/${g.total} · 候選 ${g.count}</span><span class="sector-arrow">⌄</span></summary><div class="r23-sector-rows">${g.stocks.map(radarObserveCard).join('')}</div></details>`).join('');
+ const order=['ready','first','second','third','reentry','trend'];
+ const staged=order.map(s=>{const arr=radar.watch.filter(x=>x.stage===s);if(!arr.length)return '';
+  return `<details class="sector-group" ${s==='ready'||s==='first'?'open':''}><summary><span class="sector-nom">${esc(OBS_STAGE[s])}</span><span class="sector-sum">${arr.length} 檔</span><span class="sector-arrow">⌄</span></summary><div class="r23-sector-rows">${arr.map(radarObserveCard).join('')}</div></details>`;}).join('');
+ out.innerHTML=`<div class="r23-note">交易日 ${esc(asOf)} 的盤後觀察，非即時行情。<b>觀察名單不是已認證買點。</b>缺大盤長期資料只禁止宣稱可進場，不清空頸線／族群雷達。</div>`+
+ `<h3 class="r23-section-title">當日強勢族群（漲幅廣度） <small>${radar.strong.length} 組</small></h3>`+
+ (groups||'<div class="r23-empty">本次資料沒有同時通過族群漲幅廣度及個股價量條件的族群；不硬列強勢族群。</div>')+
+ `<p class="r23-caption">以同日族群成員漲幅中位數≥0.8%、上漲比例≥55%及足夠樣本判斷，不代表主力資金流入。「被動元件」使用5檔人工題材代表股的有限索引（尚未逐一驗證完整族群），非完整成分股清單。</p>`+
+ `<h3 class="r23-section-title">自動頸線／突破／回測觀察 <small>${radar.watch.length} 檔</small></h3>`+
+ (staged||'<div class="r23-empty">當日未找到通過個股價量與風險防護的頸線／趨勢觀察股。</div>')+
+ `<p class="r23-caption">結構或賣壓風險個股不列候選；盤整但接近頸線可列「預備觀察」，不給已確認買點。仍須實盤核對日期、除權息和支撐。</p>`;
 }
 /* r7: Each chart is rendered from the selected stock's dated OHLCV rows. */
 function annotatedBattleChart(c,g){
@@ -800,11 +823,13 @@ function autoPendingReason(){
 function renderTradeDesk(){
  const target=$('#deskList');if(!target)return;
  const current=state.payload?.asOf||'—';
- const picks=autoQualifiedEntries();
- $('#deskCount').textContent=picks.length?Math.min(picks.length,5)+' 檔':'0 檔';
- $('#deskNote').textContent=`資料截止 ${current} 盤後｜已自動排除風險訊號｜下一交易日仍需核對價格、量與滑價。`;
+ const picks=autoQualifiedEntries(),observed=sectorRadar().watch;
+ const showing=picks.length?Math.min(picks.length,5):Math.min(observed.length,5);
+ $('#deskCount').textContent=showing+' 檔';
+ $('#deskNote').textContent=`資料截止 ${current} 盤後｜${picks.length?'完整大盤門檻已核對，仍須下一交易日檢查':'目前只有個股頸線／突破觀察，非已認證買點'}｜勿將舊資料當作即時行情。`;
  target.innerHTML=picks.length?picks.slice(0,5).map(autoTradingCard).join(''):
- `<div class="desk-empty"><b>尚無經完整驗證的可進場觀察股票。</b><p>${esc(autoPendingReason())}</p></div>`;
+ observed.length?`<div class="r23-note">${esc(autoPendingReason())}。以下為<b>自動觀察名單</b>，不是已完成大盤認證的買入訊號。</div>${observed.slice(0,5).map(radarObserveCard).join('')}`:
+ `<div class="desk-empty"><b>目前沒有符合風險門檻的優先觀察股票。</b><p>${esc(autoPendingReason())}</p></div>`;
  setTimeout(()=>{if(state.universe?.asOf===current&&state.payload?.asOf===current){sectorDirectory();renderSectorPulse(allRows());}},40);
 }
 const lensMemo=new WeakMap();
@@ -995,7 +1020,7 @@ function applySnapshot(radar,universe,intel,{cached=false}={}){
  state.universe=universe?mergeUniverse(radar,universe):null;
  state.marketIntel=ChaopanIntel.safeMarket(intel,radar.asOf)?intel:null;
  state.loadingExtra=!state.universe;state.cachedSnapshot=cached;
- rankedCacheRows=null;rankedCache=null;deskCacheRows=null;deskCache.clear();
+ rankedCacheRows=null;rankedCache=null;deskCacheRows=null;deskCache.clear();sectorRadarCacheRows=null;sectorRadarCache=null;
  render();
 }
 async function loadData(){
