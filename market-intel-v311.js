@@ -39,7 +39,7 @@ function marketPanel(intel,asOf){
    if([fs,ts,ds].some(v=>v===null))continue;
    f+=fs;t+=ts;d+=ds;count++;
   }
-  return count?{count,f,t,d}:null;
+  return count&&!(market==='上市'&&count>=100&&d===0)?{count,f,t,d}:null;
  };
  const tw=ok?marketLots('上市'):null,ot=ok?marketLots('上櫃'):null;
  const flow=(title,record,unit,values)=>`<div class="intel-flow-head"><strong>${esc(title)}</strong><span>${record?esc(asOf)+'｜'+esc(unit):'待核對來源日期'}</span></div><div class="intel-flow-grid">${values.map(([name,v])=>`<div class="intel-flow"><span>${esc(name)}</span><b class="${record?tone(v):'unknown'}">${record?signed(v):'待資料'}</b></div>`).join('')}</div>`;
@@ -51,13 +51,17 @@ function marketPanel(intel,asOf){
  const marginRows=ok?Object.entries(intel.margin||{}).filter(([id,x])=>id.startsWith('上市-')&&x.date===asOf&&num(x.marginLots)!==null&&num(x.marginPreviousLots)!==null):[];
  const subtotal=marginRows.length?marginRows.reduce((a,[,x])=>a+Number(x.marginLots),0):null;
  const previous=marginRows.length?marginRows.reduce((a,[,x])=>a+Number(x.marginPreviousLots),0):null;
- const officialMargin=ok&&intel.marginMarket?.date===asOf&&num(intel.marginMarket?.marginAmountYi)!==null?intel.marginMarket:null;
- const foreignTx=ok&&intel.derivatives?.foreignTxOI?.date===asOf?intel.derivatives.foreignTxOI:null;
+ const officialMargin=ok&&intel.marginMarket?.date===asOf&&num(intel.marginMarket?.marginAmountYi)!==null&&['ok','retained'].includes(sources.twse_margin_total?.status)?intel.marginMarket:null;
+ const rawTx=ok&&intel.derivatives?.foreignTxOI?.date===asOf?intel.derivatives.foreignTxOI:null;
+ const foreignTx=rawTx&&num(rawTx.longLots)!==null&&num(rawTx.shortLots)!==null&&num(rawTx.netLots)===num(rawTx.longLots)-num(rawTx.shortLots)?rawTx:null;
  const coverage=ok?intel.marginCoverage:null;
  const marginInfo=coverage?.date===asOf&&num(coverage.marginLotsSubtotal)!==null?coverage:null;
  const marginTotal=marginInfo?num(marginInfo.marginLotsSubtotal):subtotal;
  const marginDelta=marginInfo?num(marginInfo.marginDeltaLotsSubtotal):subtotal===null?null:subtotal-previous;
  const covered=marginInfo?.matchedStocks||marginRows.length;
+ const otcMargins=ok?Object.entries(intel.margin||{}).filter(([id,x])=>id.startsWith('上櫃-')&&x.date===asOf&&num(x.marginLots)!==null):[];
+ const otcMarginSubtotal=otcMargins.length?otcMargins.reduce((sum,[,x])=>sum+num(x.marginLots),0):null;
+ const sourceMessage=key=>{const x=sources[key];return !x?'未執行':x.status==='error'?'抓取錯誤':x.status==='invalid'?'資料／格式未通過':x.status==='rejected'?'舊資料已隔離':x.status==='ok'?'已核對':x.status==='retained'?'保留同日已驗來源':esc(x.status||'未知');};
  return `<div class="intel-market-head"><strong>台股盤後儀表板</strong><span>交易日 ${esc(asOf||'—')} · 非即時</span></div>
  <div class="intel-index-grid">${indexCard('加權指數',indices.taiex,asOf)}${indexCard('櫃買指數',indices.otc,asOf)}${indexCard('台指期',indices.taifex,asOf,indices.taifex?.session||'日盤')}</div>
  ${flow('上市三大法人官方買賣超金額',listedValid,'億元',[['外資',listed.foreign],['投信',listed.trust],['自營商',listed.dealer]])}
@@ -69,8 +73,9 @@ function marketPanel(intel,asOf){
  <div class="intel-flow-head"><strong>外資臺股期貨 TX 未平倉</strong><span>${foreignTx?esc(asOf)+'｜口':'尚未核對'}</span></div><div class="intel-flow-grid"><div class="intel-flow"><span>多單</span><b>${foreignTx?fm(foreignTx.longLots,0):'待資料'}</b></div><div class="intel-flow"><span>空單</span><b>${foreignTx?fm(foreignTx.shortLots,0):'待資料'}</b></div><div class="intel-flow"><span>淨部位</span><b class="${tone(foreignTx?.netLots)}">${foreignTx?signed(foreignTx.netLots):'待資料'}</b></div></div>
  <div class="intel-market-foot">只核對期交所「臺股期貨 TX／外資及陸資／未平倉」，不是期貨各商品合計或個股法人籌碼。</div>
  <div class="intel-flow-head"><strong>融資水位（上市已取得個股小計）</strong><span>${marginTotal!==null?esc(asOf)+'｜'+covered+'筆':'同日資料未核對'}</span></div>
- <div class="intel-flow-grid"><div class="intel-flow"><span>融資餘額小計</span><b>${marginTotal!==null?fm(marginTotal,0)+' 張':'待資料'}</b></div><div class="intel-flow"><span>較前日增減</span><b class="${tone(marginDelta)}">${marginDelta!==null?signed(marginDelta)+' 張':'待資料'}</b></div><div class="intel-flow"><span>上櫃融資</span><b>待串接</b></div></div>
- <div class="intel-market-foot">此為來源資料內的上市個股餘額加總，非全臺市場融資總額或融資使用率；今日餘額屬暫定，5／20交易日變化須有完整歷史才顯示。</div>
+ <div class="intel-flow-grid"><div class="intel-flow"><span>融資餘額小計</span><b>${marginTotal!==null?fm(marginTotal,0)+' 張':'待資料'}</b></div><div class="intel-flow"><span>較前日增減</span><b class="${tone(marginDelta)}">${marginDelta!==null?signed(marginDelta)+' 張':'待資料'}</b></div><div class="intel-flow"><span>上櫃融資個股小計</span><b>${otcMarginSubtotal!==null?fm(otcMarginSubtotal,0)+' 張（'+otcMargins.length+'檔）':'待資料（'+sourceMessage('tpex_margin')+'）'}</b></div></div>
+ <div class="intel-market-foot">此為來源資料內的上市個股餘額加總；上櫃也僅是已取得的個股小計，均非全臺市場正式融資金額或融資使用率；今日餘額屬暫定，5／20交易日變化須有完整歷史才顯示。</div>
+ <details class="intel-subdetail"><summary>資料來源狀態（點開查看缺值原因）</summary><p>上市法人：${sourceMessage('twse_t86')}｜上櫃法人：${sourceMessage('tpex')}｜上市融資總額：${sourceMessage('twse_margin_total')}｜上櫃融資：${sourceMessage('tpex_margin')}｜TX 外資未平倉：${sourceMessage('taifex_foreign_tx')}｜美國 VIX：${sourceMessage('usVix')}。上櫃官方市場融資金額與臺灣 VIX 尚待確認自動下載格式，不能用個股小計冒充。</p></details>
  <div class="intel-vix-note">恐慌指數｜美國 VIX <b>${vix('usVix')}</b>｜台灣 VIX <b>${vix('twVix')}</b>（<a href="https://www.taifex.com.tw/cht/7/vixDaily3MNew" target="_blank" rel="noopener noreferrer">期交所查詢</a>）<small>各自標記來源交易日。沒有官方可核對數值就不補零；VIX 不預測漲跌方向。</small></div>`;
 }
 function marginLight(intel,row){if(!safeMarket(intel,row?.date))return null;
@@ -91,7 +96,7 @@ function chipPanel(intel,row,plan){const x=stock(intel,row),chip=chipLight(intel
  <div class="intel-individual-grid">${entries.map(([label,v])=>`<div><span>${esc(label)}</span><strong class="${valid?tone(v):'unknown'}">${valid?signed(v):'—'}</strong><small>張</small></div>`).join('')}</div>
  <div class="intel-volume-check"><span>20日均量 <b>${fm(plan.avg20,0)}張</b></span><span>突破量參考 <b>${fm(plan.breakoutVolNeed,0)}張</b></span></div>
  <div class="intel-individual-grid"><div><span>融資餘額</span><strong>${margin?fm(margin.marginLots,0):'待資料'}</strong><small>${margin?'張 · 增減 '+signed(margin.marginDeltaLots):'未接入或日期不同'}</small></div><div><span>融券餘額</span><strong>${margin?fm(margin.shortLots,0):'待資料'}</strong><small>${margin?'張 · 增減 '+signed(margin.shortDeltaLots):'未接入或日期不同'}</small></div></div>
- <details class="intel-subdetail"><summary>融資／融券・借券・分點說明</summary><p>上市融資融券：若已取得同交易日資料，顯示當日暫定餘額；實際以次一營業日更正餘額為準。上櫃融資融券及借券目前尚未正式串接，缺資料不補零。分點統計不等於持倉或放空證據；有可靠授權來源才顯示分點。法人單日買超不代表隔日必漲。</p></details></section>`;
+ <details class="intel-subdetail"><summary>融資／融券・借券・分點說明</summary><p>上市融資融券：若已取得同交易日資料，顯示當日暫定餘額；實際以次一營業日更正餘額為準。上櫃融資融券只在取得同交易日官方逐股資料後顯示，缺資料不補零；借券尚待另外核對。分點統計不等於持倉或放空證據；有可靠授權來源才顯示分點。法人單日買超不代表隔日必漲。</p></details></section>`;
 }
 return {num,iso,stock,chipLight,light,miniLights,marketPanel,chipPanel,marginPreview,safeMarket,twseNeedsReview:true};
 });
