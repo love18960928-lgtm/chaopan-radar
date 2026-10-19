@@ -29,34 +29,38 @@
 .r26-card-container .sector-battle-card{min-width:0;max-width:100%;}
 @media(max-width:430px){.r26-card-container{padding:7px 5px}.r26-card-wrap .sector-card-identity{gap:6px}.r26-card-wrap .sector-r9-tabs{overflow-x:auto}}
 
-.r27-idle{border:1px solid #365966;border-radius:14px;margin:13px 0;padding:10px}.r27-idle>summary{cursor:pointer;color:#bcd9da;font-size:13px}.r27-sector-reference{border-top:1px solid #2a4e58;margin:22px 0;padding:8px 0}.r27-sector-reference>summary{cursor:pointer;list-style:none}.r27-sector-reference>summary::-webkit-details-marker{display:none}.r27-sector-reference>summary::after{content:"⌄";color:#84d7c8}.r27-sector-reference[open]>summary::after{content:"⌃"}
+.desk-disclosure>summary{cursor:pointer;list-style:none;align-items:center}.desk-disclosure>summary::-webkit-details-marker{display:none}.desk-toggle-title{display:block;font-size:clamp(19px,5vw,28px);line-height:1.35;margin-top:7px;color:#e9f9f8}.desk-toggle-arrow{font-size:25px;color:#85e4c9;margin-left:auto;transition:transform .15s}.desk-disclosure[open] .desk-toggle-arrow{transform:rotate(180deg)}.desk-disclosure:not([open]) .desk-heading{margin:0}.desk-reveal{padding-top:12px}.desk-disclosure:not([open])+.desk-reveal{display:none}.r28-ma-audit{background:#143943;border:1px solid #366f70;border-radius:10px;padding:8px 10px;font-size:12px;line-height:1.6;margin:8px 0}.r28-ma-audit.confirmed{border-color:#52c9aa;color:#b3f5da}.r28-ma-audit.pending{color:#c8dbdd}.r28-ma-audit.rejected{color:#efc7af}.r27-idle{border:1px solid #365966;border-radius:14px;margin:13px 0;padding:10px}.r27-idle>summary{cursor:pointer;color:#bcd9da;font-size:13px}.r27-sector-reference{border-top:1px solid #2a4e58;margin:22px 0;padding:8px 0}.r27-sector-reference>summary{cursor:pointer;list-style:none}.r27-sector-reference>summary::-webkit-details-marker{display:none}.r27-sector-reference>summary::after{content:"⌄";color:#84d7c8}.r27-sector-reference[open]>summary::after{content:"⌃"}
 </style></head>
 <body>
 <div class="app-shell">
 <header class="topbar">
   <div class="brandmark"><span class="logo-pulse">◉</span></div>
-  <div class="brandtext"><div class="brandname">超盤手 <span>RADAR</span> <b aria-label="超盤手 V3.1.1-r27 以獲利階段觀察排序並保留原字卡" style="display:inline-block;vertical-align:middle;font-size:12px;line-height:1.3;letter-spacing:0;color:#a6f3df;background:#204c46;border:1px solid #3b9c8c;border-radius:8px;padding:3px 7px;margin-left:5px">V3.1.1-r27-setup-priority</b></div><div class="branddesc">全市場自動評估・當日族群・頸線預備突破 <span class="tinysep">/</span> 盤後計畫＋手動盤中檢查</div></div>
+  <div class="brandtext"><div class="brandname">超盤手 <span>RADAR</span> <b aria-label="超盤手 V3.1.1-r29 族群優先、頸線階段追蹤與六線認證" style="display:inline-block;vertical-align:middle;font-size:12px;line-height:1.3;letter-spacing:0;color:#a6f3df;background:#204c46;border:1px solid #3b9c8c;border-radius:8px;padding:3px 7px;margin-left:5px">V3.1.1-r29-sector-stage-sixma</b></div><div class="branddesc">全市場自動評估・當日族群・頸線預備突破 <span class="tinysep">/</span> 盤後計畫＋手動盤中檢查</div></div>
   <button id="refreshBtn" class="icon-button" aria-label="重新載入資料" title="重新載入資料"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 1 0-2.7 6M20 4v7h-7"/></svg></button>
 </header>
 <main>
   <section class="hero">
     <div class="hero-top"><span class="section-eyebrow"><span class="dot"></span> TAIWAN MARKET SCANNER</span><span class="session-badge">盤後版 · 非即時</span></div>
-    <h1><span>先看哪個階段。</span><br>再看什麼價格能做。</h1>
-    <p>自動先排主升與守均線續強，再看突破、量價啟動與頸線預備；點個股查看完整作戰字卡。</p>
+    <h1><span>先看強勢族群。</span><br>再看個股走到哪一根。</h1>
+    <p>先以族群當日漲幅廣度找方向，再逐檔看量價、MA5／10／20／60、頸線和風險；六線確認強勢必須有MA120／240的可核對歷史。</p>
     <div class="sessionline"><div><span class="muted">個股資料日</span> <strong id="marketDate">—</strong></div><div class="line-divider"></div><div><span class="muted">資料狀態</span> <strong id="dataStatus">正在讀取已保存快照</strong></div></div>
     <div class="market-overview" id="intelMarket" aria-label="加權櫃買與法人收盤資訊">指數與法人資料載入中…</div>
     <p style="font-size:12px;margin-top:9px;color:#b5e8dc">製作者：<b>Jimmy chang</b></p>
   </section>
 
   <section class="desk-section" id="deskSection" aria-label="盤後隔日交易作戰室">
-    <div class="desk-heading"><div><div class="eyebrow">NEXT SESSION / WATCH FIRST</div><h2>自動優先觀察名單 <span id="deskCount">—</span></h2></div><span class="desk-pill">盤後預案 · 非即時</span></div>
-    <p class="desk-copy">系統優先呈現主升與量價階段，強勢族群作為背景參考；完整認證買點仍獨立核對，不讓大盤資料缺口清空觀察名單。</p>
+    <details class="desk-disclosure" id="deskDisclosure">
+      <summary class="desk-heading"><span><span class="eyebrow">NEXT SESSION / WATCH FIRST</span><strong class="desk-toggle-title">自動優先觀察名單 <span id="deskCount">—</span></strong></span><span class="desk-toggle-arrow">⌄</span></summary>
+      <div class="desk-reveal"><span class="desk-pill">盤後預案 · 非即時</span>
+    <p class="desk-copy">點上方標題展開完整字卡。股價站上全部六條均線並有趨勢佐證，才會標為六線強勢；歷史不足仍可列入早期觀察，但不冒稱強勢股。</p>
     <details class="intel-deep sector-fold"><summary>展開近5日族群相對強弱（不是主力買超）</summary><div class="sector-pulse" id="sectorPulse" aria-label="市場近期相對強勢族群">族群相對強弱待資料</div></details>
     <div class="desk-list" id="deskList"><div class="desk-loading">盤後資料載入後才產生名單…</div></div>
     <div class="desk-bottom" id="deskNote">⚠ 盤中仍須手動輸入券商即時價量，驗證是否真正站穩。</div>
+      </div>
+    </details>
   </section>
   <section class="content-area">
-    <div class="section-header"><div><div class="eyebrow">FULL MARKET RADAR</div><h2>自動依階段排序的量價／頸線／主升觀察</h2></div><div class="coverage" id="coverageText">—</div></div>
+    <div class="section-header"><div><div class="eyebrow">FULL MARKET RADAR</div><h2>強勢族群個股 → 頸線預備／突破階段</h2></div><div class="coverage" id="coverageText">—</div></div>
     <div class="sector-directory" id="sectorDirectory" aria-label="強勢族群與旗下股票"><div class="desk-loading">正在自動檢查族群漲幅、頸線與個股價量風險…</div></div>
     <details class="advanced-radar"><summary>股票代號搜尋與完整資料（不影響自動名單）</summary>
     <div class="filters"><div class="search-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg><input id="searchBox" inputmode="search" autocomplete="off" placeholder="直接輸入股票代號或名稱" aria-label="搜尋股票"></div></div>
@@ -81,7 +85,7 @@
     <div class="inst-column"><h3>賣超前20檔</h3><div id="institutionalSells" class="inst-list">資料讀取中…</div></div></div>
     <p id="instFoot" class="inst-foot">法人資料須與個股交易日一致；缺資料不以0張或猜測代替。</p>
   </section>
-  <footer>超盤手 · 大量K雷達 <span>WEBSITE V3.1.1-r27 · CLASSIC CARDS / MA5-MA10 / THREE RADARS · EOD PLAN / NOT REALTIME</span><div>資料來源：臺灣證券交易所、櫃買中心公開盤後行情</div></footer>
+  <footer>超盤手 · 大量K雷達 <span>WEBSITE V3.1.1-r28 · CLASSIC CARDS / MA5-MA10 / THREE RADARS · EOD PLAN / NOT REALTIME</span><div>資料來源：臺灣證券交易所、櫃買中心公開盤後行情</div></footer>
 </main>
 <nav class="bottom-nav" aria-label="頁面導覽"><button class="nav-item active" data-page="list"><span>▦</span>自動名單</button><button class="nav-item" data-page="star"><span>☆</span>自選追蹤</button><button class="nav-item" data-page="guide"><span>▥</span>法人排行</button><button class="nav-item" data-page="setting"><span>⚙</span>狀態設定</button></nav>
 </div>
@@ -94,8 +98,8 @@
 <script src="trade-desk-v310.js?v=20261018-v311-r15" defer></script>
 <script src="trade-guidance-v311.js?v=20261018-v311-r15" defer></script>
 <script src="market-intel-v311.js?v=20261019-v311-r19" defer></script>
-<script src="stock-stage-v318.js?v=20261019-r19" defer></script>
+<script src="stock-stage-v318.js?v=20261019-r29-sector-stage-sixma" defer></script>
 <script src="maintrend_strategy_v320.js?v=20261019-r20" defer></script>
-<script src="sector-stage-v325.js?v=20261019-r27-priority" defer></script>
-<script src="app-detail-swipe-v222.js?v=20261019-r27-priority-classic-cards" defer></script>
+<script src="sector-stage-v325.js?v=20261019-r29-sector-stage" defer></script>
+<script src="app-detail-swipe-v222.js?v=20261019-r29-sector-stage-classic-cards" defer></script>
 </body></html>

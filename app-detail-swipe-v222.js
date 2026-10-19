@@ -594,10 +594,11 @@ function sectorBattleCard(c,options={}){
  const p=deskEvidence(c),g=ChaopanGuidance.evaluate(c,p,supportLines(c));
  const seq=breakoutReadout(c),track=ChaopanExtrasV311.breakoutTracks(c);
  const ma=ChaopanExtrasV311.averages(c),hold=continuationReadout(c);
+ const sixAudit=globalThis.ChaopanSectorV325?.sixLineAudit(c);
  const rank=sectorRanks.get(rowId(c)),key=rowId(c);
  const rankText=options.rankText||(Number.isInteger(rank)&&rank>0?`#${rank} 起漲排名`:'未列入起漲排名');
  const cardKey=(options.source||'sector')+'|'+key;
- const phases={launch:'量價啟動',hold:'沿MA5／MA10續強',ready:'頸線預備',first:'第一根',second:'第二根',third:'第三根',reclaim:'舊頸線站回',surge:'主升續強',reentry:'回測再發動',caution:'高波動警戒'};
+ const phases={launch:'量價啟動',hold:'沿MA5／MA10續強觀察',ready:'頸線預備',first:'第一根',second:'第二根',third:'第三根',reclaim:'舊頸線站回',surge:'主升續強',reentry:'回測再發動',caution:'高波動警戒'};
  const stage=options.stageLabel||phases[p.stage]||phases[p.momentumStage]||phases[seq.phase]||'階段待核對';
  const n=v=>numeric(v)===null?'—':price(v);
  const score=v=>numeric(v)===null?null:Math.max(0,Math.min(100,Number(v)));
@@ -615,6 +616,7 @@ function sectorBattleCard(c,options={}){
  const overview=`<div class="sector-mini-status"><b>${esc(g.title)}</b><span class="sector-card-tag ${riskClass}">${esc(label)}</span></div>
  <div class="sector-mini-stats"><span>觀察關卡 <b>${levelOk?n(g.breakoutLevel):'待核對'}</b></span><span>MA5 <b>${levelOk?n(g.ma5):'待核對'}</b></span><span>MA10 <b>${levelOk?n(g.ma10):'待核對'}</b></span></div>
  <div class="sector-six-dots"><span>六均線</span>${six}</div>
+ <div class="r28-ma-audit ${sixAudit?.confirmed?'confirmed':sixAudit?.status==='below'?'rejected':'pending'}"><b>${esc(sixAudit?.label||'六線待核對')}</b>｜${esc(sixAudit?.reason||'六線資料尚未核對')}</div>
  <div class="sector-phase-note">${esc(ma510)} · ${esc(c.date||'資料日待核對')}盤後</div>${marginBrief}${financeQuickCard(c)}`;
  const levelVals=[
   ['突破觀察',g.breakoutLevel],['回測觀察',g.pullbackZone?.[0]],['MA5減碼警戒',g.ma5],['MA10防守',g.ma10],['歷史支撐',g.support],['移動停利',g.trailingStop]
@@ -661,8 +663,8 @@ function sectorRadar(){
   {asOf,strong:[],watch:[],counts:{},coverage:[]};
  return sectorRadarCache;
 }
-const OBS_STAGE={reentry:'回測再起／主升機會',trend:'主升段延續觀察',hold:'沿MA5／MA10續強',second:'突破第二根確認觀察',third:'突破第三根續強觀察',launch:'量價啟動（未破大量K頸線）',first:'突破第一根觀察',ma510:'突破前站上MA5／MA10',ready:'預備突破頸線'};
-const R27_PRIORITY=['reentry','trend','hold','second','third','launch','first','ma510','ready'];
+const OBS_STAGE={leader:'強勢族群／短中期轉強個股',ready:'預備突破頸線',ma510:'突破前站上MA5／MA10',first:'突破第一根觀察',second:'突破第二根確認觀察',third:'突破第三根續強觀察',fourth:'突破第四根守穩觀察',hold:'站上頸線沿MA5／MA10續強',launch:'量價啟動（未破大量K頸線）',reentry:'量縮回測／再度轉強觀察',trend:'六線確認／主升延續觀察'};
+const R29_PRIORITY=['ready','ma510','first','second','third','fourth','hold','launch','reentry','trend'];
 // r26: restore the pre-r23 unified full battle card; keep radar stage classification independent.
 // The old compact r23 observe card removed 速覽/價位/技術/公司研究 and must not replace the full card.
 const R26_CARD_BATCH=3;
@@ -670,8 +672,9 @@ let r26ObserveGroups=new Map();
 function radarObserveCard(o){
  const c=o.row,group=String(o.sector||'產業待核對');
  const stage=OBS_STAGE[o.stage]||'價量觀察';
+ const maGate=globalThis.ChaopanSectorV325?.sixLineAudit(c,o.snapshot);
  const ratio=Number(o.snapshot?.ratio);
- const note=`<div class="r26-context"><b>${esc(stage)} · ${esc(group)}</b><span>${esc(o.reason||'確認價量與支撐後再觀察')} · 歷史頸線 ${price(o.snapshot?.neck)} · 量比 ${Number.isFinite(ratio)?ratio.toFixed(2):'待資料'} · 同階段品質 ${Number.isFinite(o.quality)?o.quality.toFixed(1):'待核對'}（非勝率）</span><small>盤後觀察，非已認證進場或保證獲利；個股買賣價位仍須核對有效資料日。</small></div>`;
+ const note=`<div class="r26-context"><b>${esc(stage)} · ${esc(group)}</b><span>${esc(o.reason||'確認價量與支撐後再觀察')} · 歷史頸線 ${price(o.snapshot?.neck)} · 量比 ${Number.isFinite(ratio)?ratio.toFixed(2):'待資料'} · 同階段品質 ${Number.isFinite(o.quality)?o.quality.toFixed(1):'待核對'}（非勝率）</span><span>六線狀態：${esc(maGate?.label||'待核對')}；${esc(maGate?.reason||'資料不足')}</span><small>盤後觀察，非已認證進場或保證獲利；個股買賣價位仍須核對有效資料日。</small></div>`;
  return `<div class="r26-card-wrap">${note}${sectorBattleCard(c,{source:'r26-observe-'+o.stage,rankText:'超盤手｜'+stage,stageLabel:stage})}</div>`;
 }
 function r26GroupMarkup(id,arr,open){
@@ -703,25 +706,25 @@ function sectorDirectory(){
  }
  const radar=sectorRadar(),asOf=radar.asOf||'日期待核對';
  r26ObserveGroups=new Map();
- const sectorBlock=(g,i,label)=>`<details class="sector-group" data-r26-group="sector-${label}-${i}"><summary><span class="sector-nom">${esc(g.name)}</span><span class="sector-sum">中位漲幅 ${pct(g.median)} · 上漲 ${g.advancers}/${g.total} · 個股觀察 ${g.count}</span><span class="sector-arrow">⌄</span></summary>${r26GroupMarkup('sector-'+label+'-'+i,g.stocks,false)}</details>`;
+ const sectorBlock=(g,i,label)=>`<details class="sector-group" data-r26-group="sector-${label}-${i}" ${label==='strong'&&i===0?'open':''}><summary><span class="sector-nom">${esc(g.name)}</span><span class="sector-sum">中位漲幅 ${pct(g.median)} · 上漲 ${g.advancers}/${g.total} · 轉強個股 ${g.leaderCount||0}</span><span class="sector-arrow">⌄</span></summary>${r26GroupMarkup('sector-'+label+'-'+i,g.leaders||[],false)}</details>`;
  const groups=radar.strong.map((g,i)=>sectorBlock(g,i,'strong')).join('');
  const warmingGroups=(radar.warming||[]).map((g,i)=>sectorBlock(g,i,'warming')).join('');
- const activeStages=R27_PRIORITY.filter(s=>radar.watch.some(o=>o.stage===s));
- const inactiveStages=R27_PRIORITY.filter(s=>!activeStages.includes(s));
+ const activeStages=R29_PRIORITY.filter(s=>radar.watch.some(o=>o.stage===s));
+ const inactiveStages=R29_PRIORITY.filter(s=>!activeStages.includes(s));
  const stageBlock=(s,opened)=>{const arr=radar.watch.filter(x=>x.stage===s);
   return `<details class="sector-group" data-r26-group="stage-${s}" ${opened?'open':''}><summary><span class="sector-nom">${esc(OBS_STAGE[s])}</span><span class="sector-sum">${arr.length} 檔</span><span class="sector-arrow">⌄</span></summary>${r26GroupMarkup('stage-'+s,arr,opened)}</details>`;};
- const staged=activeStages.map((s,i)=>stageBlock(s,i===0)).join('');
+ const staged=activeStages.map((s)=>stageBlock(s,false)).join('');
  const emptyStages=inactiveStages.map(s=>stageBlock(s,false)).join('');
- out.innerHTML=`<div class="r23-note"><b>先按技術階段，再按同階段量價品質自動排序。</b> 交易日 ${esc(asOf)}，非即時。順序不是勝率、不是買入推薦；有疑似賣壓、假突破或缺價量的個股仍被排除。大盤資料不足不會清空觀察雷達。</div>`+
- `<h3 class="r23-section-title">依機會／風險自動排序的個股階段 <small>${radar.watch.length} 檔觀察</small></h3>`+
+ out.innerHTML=`<div class="r23-note"><b>先顯示強勢族群，再顯示族群內經個股價量與風險檢查的轉強股票。</b> 交易日 ${esc(asOf)}，非即時。個股站上MA5／10／20／60只能標短中期轉強；六線強勢須另有240根以上可核對日K。此排序不是已證實的勝率。</div>`+
+ `<h3 class="r23-section-title">① 強勢族群 → 符合的個股 <small>${radar.strong.length} 組</small></h3>`+
+ (groups||'<div class="r23-empty">本交易日沒有族群同時通過廣度和漲幅條件；不硬湊強勢族群。</div>')+
+ `<p class="r23-caption">族群條件：足夠樣本、上漲家數達55%、漲幅中位數達0.8%。個股須站上MA5／10／20／60、MA20及MA60上彎、價量合理、未觸發假突破或出貨風險。族群強但無合格個股仍保留族群名稱。記憶體、被動元件暫採部分代表股標籤，非完整族群。</p>`+
+ `<h3 class="r23-section-title">② 頸線預備 → 第一／二／三／四根 → 沿線續強 <small>${radar.watch.length} 檔觀察</small></h3>`+
  (staged||'<div class="r23-empty">目前無符合價量觀察條件的股票。</div>')+
  `<details class="r27-idle"><summary>未出現訊號的其他階段（${inactiveStages.length} 類，功能保留）</summary>${emptyStages}</details>`+
- `<p class="r23-caption">優先級：回測再起／主升段 → 沿MA5／MA10續強 → 第二／三根 → 量價啟動／第一根 → 均線預備／頸線預備。較早期訊號有風險，已突破過遠也可能不宜追價。<b>只有明確核對的證據才標示階段；0檔不是功能消失。</b></p>`+
- `<details class="r27-sector-reference"><summary class="r23-section-title">市場背景：當日強勢族群、轉強族群 <small>${radar.strong.length}＋${(radar.warming||[]).length} 組</small></summary>`+
- `<div class="r23-note">族群漲幅廣度僅作個股的產業背景，不能取代獨立買點判斷。被動元件目前僅5檔代表股，非全部成員。</div>`+
- `<h3 class="r23-section-title">當日強勢族群 <small>${radar.strong.length} 組</small></h3>`+
- (groups||'<div class="r23-empty">本交易日無完整符合條件的強勢族群。</div>')+
- `<h3 class="r23-section-title">轉強觀察族群 <small>${(radar.warming||[]).length} 組</small></h3>`+
+ `<p class="r23-caption">另外追蹤：量價啟動、突破前 MA5／MA10、量縮回測再起、六線確認與主升延續；高檔巨量長上影／放量跌破支撐另列風險，不混入新買點名單。觀察不是買點。</p>`+
+ `<details class="r27-sector-reference"><summary class="r23-section-title">③ 其他轉強族群（尚未達強勢門檻） <small>${(radar.warming||[]).length} 組</small></summary>`+
+ `<div class="r23-note">這些族群漲幅中位數為0.4%至0.8%以下、上漲廣度達標；不是已確認強勢族群，請勿混同。</div>`+
  (warmingGroups||'<div class="r23-empty">本交易日無符合條件的轉強族群。</div>')+
  `</details>`;
  // Lazily construct the real unified cards only for visible expanded groups.
@@ -861,17 +864,20 @@ function autoPendingReason(){
  if(!verifiedAutoFeed(day))return '加權／櫃買連續指數及市場騰落資料尚未完整認證，目前停止自動新買點。';
  return '本交易日沒有同時通過大盤、價量、支撐、風險與進場條件的股票；不以盤整或疑似出貨股補位。';
 }
-function renderTradeDesk(){
+function renderTradeDesk(onlyDesk=false){
  const target=$('#deskList');if(!target)return;
  const current=state.payload?.asOf||'—';
  const picks=autoQualifiedEntries(),observed=sectorRadar().watch;
  const showing=picks.length?Math.min(picks.length,5):Math.min(observed.length,5);
  $('#deskCount').textContent=showing+' 檔';
  $('#deskNote').textContent=`資料截止 ${current} 盤後｜${picks.length?'完整大盤門檻已核對，仍須下一交易日檢查':'目前只有個股頸線／突破觀察，非已認證買點'}｜勿將舊資料當作即時行情。`;
- target.innerHTML=picks.length?picks.slice(0,5).map(autoTradingCard).join(''):
+ const disclosure=$('#deskDisclosure');
+ if(disclosure&&!disclosure.open){
+  target.innerHTML='<div class="desk-loading">點選「自動優先觀察名單」展開完整作戰字卡。</div>';
+ }else target.innerHTML=picks.length?picks.slice(0,5).map(autoTradingCard).join(''):
  observed.length?`<div class="r23-note">${esc(autoPendingReason())}。以下為<b>自動觀察名單</b>，不是已完成大盤認證的買入訊號。</div>${observed.slice(0,5).map(radarObserveCard).join('')}`:
  `<div class="desk-empty"><b>目前沒有符合風險門檻的優先觀察股票。</b><p>${esc(autoPendingReason())}</p></div>`;
- setTimeout(()=>{if(state.universe?.asOf===current&&state.payload?.asOf===current){sectorDirectory();renderSectorPulse(allRows());}},40);
+ if(!onlyDesk)setTimeout(()=>{if(state.universe?.asOf===current&&state.payload?.asOf===current){sectorDirectory();renderSectorPulse(allRows());}},40);
 }
 const lensMemo=new WeakMap();
 function lensEvidence(c){
@@ -1762,6 +1768,6 @@ function setupDetailSwipe(){
 }
 function openSettings(){const isReady=state.mode==='live';$('#modalContent').innerHTML=`<div class="eyebrow">APP STATUS / SETTINGS</div><h2 id="modalTitle">資料與安裝設定</h2><div class="settings-card"><strong>目前：${modeName()}</strong><p>最近盤後日期：${esc(state.payload?.asOf||'尚無')}<br>掃描歷史完整股票：${integer(state.payload?.eligibleCount||0)} 檔<br>已記錄股票：${integer(state.payload?.stockCount||0)} 檔</p></div><div class="settings-card"><strong>如何使用免費版？</strong><p>把本程式上傳 GitHub 公開 Repository，啟用 Actions，先手動執行「初次回補約220天」，設定 Pages 從 main /root 發布，再以 Android Chrome 的「新增至主畫面」安裝。GitHub Actions 依排程在13:30、14:30、18:30、23:00以及隔日06:00、08:30嘗試核對盤後資料（實際排程可能延遲），若交易所阻擋雲端 IP，需改用在台灣網路執行的收集主機。</p></div><div class="settings-card"><strong>即時版升級狀態</strong><p>目前沒有盤中報價或推播。未來串接授權即時行情、雲端首次突破判斷及 Firebase 推播後升級；不會使用盤後資料假裝盤中訊號。</p></div><div class="settings-card"><strong>網站隱私與密碼：目前仍是公開網站</strong><p>GitHub Pages 的 JavaScript 密碼視窗不能真正保護行情或阻止已取得網址的人查看檔案，亦不能安全撤銷別人的存取權。若需要可取消授權的真正私密網站，應遷移到有伺服端登入控管的部署方式（例如 Cloudflare Pages + Access），並關閉舊公開 Pages、保護行情資料來源。不要在此公開程式中設定真實密碼。</p></div><div class="action-row"><button id="reloadData" class="primary-action">重新檢查盤後資料</button>${isReady?'':'<button id="demoModeBtn" class="secondary-action">開啟示範畫面</button>'}</div>`;$('#reloadData').onclick=()=>{hideDetails();loadData()};if($('#demoModeBtn'))$('#demoModeBtn').onclick=()=>{hideDetails();demoMode()};$('#modalOverlay').hidden=false;document.body.style.overflow='hidden'}
 function navTo(page){$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(page==='list'){setTab('all');$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='star'){state.tab='star';const adv=$('.advanced-radar');if(adv)adv.open=true;$$('.tab').forEach(x=>x.classList.remove('active'));renderList();$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='guide')$('#institutionalBoard').scrollIntoView({behavior:'smooth'});else openSettings()}
-function wire(){loadWatch();setupSixtyToolbar();setupDetailSwipe();document.addEventListener('click',unifiedCardEvents);document.addEventListener('toggle',e=>{const p=e.target.closest?.('details[data-r26-group]');if(p?.open)r26FillCards(p.dataset.r26Group);},true);
+function wire(){loadWatch();setupSixtyToolbar();setupDetailSwipe();$('#deskDisclosure')?.addEventListener('toggle',e=>{if(e.target.open&&state.payload)renderTradeDesk(true)});document.addEventListener('click',unifiedCardEvents);document.addEventListener('toggle',e=>{const p=e.target.closest?.('details[data-r26-group]');if(p?.open)r26FillCards(p.dataset.r26Group);},true);
  $$('.lens-scope').forEach(b=>b.onclick=()=>{state.rankLens=b.dataset.lens;state.rankView='20';state.stageView='all';state.tab='all';state.query='';$('#searchBox').value='';state.visible=30;renderList()});const liquidityToggle=$('#onlyLiquid');if(liquidityToggle){liquidityToggle.checked=state.liquidityOnly;liquidityToggle.addEventListener('change',e=>{state.liquidityOnly=e.target.checked;state.visible=30;renderList()})}$$('.rank-scope').forEach(b=>b.onclick=()=>{state.rankView=b.dataset.scope;state.visible=30;state.tab='all';renderList()});$$('.stage-scope').forEach(b=>b.onclick=()=>{state.stageView=b.dataset.stage;state.visible=30;state.tab='all';state.query='';$('#searchBox').value='';renderList()});const sort=$('#sortFilter');if(sort){sort.insertAdjacentHTML('afterbegin','<option value="trade">操盤品質與追高風險（預設）</option><option value="launch">第一根發動優先</option><option value="priority">基本面投資優先度</option>');sort.value='trade';state.sort='trade';}$$('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.stat-card').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.nav-item').forEach(b=>b.onclick=()=>navTo(b.dataset.page));$('#searchBox').oninput=e=>{state.query=e.target.value;state.visible=30;renderList()};$('#showMore').onclick=()=>{state.visible+=30;renderList()};$('#refreshBtn').onclick=()=>loadData();$('.advanced-radar')?.addEventListener('toggle',e=>{if(e.target.open&&state.payload){state.rankListDirty=false;renderList()}});$('#closeModal').onclick=()=>hideDetails();$('#modalOverlay').onclick=e=>{if(e.target===$('#modalOverlay'))hideDetails()};window.onkeydown=e=>{if(e.key==='Escape')hideDetails()};window.addEventListener('popstate',()=>{if(state.detail||state.etfDetail)hideDetails(true)});loadData();if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(console.warn)}}
 document.addEventListener('DOMContentLoaded',wire);

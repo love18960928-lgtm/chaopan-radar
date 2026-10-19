@@ -1,4 +1,4 @@
-/* Chaopan RADAR r27 - prioritized setups, decoupled group breadth + pre-breakout MA5/10 from individual entry EOD sector and neckline observation radar.
+/* Chaopan RADAR r29 - sector leaders first, staged neckline observations second, decoupled group breadth + pre-breakout MA5/10 from individual entry EOD sector and neckline observation radar.
    Self-contained, testable; this is NOT a certified entry signal or live feed.
    The curated passive component tag is a limited, explicitly disclosed sample.
 */
@@ -7,10 +7,12 @@
  const num=x=>x===null||x===undefined||x===''||typeof x==='boolean'||!Number.isFinite(Number(x))?null:Number(x);
  const mean=(a)=>a.length?a.reduce((p,c)=>p+c,0)/a.length:null;
  const median=a=>{if(!a.length)return null;const b=a.slice().sort((x,y)=>x-y);return (b[(b.length-1)>>1]+b[b.length>>1])/2};
- const themeCodes=new Set(['2327','2492','2375','2472','3026']); // limited, not the entire passive-components universe
+ const themeCodes=new Set(['2327','2492','2375','2472','3026']); // limited sample, not entire passive-component universe
+ const memoryCodes=new Set(['2344','2408','2337','3006','3260','4967','8299','2451','8271','5289','8088']); // curated memory-sector representatives
  const banned=/假突破|跌破|突破失敗|結構破壞|出貨|賣壓|轉弱|不宜追價|破位|長上影警戒/;
  function sectorName(c){const name=String(c?.industry||c?.fundamentals?.industry||'').trim();if(!name||/未分類|待分類|不詳|未知/.test(name))return null;
   if(themeCodes.has(String(c.code))&&name==='電子零組件業')return '被動元件（代表股5檔）';
+  if(memoryCodes.has(String(c.code))&&(/半導體|電子|電腦/.test(name)))return '記憶體（代表股11檔）';
   return name;
  }
  function validate(c,asOf){
@@ -39,6 +41,53 @@
   return {close:cl,open:o,high:h,low:l,prev,prev2,neck,ma5:close5,old5,ma20:close20,ma10:close10,old10,old20,
    volume:v,ratio,position,upper,changePct:prev>0?100*(cl/prev-1):null,
    dayTradingValue:cl*v,avgLots:avg20};
+ }
+ // Strict six-average confirmation is separate from early-stage observation.
+ // We require 240+ same-date, chronological, valid daily bars and compute all
+ // averages ourselves. In particular, 65-bar snapshots and unverified cached
+ // MA240 fields must never be certified as a six-MA leader.
+ function sixLineAudit(c,snapshot){
+  const v=snapshot||validate(c,c?.date);
+  const bars=c?.bars;
+  if(!v||!Array.isArray(bars))return {status:'invalid',confirmed:false,label:'六線認證：行情待核對',reason:'交易日或OHLCV不完整'};
+  if(bars.length<240)return {status:'insufficient',confirmed:false,label:'六線待認證',reason:'僅有'+bars.length+'根日K，需至少240根才能核算MA240',bars:bars.length};
+  const prices=bars.map(b=>num(b[4]));
+  const avg=(n,end=prices.length)=>mean(prices.slice(end-n,end));
+  const levels={};for(const n of [5,10,20,60,120,240])levels[n]=avg(n);
+  const below=[5,10,20,60,120,240].filter(n=>!(v.close>levels[n]));
+  if(below.length)return {status:'below',confirmed:false,label:'尚未站上六線',reason:'未站上 '+below.map(n=>'MA'+n).join('、'),levels};
+  const slope20=levels[20]>avg(20,prices.length-5),slope60=levels[60]>avg(60,prices.length-5);
+  const alignment=levels[5]>=levels[10]&&levels[10]>=levels[20]&&levels[20]>=levels[60]&&levels[60]>=levels[120]&&levels[120]>=levels[240];
+  const cleanCandle=v.position>=.45&&v.upper<.40&&v.ratio>=.60&&v.ratio<=5;
+  const risk=c.riskFirst||c.possiblePriceAdjustment||c.overextended||['high','medium'].includes(c.riskLevel)||
+    banned.test([c.followStatus,c.unifiedStage,c.trading?.status].join(' '))||v.close/v.ma20>1.12;
+  const confirmed=slope20&&slope60&&alignment&&cleanCandle&&!risk;
+  return {status:confirmed?'confirmed':'six-above',confirmed,
+   label:confirmed?'六線確認強勢':'六線站上／趨勢未確認',
+   reason:confirmed?'站上六線、均線多頭排列、MA20與MA60上彎且未觸發賣壓門檻':
+      [!alignment?'均線尚未全數多頭排列':'',!(slope20&&slope60)?'MA20／MA60斜率尚未同步轉正':'',!cleanCandle?'當日K棒／量比未通過':'',risk?'風險訊號未解除':''].filter(Boolean).join('；'),levels};
+ }
+ // "Short/mid-term sector leader watch" is distinct from the strictly
+ // confirmed 6-MA strong stock. Do not turn unknown 120/240D MAs into passes.
+ function leaderAudit(c,v,stage){
+  if(!v)return {eligible:false,reason:'交易日或價量資料不足'};
+  if(c?.riskFirst||c?.possiblePriceAdjustment||c?.overextended||
+     ['medium','high'].includes(String(c?.riskLevel||''))||
+     banned.test([c?.followStatus,c?.unifiedStage,c?.trading?.status].join(' '))||
+     ['supply','danger','unknown'].includes(stage?.kind))return {eligible:false,reason:'賣壓／結構／風險旗標未解除'};
+  const b=c.bars;
+  if(b.length<65||v.volume<50||v.avgLots<300||!(v.neck>0)||v.close<=v.neck)return {eligible:false,reason:'均線、頸線或流動性不足／尚未站上頸線'};
+  const closes=b.map(bar=>num(bar[4]));
+  const avg=(n,end=closes.length)=>mean(closes.slice(end-n,end));
+  const averages=[5,10,20,60].map(n=>avg(n));
+  if(averages.some(n=>!Number.isFinite(n))||averages.some(n=>v.close<=n))return {eligible:false,reason:'價格尚未站上MA5／10／20／60'};
+  if(!(avg(20)>avg(20,closes.length-5)&&avg(60)>avg(60,closes.length-5)&&avg(5)>=avg(10)*.99))return {eligible:false,reason:'短中期均線斜率或排列不符'};
+  if(!(v.ratio>=.7&&v.ratio<=4.5&&v.position>=.55&&v.upper<.38&&v.changePct>=0))return {eligible:false,reason:'成交量／K棒收盤位置未通過'};
+  if(v.close/avg(20)>1.12||v.close/avg(10)>1.09)return {eligible:false,reason:'短線均線乖離過大'};
+  const quality=Math.round((v.changePct*1.2+Math.min(v.ratio,3)*3+v.position*5-Math.max(0,v.close/avg(10)-1)*100)*10)/10;
+  const six=sixLineAudit(c,v);
+  return {eligible:true,confirmed:six.confirmed,quality,label:six.confirmed?'六線確認強勢':'短中期轉強觀察／六線待認證',
+   reason:six.confirmed?'六線多頭、量價與風險關卡均通過':'站上頸線與MA5／10／20／60，MA20與MA60上彎；尚須確認突破隔日守穩與MA120／240'};
  }
  function inspect(c,asOf,stage){
   const v=validate(c,asOf);if(!v)return {stage:'unknown',reason:'價格／日期／成交量資料不完整',snapshot:null};
@@ -76,6 +125,11 @@
      v.close>=v.ma10&&v.position>=.45&&v.ratio>=.60&&trendOK){
    x.stage='third';x.reason='有效突破事件後第三根仍守住原頸線；屬續強觀察而非保證買點';return x;
   }
+  if(reliableBreak&&ix===bars.length-4&&bars.slice(-3).every(b=>num(b[4])!==null&&num(b[4])>v.neck)&&
+     v.close>=v.ma10&&v.position>=.45&&v.ratio>=.55&&trendOK&&
+     v.close/v.ma10<=1.075){
+    x.stage='fourth';x.reason='突破後連續第四根收穩頸線，須檢查量能衰退／乖離與假突破風險，非保證可追';return x;
+  }
   // Independent continuation of an established above-neckline MA5/MA10 slope.
   // This is deliberately an observation phase: no official market history is available.
   const trailingHold=bars.length>=35&&Array.from({length:6},(_,j)=>bars.length-1-j).every(k=>{
@@ -109,7 +163,7 @@
   if(reliableBreak&&ix<bars.length-2&&v.close>v.neck&&v.close>=v.ma10&&v.prev<=v.ma10*1.015&&v.close>v.prev&&v.position>=.50){
    x.stage='reentry';x.reason='已知突破事件後，回測短均線再向上；須防範假反彈';return x;
   }
-  if(stage?.kind==='strong'&&reliableBreak&&v.close>v.neck&&v.close>=v.ma10&&v.ratio>=.65){
+  if(stage?.kind==='strong'&&sixLineAudit(c,v).confirmed&&reliableBreak&&v.close>v.neck&&v.close>=v.ma10&&v.ratio>=.65){
    x.stage='trend';x.reason='多頭趨勢延續觀察，若回落仍須依支撐與移動停利管理';return x;
   }
   return x;
@@ -119,8 +173,8 @@
   for(const c of Array.isArray(rows)?rows:[]){
    const sector=sectorName(c);if(!sector)continue;
    const snap=validate(c,asOf);if(!snap)continue;
-   if(!groups.has(sector))groups.set(sector,{name:sector,total:0,ups:0,returns:[],stocks:[]});
-   const group=groups.get(sector);group.total++;
+   if(!groups.has(sector))groups.set(sector,{name:sector,total:0,ups:0,returns:[],stocks:[],memberRows:[]});
+   const group=groups.get(sector);group.total++;group.memberRows.push(c);
    if(snap.changePct>0)group.ups++;
    group.returns.push(snap.changePct);
    const stage=inspect(c,asOf,typeof stageFn==='function'?stageFn(c):null);
@@ -139,9 +193,25 @@
   const byStrength=(a,b)=>b.median-a.median||b.breadth-a.breadth||b.count-a.count;
   const strong=coverage.filter(g=>hasBreadth(g)&&g.median>=.8).sort(byStrength);
   const warming=coverage.filter(g=>hasBreadth(g)&&g.median>=.4&&g.median<.8).sort(byStrength);
+  // The sector is determined independently from eligible constituent shares.
+  // For the presentation, leaders are never inferred just from belonging to
+  // a strong group, and six-MA confirmation remains a separate audit.
+  for(const g of coverage){
+   g.leaders=(groups.get(g.name)?.memberRows||[]).map(c=>{
+    const snapshot=validate(c,asOf);
+    const stage=typeof stageFn==='function'?stageFn(c):null;
+    const audit=leaderAudit(c,snapshot,stage);
+    return audit.eligible?{row:c,sector:g.name,stage:'leader',reason:audit.label+'；'+audit.reason,
+      quality:audit.quality,snapshot,confirmedSix:audit.confirmed}:null;
+   }).filter(Boolean).sort((a,b)=>Number(b.confirmedSix)-Number(a.confirmedSix)||b.quality-a.quality);
+   g.leaderCount=g.leaders.length;
+  }
+  // Show strong sectors with individually-qualified leaders first, then strong
+  // sectors with zero qualifying shares (kept visible, never called buyable).
+  strong.sort((a,b)=>Number(b.leaderCount>0)-Number(a.leaderCount>0)||byStrength(a,b));
   // Rank by setup class first and quality within that class. This is not a win rate.
   // A breakout with high slippage/extension should rank below a cleaner peer in the same class.
-  const priority={reentry:0,trend:1,hold:2,second:3,third:4,launch:5,first:6,ma510:7,ready:8};
+  const priority={ready:0,ma510:1,first:2,second:3,third:4,fourth:5,hold:6,launch:7,reentry:8,trend:9};
   const quality=(o)=>{const v=o.snapshot;
    const gap10=(v.close/v.ma10-1)*100, gap20=(v.close/v.ma20-1)*100;
    const up20=v.old20>0?(v.ma20/v.old20-1)*100:0;
@@ -157,5 +227,5 @@
   for(const g of coverage)g.stocks.sort(compare);
   return {asOf,strong,warming,watch:observations,coverage,counts:observations.reduce((a,x)=>(a[x.stage]=(a[x.stage]||0)+1,a),{})};
  }
- return {sectorName,validate,inspect,analyze,themeCodes:[...themeCodes]};
+ return {sectorName,validate,sixLineAudit,leaderAudit,inspect,analyze,themeCodes:[...themeCodes],memoryCodes:[...memoryCodes]};
 });

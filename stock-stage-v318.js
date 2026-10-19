@@ -1,4 +1,4 @@
-/* Chaopan RADAR r19: conservative EOD multi-evidence stage classifier.
+/* Chaopan RADAR r28: strict full-six-line strength confirmation, conservative EOD stage classifier.
  * No synthetic quotes and no assertion of actual institutional distribution.
  * Supports Node regression and browser window.ChaopanStageV318 without changing script URLs.
  */
@@ -63,7 +63,7 @@ function inspect(row,asOf,options={}){
  validEvent=neck!==null&&neck>0&&eventIndex>=0&&eventIndex<bars.length,
  lastTwoStay=validEvent&&bars.length>=eventIndex+2&&closes.at(-2)>neck&&close>neck;
  const risky=Boolean(row?.riskFirst||row?.riskLevel==='high'||options.danger===true||/假突破警戒|突破失敗|結構破壞|趨勢轉弱/.test(String(row?.followStatus||''))||/^(?:突破失敗|跌破且未收復|結構破壞|趨勢轉弱)(?:[／\s]|$)/.test(String(row?.unifiedStage||'')));
- const evidence=[];
+ const evidence=[];let fourLinePending=false;
  if(volRatio!==null&&volRatio>=1.5)evidence.push('量比'+volRatio.toFixed(2));
  const upperRisk=upper>=.44&&closePosition<=.45;
  const heavy=volRatio!==null&&volRatio>=2;
@@ -79,7 +79,8 @@ function inspect(row,asOf,options={}){
  // One sub-MA5 dip does NOT make a sideways stock a confirmed breakdown.
  const high20=Math.max(...highs.slice(-20)),low20=Math.min(...lows.slice(-20));
  const width20=(high20-low20)/Math.max(low20,.001),maSlope=ma20old>0?Math.abs(ma20/ma20old-1):null;
- const consolidation=width20<=.10&&maSlope!==null&&maSlope<=.028&&atrPct!==null&&atrPct<=5.5&&(vol.adx===null||vol.adx<=27||width20<=.045)&&close>=low20*.992&&(!validEvent||close<=neck*1.025);
+ const directionalTrend=ma60!==null&&close>ma5&&ma5>ma10&&ma10>ma20&&ma20>ma60&&ma5>ma5p&&ma10>=ma10p&&ma20>ma20p&&(vol.adx!==null&&vol.adx>25);
+ const consolidation=width20<=.10&&maSlope!==null&&maSlope<=.028&&atrPct!==null&&atrPct<=5.5&&(vol.adx===null||vol.adx<=27||width20<=.045)&&!directionalTrend&&close>=low20*.992&&(!validEvent||close<=neck*1.025);
  // Genuine risk flags stay visible, but flat-range noise is not automatically a danger event.
  if(risky)return {kind:'danger',reason:'有明確風險／結構警戒，取消強勢資格',code,evidence};
  if(consolidation)return {kind:'consolidation',reason:'區間寬度、MA20斜率與Wilder ATR/ADX評估偏向盤整；小跌破短均線不算確認轉弱',code,evidence:[...evidence,`ATR14 ${atrPct.toFixed(2)}%`,`ADX14 ${vol.adx===null?'不足':vol.adx.toFixed(1)}`]};
@@ -94,14 +95,25 @@ function inspect(row,asOf,options={}){
   const sorted=close>ma5&&close>ma10&&close>ma20&&close>ma60&&ma5>ma10&&ma10>ma20&&ma20>ma60;
   const rising=ma5>ma5p&&ma5p>=ma5pp&&ma10>=ma10p&&ma10p>=ma10pp&&ma20>=ma20p;
   const eligible=options.liquid!==false&&options.strongApproved!==false&&prevVol20!==null&&prevVol20>=10&&volRatio!==null&&volRatio>=.7&&!divergent&&bias20!==null&&bias20<12;
-  if(sorted&&rising&&eligible)return {kind:'strong',reason:'頸線連續站穩、MA5／10／20／60多頭走揚，且量能與K棒品質未觸發否決',code,evidence};
+  if(sorted&&rising&&eligible){
+   // Six-MA confirmation must be calculated from >=240 legally dated bars,
+   // not from a stale or unaudited externally supplied maAll field.
+   const ma120=avg(closes,120),ma240=avg(closes,240),old60=avg(closes,60,closes.length-5);
+   const sixAbove=ma240!==null&&ma120!==null&&close>ma120&&close>ma240;
+   const stackedSix=sixAbove&&ma60>=ma120&&ma120>=ma240;
+   const longSlopes=old60!==null&&ma60>old60&&ma20old!==null&&ma20>ma20old;
+   const healthyCandle=upper<.40&&closePosition>=.45;
+   if(stackedSix&&longSlopes&&healthyCandle)return {kind:'strong',reason:'已核對240根以上日K，股價站上MA5／10／20／60／120／240，六線多頭排列、均線走揚、價量及K棒通過',code,evidence};
+   fourLinePending=true;
+   evidence.push('短中期四線偏多，但未完成六線全數站上／排列與風險確認');
+  }
  }
  // Reversal observation requires preceding weakening and current price stabilization.
  const falling20=ma20old>0&&ma20p<ma20old*.975;
  const recovered=close>ma5&&close>=ma10&&closes.at(-1)>closes.at(-3)&&lows.at(-1)>=Math.min(...lows.slice(-9,-2));
  if(falling20&&recovered&&volRatio!==null&&volRatio>=.85)return {kind:'reversal',reason:'前期均線走弱後出現止跌與短均線回復；僅為底部反轉觀察，尚未確認',code,evidence};
  if(options.watch===true||(validEvent&&close>neck)||(ma5!==null&&close>=ma5&&close>=ma20))
-  return {kind:'watch',reason:divergent?'價量背離觀察：創高但相對量不足，暫不列入確認強勢':bias20!==null&&bias20>=12?'乖離MA20偏大，列觀察不認證追價':validEvent?'頸線附近觀察，尚缺完整價量／均線續強確認':'起漲觀察，尚未取得充分的突破證據',code,evidence};
+  return {kind:'watch',reason:fourLinePending?'僅屬短中期轉強觀察；MA120／MA240或六線趨勢條件未通過，不稱確認強勢':divergent?'價量背離觀察：創高但相對量不足，暫不列入確認強勢':bias20!==null&&bias20>=12?'乖離MA20偏大，列觀察不認證追價':validEvent?'頸線附近觀察，尚缺完整價量／均線續強確認':'起漲觀察，尚未取得充分的突破證據',code,evidence};
  return {kind:'neutral',reason:'目前未達確認強勢、盤整、反轉或明確警戒條件',code,evidence};
 }
 function classify(rows,asOf,optionFn){const kinds=['strong','watch','consolidation','reversal','supply','danger','neutral','unknown'];const counts=Object.fromEntries(kinds.map(x=>[x,0])),results=[];
