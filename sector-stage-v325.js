@@ -1,4 +1,4 @@
-/* Chaopan RADAR r29 - sector leaders first, staged neckline observations second, decoupled group breadth + pre-breakout MA5/10 from individual entry EOD sector and neckline observation radar.
+/* Chaopan RADAR r30 - show strong sectors only with at least one individually qualified leader; keep setups separately and cards on demand.
    Self-contained, testable; this is NOT a certified entry signal or live feed.
    The curated passive component tag is a limited, explicitly disclosed sample.
 */
@@ -206,9 +206,11 @@
    }).filter(Boolean).sort((a,b)=>Number(b.confirmedSix)-Number(a.confirmedSix)||b.quality-a.quality);
    g.leaderCount=g.leaders.length;
   }
-  // Show strong sectors with individually-qualified leaders first, then strong
-  // sectors with zero qualifying shares (kept visible, never called buyable).
-  strong.sort((a,b)=>Number(b.leaderCount>0)-Number(a.leaderCount>0)||byStrength(a,b));
+  // A sector only appears in the qualified sector-stock directory if it also
+  // has at least ONE individually eligible constituent. Pure breadth signals
+  // are still available in coverage/warming for analysis, not promoted as picks.
+  const qualifiedStrong=strong.filter(g=>g.leaderCount>0);
+  qualifiedStrong.sort((a,b)=>Number(b.leaderCount)-Number(a.leaderCount)||byStrength(a,b));
   // Rank by setup class first and quality within that class. This is not a win rate.
   // A breakout with high slippage/extension should rank below a cleaner peer in the same class.
   const priority={ready:0,ma510:1,first:2,second:3,third:4,fourth:5,hold:6,launch:7,reentry:8,trend:9};
@@ -225,7 +227,7 @@
   const compare=(a,b)=>priority[a.stage]-priority[b.stage]||b.quality-a.quality||String(a.row.code).localeCompare(String(b.row.code));
   observations.sort(compare);
   for(const g of coverage)g.stocks.sort(compare);
-  return {asOf,strong,warming,watch:observations,coverage,counts:observations.reduce((a,x)=>(a[x.stage]=(a[x.stage]||0)+1,a),{})};
+  return {asOf,strong:qualifiedStrong,otherBroadStrong:strong.filter(g=>g.leaderCount===0),warming,watch:observations,coverage,counts:observations.reduce((a,x)=>(a[x.stage]=(a[x.stage]||0)+1,a),{})};
  }
  return {sectorName,validate,sixLineAudit,leaderAudit,inspect,analyze,themeCodes:[...themeCodes],memoryCodes:[...memoryCodes]};
 });
