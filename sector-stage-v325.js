@@ -10,6 +10,7 @@
  const themeCodes=new Set(['2327','2492','2375','2472','3026']); // limited sample, not entire passive-component universe
  const memoryCodes=new Set(['2344','2408','2337','3006','3260','4967','8299','2451','8271','5289','8088']); // curated memory-sector representatives
  const banned=/假突破|跌破|突破失敗|結構破壞|出貨|賣壓|轉弱|不宜追價|破位|長上影警戒/;
+ const structuralDanger=/假突破|跌破|突破失敗|結構破壞|出貨|賣壓|轉弱|破位|長上影警戒/;
  function sectorName(c){const name=String(c?.industry||c?.fundamentals?.industry||'').trim();if(!name||/未分類|待分類|不詳|未知/.test(name))return null;
   if(themeCodes.has(String(c.code))&&name==='電子零組件業')return '被動元件（代表股5檔）';
   if(memoryCodes.has(String(c.code))&&(/半導體|電子|電腦/.test(name)))return '記憶體（代表股11檔）';
@@ -88,6 +89,56 @@
   const six=sixLineAudit(c,v);
   return {eligible:true,confirmed:six.confirmed,quality,label:six.confirmed?'六線確認強勢':'短中期轉強觀察／六線待認證',
    reason:six.confirmed?'六線多頭、量價與風險關卡均通過':'站上頸線與MA5／10／20／60，MA20與MA60上彎；尚須確認突破隔日守穩與MA120／240'};
+ }
+ // r31: An established MA5/MA10 trend is a separate *holding/watch* state.
+ // Missing one canonical large-volume neckline must NOT suppress a verifiable
+ // rally; a high BIAS or quiet volume affects chase/entry risk, not the
+ // existence of the historical trend itself. This is EOD-only analysis.
+ function movingTrendAudit(c,v){
+  const bars=c?.bars||[];
+  if(!v||bars.length<35||v.ma5===null||v.ma10===null||v.ma20===null||v.old20===null)return null;
+  const closes=bars.map(b=>num(b[4]));
+  const avgAt=(n,end)=>end>=n?mean(closes.slice(end-n,end)):null;
+  const recent=Array.from({length:8},(_,j)=>{
+   const end=closes.length-j,m10=avgAt(10,end);
+   return m10!==null&&closes[end-1]>=m10*.985;
+  });
+  const aboveCount=recent.filter(Boolean).length;
+  const twentyReturn=closes.length>20?(v.close/closes[closes.length-21]-1)*100:0;
+  const tenRising=v.ma10>v.old10&&v.ma20>v.old20*1.005;
+  const earlierM5=avgAt(5,closes.length-1);
+  const wasOn5=closes.at(-2)>=earlierM5*.995;
+  const established=aboveCount>=6&&tenRising&&twentyReturn>=8&&v.ma5>=v.ma10*.975;
+  if(!established)return null;
+  const gap5=(v.close/v.ma5-1)*100;
+  const gap10=(v.close/v.ma10-1)*100;
+  const gap20=(v.close/v.ma20-1)*100;
+  const warning=[];
+  if(gap20>=12)warning.push('距MA20 '+gap20.toFixed(1)+'%，乖離偏大，不宜追價');
+  if(gap10>=6.5)warning.push('距MA10 '+gap10.toFixed(1)+'%，短線拉開均線');
+  if(v.ratio<.6)warning.push('量比'+v.ratio.toFixed(2)+'，量縮須提防動能衰退');
+  if(v.upper>=.36&&v.position<.55)warning.push('上影賣壓警戒');
+  // Preserve price-phase distinction: breaking MA5 is a pullback, not "holding MA5".
+  const ride=gap5>=-.5&&gap10>=-.5&&v.ma5>v.old5&&v.close>=v.ma20;
+  const pullback=!ride&&wasOn5&&gap5<-.5&&gap10>=-1.0&&v.close>=v.ma20;
+  if(!ride&&!pullback)return null;
+  return {stage:ride?'hold':'maPullback',entryApproved:false,
+   reason:(ride?'近期多數收盤站在MA10附近或上方，MA5／MA10趨勢上彎；沿短均線持股觀察':'前期沿MA5／MA10走升，現跌破MA5但仍在MA10附近；列回檔防守觀察')+
+    '；最近8根有'+aboveCount+'根守住MA10附近。'+(warning.join('；')||'目前無額外高乖離／量縮警戒')+'；這不是確認買點。',
+   warnings:warning,bias5:gap5,bias10:gap10,bias20:gap20};
+ }
+ // Independent supplement: keep the original neck/first/second/third/etc.
+ // stage outcomes intact; only add a trend watch when that scan had no candidate.
+ function inspectTrend(c,asOf,upstream){
+  const v=validate(c,asOf);
+  if(!v)return null;
+  if(c.possiblePriceAdjustment||c.onePriceLimit||c.riskFirst||
+     ['high','medium'].includes(String(c.riskLevel||''))||
+     structuralDanger.test([c.followStatus,c.unifiedStage,c.trading?.status].join(' '))||
+     ['danger','supply','unknown'].includes(upstream?.kind))return null;
+  if(v.avgLots<300||v.volume<50||v.high<=v.low||v.dayTradingValue<10000||
+     (v.upper>=.44&&v.position<=.45)||(v.ratio>=2&&v.position<.32))return null;
+  return movingTrendAudit(c,v);
  }
  function inspect(c,asOf,stage){
   const v=validate(c,asOf);if(!v)return {stage:'unknown',reason:'價格／日期／成交量資料不完整',snapshot:null};
@@ -177,9 +228,13 @@
    const group=groups.get(sector);group.total++;group.memberRows.push(c);
    if(snap.changePct>0)group.ups++;
    group.returns.push(snap.changePct);
-   const stage=inspect(c,asOf,typeof stageFn==='function'?stageFn(c):null);
+   const upstream=typeof stageFn==='function'?stageFn(c):null;
+   const primary=inspect(c,asOf,upstream);
+   const stage=!['unknown','blocked','none'].includes(primary.stage)?primary:
+     (inspectTrend(c,asOf,upstream)||primary);
    if(!['unknown','blocked','none'].includes(stage.stage)){
-    const item={row:c,sector,stage:stage.stage,reason:stage.reason,snapshot:stage.snapshot};
+    const item={row:c,sector,stage:stage.stage,reason:stage.reason,snapshot:stage.snapshot||snap,
+     entryApproved:false};
     group.stocks.push(item);observations.push(item);
    }
   }
@@ -213,7 +268,7 @@
   qualifiedStrong.sort((a,b)=>Number(b.leaderCount)-Number(a.leaderCount)||byStrength(a,b));
   // Rank by setup class first and quality within that class. This is not a win rate.
   // A breakout with high slippage/extension should rank below a cleaner peer in the same class.
-  const priority={ready:0,ma510:1,first:2,second:3,third:4,fourth:5,hold:6,launch:7,reentry:8,trend:9};
+  const priority={hold:0,maPullback:1,ready:2,ma510:3,first:4,second:5,third:6,fourth:7,launch:8,reentry:9,trend:10};
   const quality=(o)=>{const v=o.snapshot;
    const gap10=(v.close/v.ma10-1)*100, gap20=(v.close/v.ma20-1)*100;
    const up20=v.old20>0?(v.ma20/v.old20-1)*100:0;
@@ -229,5 +284,5 @@
   for(const g of coverage)g.stocks.sort(compare);
   return {asOf,strong:qualifiedStrong,otherBroadStrong:strong.filter(g=>g.leaderCount===0),warming,watch:observations,coverage,counts:observations.reduce((a,x)=>(a[x.stage]=(a[x.stage]||0)+1,a),{})};
  }
- return {sectorName,validate,sixLineAudit,leaderAudit,inspect,analyze,themeCodes:[...themeCodes],memoryCodes:[...memoryCodes]};
+ return {sectorName,validate,sixLineAudit,leaderAudit,inspect,inspectTrend,analyze,themeCodes:[...themeCodes],memoryCodes:[...memoryCodes]};
 });

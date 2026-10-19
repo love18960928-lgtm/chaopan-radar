@@ -662,8 +662,8 @@ function sectorRadar(){
   {asOf,strong:[],watch:[],counts:{},coverage:[]};
  return sectorRadarCache;
 }
-const OBS_STAGE={leader:'強勢族群／短中期轉強個股',ready:'預備突破頸線',ma510:'突破前站上MA5／MA10',first:'突破第一根觀察',second:'突破第二根確認觀察',third:'突破第三根續強觀察',fourth:'突破第四根守穩觀察',hold:'站上頸線沿MA5／MA10續強',launch:'量價啟動（未破大量K頸線）',reentry:'量縮回測／再度轉強觀察',trend:'六線確認／主升延續觀察'};
-const R29_PRIORITY=['ready','ma510','first','second','third','fourth','hold','launch','reentry','trend'];
+const OBS_STAGE={leader:'強勢族群／短中期轉強個股',ready:'預備突破頸線',ma510:'突破前站上MA5／MA10',first:'突破第一根觀察',second:'突破第二根確認觀察',third:'突破第三根續強觀察',fourth:'突破第四根守穩觀察',hold:'沿MA5／MA10趨勢追蹤（非追價買點）',maPullback:'沿MA5／MA10上漲後回測防守',launch:'量價啟動（未破大量K頸線）',reentry:'量縮回測／再度轉強觀察',trend:'六線確認／主升延續觀察'};
+const R29_PRIORITY=['hold','maPullback','ready','ma510','first','second','third','fourth','launch','reentry','trend'];
 // r26: restore the pre-r23 unified full battle card; keep radar stage classification independent.
 // The old compact r23 observe card removed 速覽/價位/技術/公司研究 and must not replace the full card.
 // r30: compact institutional-style rows; expensive original full cards are
@@ -725,10 +725,10 @@ function sectorDirectory(){
  `<h3 class="r23-section-title">① 族群內符合的個股 <small>${radar.strong.length} 組</small></h3>`+
  (groups||'<div class="r23-empty">本交易日沒有「族群強勢且至少一檔個股合格」的組合；不為了湊名單列弱勢個股。</div>')+
  `<p class="r23-caption">僅族群中位漲幅≥0.8%、上漲家數比例≥55%，且至少一檔股票經過頸線、MA5／10／20／60、量價、乖離及風險檢查，才列入上方清單。缺 MA240 時只標「短中期轉強／六線待認證」。記憶體與被動元件目前只有部分代表股，未涵蓋全部成分股。</p>`+
- `<h3 class="r23-section-title">② 頸線預備 → 突破第一／二／三／四根 → 沿線續強 <small>${radar.watch.length} 檔觀察</small></h3>`+
+ `<h3 class="r23-section-title">② 沿MA5／MA10趨勢 → 回測防守 → 頸線預備／突破 <small>${radar.watch.length} 檔觀察</small></h3>`+
  (staged||'<div class="r23-empty">目前無符合價量觀察條件的股票。</div>')+
  `<details class="r27-idle"><summary>其他尚未出現訊號的階段（${inactiveStages.length} 類）</summary>${emptyStages}</details>`+
- `<p class="r23-caption">各階段的個股也是「點股票才展開」；未出現訊號的階段仍保留入口。觀察不是買點；假突破、疑似出貨、支撐跌破會被風險條件排除。</p>`;
+ `<p class="r23-caption">各階段的個股也是「點股票才展開」；未出現訊號的階段仍保留入口。沿均線趨勢獨立於可買進評估，乖離過大／量縮會提示不追價；假突破、疑似出貨與跌破關鍵支撐依然排除。</p>`;
 }
 /* r7: Each chart is rendered from the selected stock's dated OHLCV rows. */
 function annotatedBattleChart(c,g){
