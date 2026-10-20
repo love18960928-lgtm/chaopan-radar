@@ -511,7 +511,8 @@ def run(days,delay,as_of=None):
        'marketBreadth':'現有日K計算；非指數行情'}
     snapshot['financeRulesVersion']='finance-v2.1-date-safe'
     snapshot['traderRulesVersion']='trader-v2.1-risk'
-    snapshot['performance'],updated_signals=update_diary(historical_signals,allstocks,snapshot['candidates'],snapshot['asOf'])
+    # Evaluate performance only AFTER publication has the canonical structural judgement.
+    # Before this point, snapshot.candidates still carries the legacy first-bar scan.
     snapshot['rankMethod']='V2.1: date-safe public fundamentals, historical overhead context, and separate entry/hold quality; external feeds excluded'
     snapshot['launchRulesVersion']='launch-v1.4'
     def rank_trade(c):
@@ -524,9 +525,13 @@ def run(days,delay,as_of=None):
                                for c in sorted(snapshot['candidates'],key=rank_trade,reverse=True)[:60]]
     snapshot['generatedAt']=dt.datetime.now(dt.timezone.utc).isoformat()
     universe=build_universe(allstocks,snapshot,snapshot['asOf'])
+    # The published universe is authoritative, not the pre-normalization shortlist.
+    snapshot['performance'],updated_signals=update_diary(
+        historical_signals,allstocks,universe['rows'],snapshot['asOf'],
+        signal_rules_version='canonical-structure-v25')
     snapshot['rulesVersion']='eod-v3.0.3-continuation'
     snapshot['rankMethod']='V3.0.3: recent neckline plus historical price-range continuation, early breakout and pullback tracked separately; EOD only'
-    snapshot['performanceCaveat']='歷史績效日誌仍為舊版候選股規則，不能用來宣稱V2.5有獲利優勢；需另做樣本外、含交易成本回測'
+    snapshot['performanceCaveat']='舊版訊號保留歷史，績效統計僅涵蓋新版統一結構的實際盤後新訊號；樣本外效果與成交可行性仍待認證'
     snapshot['universeCount']=universe['coverage']
     snapshot['unifiedCandidatesCount']=sum(x.get('unifiedStage') not in ('一般觀察','資料不足') for x in universe['rows'])
     snapshot['priorityTop60']=[{'code':x['code'],'market':x['market'],

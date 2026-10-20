@@ -259,9 +259,17 @@ def assess_stock(st, snapshot_row, context, asof):
     if not reasons:reasons=['無明顯高風險組合訊號，不代表安全或主力吸籌']
     c['riskLevel']=level;c['riskStatus']=status;c['riskReasons']=reasons
     # Full-universe opportunity: include a signal OR trend, not just arbitrary watchlists.
+    # Recompute entry/trade quality from the CANONICAL neckline rather than
+    # reusing a stale overlay scored against the legacy snapshot level.
+    earlier_trading=c.get('trading') if isinstance(c.get('trading'),dict) else {}
     t=trader_overlay({**c,'bars':b[-120:]})
-    if not isinstance(c.get('trading'),dict): c['trading']=t
-    if not c.get('trading') or c['trading'].get('score') is None:c['trading']=t
+    for key in ('sectorRelative20Pct','sectorPeerCount','sectorPriceRank','sectorLabel'):
+        if key in earlier_trading:t[key]=earlier_trading[key]
+    sr=t.get('sectorRelative20Pct')
+    if sr is not None and t.get('score') is not None:
+        if sr>=5:t['score']=min(100,t['score']+4)
+        elif sr<=-5:t['score']=max(0,t['score']-4)
+    c['trading']=t
     trend=t.get('trend') or 0
     liquidity=t.get('avgTurnover20Millions') or 0
     signal=38 if c.get('priceConfirmed') else 23 if c.get('followStatus')=='突破續強' else 19 if c.get('preLaunch') else 11 if 'near' in c.get('tags',[]) else 0
@@ -307,13 +315,50 @@ def build_universe(stocks, snapshot, asof):
         slim['bars']=record['bars']
         rows.append(slim)
     rows.sort(key=lambda c:(c['opportunityScore'] if c['opportunityScore'] is not None else -1), reverse=True)
+    by_identity={(x['market'],x['code']):x for x in rows}
     for c in snapshot.get('candidates',[]):
-        matching=next((x for x in rows if x['code']==c['code'] and x['market']==c['market']),None)
+        matching=by_identity.get((c['market'],c['code']))
         if matching:
+            # Preserve legacy tags only for audit, publish canonical structural
+            # identity and SAME as-of neckline/first status as universe.json.
+            c['legacySignal']={k:c.get(k) for k in (
+                'neck','neckDate','priceConfirmed','launchStage','tags','score','breakoutDate')}
+            for k in ('neck','neckDate','distancePct','priceConfirmed','preLaunch',
+                      'launchStage','tags','followStatus','unifiedStage','unifiedScore'):
+                c[k]=matching.get(k)
+            c['score']=matching.get('unifiedScore')
+            # A legacy anchor's volume is NOT the volume of a different
+            # canonical neckline (which may be a price pivot, not volume K).
+            if (c['legacySignal']['neck']!=c['neck'] or
+                    c['legacySignal']['neckDate']!=c['neckDate']):
+                c['neckLots']=None
+            c['launchRank']=(5 if c['priceConfirmed'] else
+                             4 if (c.get('breakoutSequence') or {}).get('phase') in ('second','third','fourth') else
+                             3 if c['preLaunch'] else 2 if 'near' in (c.get('tags') or []) else 1)
+            c['launchReason']=matching.get('entryReadiness') or '技術觀察／非買進認證'
+            cycle=matching.get('cycle') or {}
+            sequence=matching.get('breakoutSequence') or {}
+            c['breakoutDate']=cycle.get('initialDate')
+            c['breakoutClose']=sequence.get('firstClose')
+            c['followDay']=cycle.get('daysSinceFirst')
+            c['confirmed']=bool((matching.get('structureV23') or {}).get('volumeBreakout'))
+            c['volumeConfirmed']=c['confirmed']
             for key in ('riskLevel','riskStatus','riskReasons','riskEvidence','supportEvidence','structureV23','relMarket5Pct',
                         'relSector5Pct','marketProxyNote','decision','opportunityScore',
-                        'cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview','intradayPlan','lineContext','continuationContext'):
+                        'cycle','breakoutSequence','signalQuality','entryReadiness','holdGuidance','riskFlags','riskFirst','regime','setupEvidence','marketBreadthAboveMA20Pct','profitReview','intradayPlan','lineContext','continuationContext','trading'):
                 c[key]=matching.get(key)
+    missing=[(c['market'],c['code']) for c in snapshot.get('candidates',[])
+             if (c['market'],c['code']) not in by_identity]
+    if missing:
+        raise ValueError(f'Cannot publish unmapped radar candidates: {missing[:8]} ({len(missing)} total)')
+    # The original order was based on legacy first-candle and old necklines.
+    # Resort after canonical synchronization, never retain stale precedence.
+    snapshot['candidates'].sort(key=lambda c:(c.get('launchRank') or 0,
+        c.get('unifiedScore') if c.get('unifiedScore') is not None else -1,
+        c.get('lots') or 0),reverse=True)
+    snapshot['counts']={tag:sum(tag in (c.get('tags') or []) for c in snapshot.get('candidates',[]))
+                        for tag in ('first','prep','near','volume','limit','follow')}
+    snapshot['canonicalSignalsVersion']='single-source-structure-v25-r45-QA'
     return {'schema':3,'rulesVersion':'eod-v3.0.3-continuation','asOf':asof,'marketAsOf':snapshot.get('marketAsOf'),
             'marketCount':snapshot.get('activeMarketCount'), 'coverage':len(rows),
             'notes':['全市場盤後掃描；不等於個股主力持股紀錄','同市場比較以股票等權中位數估計，非加權指數',

@@ -132,16 +132,32 @@ def scan_stock(stock, detect_follow=True, include_all=False):
     price_confirmed=first
     volume_confirmed=bool(first and vol_ratio>=1.5 and close_in_top>=.7)
     confirmed=volume_confirmed  # backward-compatible V1.3 meaning
-    # Follow breakout events recorded 1-5 actual trading sessions earlier.
-    # Replay only the historical prefix, never inspect any future candle.
+    # Do not count a new resistance crossed during an existing episode as
+    # another first bar. Each historical check sees only past bars.
     recent_event=None
-    if detect_follow and not first:
-        for lag in range(1,min(6,len(bars)-54)):
-            older=dict(stock,bars=bars[:-lag])
-            old_signal=scan_stock(older, detect_follow=False)
-            if old_signal and old_signal.get('priceConfirmed'):
-                recent_event=(lag,old_signal)
-                break
+    secondary_neck=None
+    if detect_follow:
+        for lag in range(min(5,len(bars)-55),0,-1):
+            old_signal=scan_stock(dict(stock,bars=bars[:-lag]),detect_follow=False)
+            if not old_signal or not old_signal.get('priceConfirmed'):
+                continue
+            old_level=old_signal.get('neck')
+            if not old_level or (first and close<old_level*.985):
+                continue
+            intervening=bars[-lag:]
+            if first and any(intervening[i-1][4]<old_level*.97 and intervening[i][4]<old_level*.97
+                         for i in range(1,len(intervening))):
+                continue
+            recent_event=(lag,old_signal)
+            break
+    if first and recent_event:
+        secondary_neck=neck
+        first=False;price_confirmed=False;volume_confirmed=False;confirmed=False
+        locked_limit=False;near=False;prep=False
+        old_signal=recent_event[1]
+        anchor={'high':old_signal['neck'],'date':old_signal['neckDate'],'vol':old_signal['neckLots']}
+        neck=anchor['high']
+        dist=round(100*(close/neck-1),2)
     follow_status=None
     if recent_event:
         lag,old_signal=recent_event
@@ -155,7 +171,7 @@ def scan_stock(stock, detect_follow=True, include_all=False):
             follow_status='縮量回測'
         else:
             follow_status='突破後觀察'
-        if anchor is None:
+        if anchor is None or neck != old_neck:
             anchor={'high':old_neck,'date':old_signal['neckDate'],'vol':old_signal['neckLots']}
             neck=old_neck;dist=round(100*(close/neck-1),2)
     valid=first or prep or near or new_volume or limit20>=2 or bool(recent_event)
@@ -193,6 +209,7 @@ def scan_stock(stock, detect_follow=True, include_all=False):
         'prevClose':prev_close,'changePct':round(100*(close/prev_close-1),2) if prev_close>0 else None,
         'neck':neck,'neckDate':anchor['date'] if anchor else None,
         'neckLots':anchor['vol'] if anchor else None,'distancePct':dist,
+        'secondaryCrossedNeck':secondary_neck,
         'volumeRatio':vol_ratio,'limit20':limit20,
         'oldMaxLots':round(float(old_max[5])),'oldMaxDate':old_max[0],
         'oldMaxClose':float(old_max[4]),'oldMaxHigh':float(old_max[2]),
