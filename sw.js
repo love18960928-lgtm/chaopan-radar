@@ -1,7 +1,7 @@
 'use strict';
 // V3.1.1-r44-index-regime-20261020 network-first shell: network-first app shell; preserve existing EOD snapshot cache.
 // This helps recover from older cache-first service workers after a successful GitHub Pages deploy.
-const STATIC = 'chaopan-static-v3.1.1-r44-1-integrity-20261020';
+const STATIC = 'chaopan-static-v3.1.1-r44-2-data-diagnostics-20261020';
 const DATA = 'chaopan-eod-data-v311-r3';
 const CORE = ['./index.html', './app.css', './app-detail-swipe-v222.js', './stock-stage-v318.js', './market-intel-v311.js', './institutional-amount-v312.js', './maintrend_strategy_v320.js', './sector-stage-v325.js', './tomorrow-radar-v110.js', './battle-six-v138.js', './portfolio-manager-v140.js', './market-regime-v100.js'];
 
