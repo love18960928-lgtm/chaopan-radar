@@ -5,6 +5,7 @@ an index's latest date with a different date's institutional-flow data.
 This optional task cannot break the existing price-volume collector.
 """
 import argparse
+import os
 import csv
 import io
 import datetime as dt
@@ -49,10 +50,27 @@ def date_iso(value):
     except ValueError: return None
 
 
+def report_date(value):
+    """Extract a provider's full date from its title, never infer from a URL.
+
+    Example: '115年10月20日 三大法人...' is a dated report, but
+    '10月20日' without a year is not certifiable.
+    """
+    direct = date_iso(value)
+    if direct: return direct
+    if value is None: return None
+    s = str(value).replace(' ', '')
+    # Require boundaries so a six-digit number is not mistaken for a year.
+    match = re.search(r'(?<!\d)(\d{2,4})[年/.-](\d{1,2})[月/.-](\d{1,2})日?(?!\d)', s)
+    if match:
+        return date_iso('/'.join(match.groups()))
+    match = re.search(r'(?<!\d)(\d{7,8})(?!\d)', s)
+    return date_iso(match.group(1)) if match else None
+
 def twse_t86(payload, target):
     """Parse the named-column TWSE T86; figures are in shares, not lots."""
     if not isinstance(payload,dict) or payload.get('stat') not in (None,'OK'):return {}
-    dated=date_iso(payload.get('date') or payload.get('title'))
+    dated=report_date(payload.get('date')) or report_date(payload.get('title'))
     if dated != target: return {}
     columns=payload.get('fields') or []
     rows=payload.get('data') or []
@@ -82,6 +100,9 @@ def twse_t86(payload, target):
 
 def tpex_3insti(payload, target):
     """Accept only explicitly recognised, day-stamped official TPEx fields."""
+    # Several TPEx OpenAPI versions expose a list, some wrap it as data[].
+    envelope_date = report_date(payload.get('date') or payload.get('Date')) if isinstance(payload,dict) else None
+    if isinstance(payload,dict):payload=payload.get('data') or payload.get('items') or payload.get('records')
     if not isinstance(payload,list):return {}
     result={}
     keys={'code':('證券代號','股票代號','代號','SecuritiesCompanyCode','SecuritiesCode'),
@@ -95,7 +116,7 @@ def tpex_3insti(payload, target):
             if name in row:return row[name]
         return None
     for row in payload:
-        if not isinstance(row,dict) or date_iso(pick(row,keys['date']))!=target:continue
+        if not isinstance(row,dict) or (report_date(pick(row,keys['date'])) or envelope_date)!=target:continue
         code=str(pick(row,keys['code']) or '').strip()
         if not re.fullmatch(r'\d{4}',code):continue
         vals=[number(pick(row,keys[k])) for k in ('foreign','trust','dealer')]
@@ -170,8 +191,14 @@ def twse_margin(payload,target):
     exact pairs, with the published unit 張. Report current-day balance as
     preliminary until next-day institution corrections are incorporated.
     """
-    if not isinstance(payload,dict) or payload.get('stat') not in (None,'OK') or date_iso(payload.get('date'))!=target:return {}
-    for table in payload.get('tables') or []:
+    if not isinstance(payload,dict) or payload.get('stat') not in (None,'OK') or (report_date(payload.get('date')) or report_date(payload.get('title')) or report_date(payload.get('creditTitle')))!=target:return {}
+    tables=list(payload.get('tables') or [])
+    # MI_MARGN has published both tables[] and creditFields/creditList layouts.
+    if payload.get('creditFields') and payload.get('creditList'):
+        tables.append({'fields':payload['creditFields'],'data':payload['creditList']})
+    if payload.get('fields') and payload.get('data'):
+        tables.append({'fields':payload['fields'],'data':payload['data']})
+    for table in tables:
         if not isinstance(table,dict):continue
         fields=[str(x).strip() for x in table.get('fields') or []]
         balances=[i for i,f in enumerate(fields) if f=='今日餘額']
@@ -282,7 +309,7 @@ def twse_margin_total(payload,target):
     # Recent responses may alternatively contain named tables or fields/data.
     title=str(payload.get('creditTitle') or '')
     stamp=re.search(r'\d{2,4}年\d{1,2}月\d{1,2}日', title)
-    dated=date_iso(payload.get('date')) or (date_iso(stamp.group()) if stamp else None)
+    dated=report_date(payload.get('date')) or (report_date(stamp.group()) if stamp else None)
     if dated != target:return None
     tables=list(payload.get('tables') or [])
     if payload.get('fields') and payload.get('data'):
@@ -415,12 +442,25 @@ def build(target, fetch=fetch_json, fetch_text=fetch_csv_text, text_fetch=None):
        'taiex':lambda x:twse_fmtqik(x,target),'twse_bfi':lambda x:twse_bfi(x,target),
        'tx':lambda x:taifex_tx(x,target),'twse_margin':lambda x:twse_margin(x,target),'otc':lambda x:tpex_otc_index(x,target)}
     for key,url in urls.items():
-        start=time.monotonic();status='invalid';data=None
+        start=time.monotonic();status='invalid';data=None;reason=None
         try:
-            data=mapping[key](fetch(url));status='ok' if data else 'invalid'
+            raw=fetch(url)
+            data=mapping[key](raw);status='ok' if data else 'invalid'
+            if status=='invalid':
+                if isinstance(raw,dict):
+                    # Keys/column names help identify provider format drift.
+                    keys=','.join(str(k) for k in list(raw)[:12])
+                    header=raw.get('fields') or raw.get('creditFields') or []
+                    header=','.join(str(k) for k in header[:12]) if isinstance(header,list) else ''
+                    reason=('未通過格式／日期檢查；payload='+keys+'；fields='+header)[:250]
+                elif isinstance(raw,list):
+                    header=','.join(str(k) for k in list(raw[0])[:12]) if raw and isinstance(raw[0],dict) else ''
+                    reason=('未通過格式／日期檢查；rows='+str(len(raw))+'；fields='+header)[:250]
+                else:reason='回傳格式不是可解析的 JSON 表格'
         except Exception as ex:
-            LOG.warning('%s skipped: %s',key,str(ex)[:150]);status='error'
+            LOG.warning('%s skipped: %s',key,str(ex)[:150]);status='error';reason=(type(ex).__name__+': '+str(ex))[:180]
         out['sources'][key]={'status':status,'durationMs':round((time.monotonic()-start)*1000)}
+        if reason:out['sources'][key]['reason']=reason
         if key=='otc':out['sources']['otc_primary']={'status':status}
         if key=='twse_margin':
             if data:out['margin'].update(data)
@@ -585,6 +625,22 @@ def main():
     logging.basicConfig(level=logging.INFO,format='%(levelname)s %(message)s')
     result=build(date)
     LOG.info('Source coverage: %s',json.dumps(result['coverage'],ensure_ascii=False))
-    if not save(result,args.out):LOG.warning('Ancillary feed unavailable; base scanner remains operational')
+    saved=save(result,args.out)
+    if not saved:LOG.warning('Ancillary feed unavailable; base scanner remains operational')
+    # A green GitHub Action is not proof all supplementary sources succeeded.
+    summary=os.environ.get('GITHUB_STEP_SUMMARY')
+    if summary:
+        try:
+            final=json.loads(args.out.read_text('utf8')) if args.out.exists() else result
+            with open(summary,'a',encoding='utf8') as stream:
+                stream.write('\n### 超盤手｜官方盤後資料來源驗收\n\n')
+                stream.write('行情交易日：`'+date+'`；輸出檔案：`'+str(final.get('asOf','無'))+'`；儲存：'+('成功' if saved else '保留原檔')+'\n\n')
+                stream.write('| 資料來源 | 狀態 | 筆數／原因 |\n|---|---|---|\n')
+                for key,item in sorted(result.get('sources',{}).items()):
+                    reason=str(item.get('reason') or item.get('detail') or result.get('coverage',{}).get(key,'—'))
+                    reason=reason.replace('\n',' ').replace('|','/').replace('`','')
+                    stream.write('| `'+key+'` | '+str(item.get('status','未知'))+' | '+reason[:180]+' |\n')
+                stream.write('\n> 顯示「待資料」表示未通過官方來源核對，絕不補造數值。\n')
+        except (OSError,ValueError,TypeError) as ex:LOG.warning('Action summary write failed: %s',ex)
 
 if __name__=='__main__':main()
