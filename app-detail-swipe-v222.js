@@ -645,7 +645,7 @@ function sectorRadar(){
   {asOf,strong:[],watch:[],counts:{},coverage:[]};
  return sectorRadarCache;
 }
-const OBS_STAGE={tomorrow:'明日續攻候選（待隔日驗證）',r42pullback:'量縮回測再起（待隔日驗證）',r42pre:'頸線前蓄勢（提前布局觀察）',qualified:'大盤與個股條件已核對',leader:'強勢族群／短中期轉強個股',ready:'預備突破頸線',ma510:'突破前站上MA5／MA10',first:'突破第一根觀察',second:'突破第二根確認觀察',third:'突破第三根續強觀察',fourth:'突破第四根守穩觀察',hold:'沿MA5／MA10趨勢追蹤（非追價買點）',maPullback:'沿MA5／MA10上漲後回測防守',launch:'量價啟動（未破大量K頸線）',reentry:'量縮回測／再度轉強觀察',trend:'六線確認／主升延續觀察'};
+const OBS_STAGE={tomorrow:'明日續攻候選（待隔日驗證）',r42pullback:'量縮回測再起（待隔日驗證）',r42pre:'頸線前蓄勢（提前布局觀察）',qualified:'大盤與個股條件已核對',leader:'強勢族群／短中期轉強個股',ready:'預備突破頸線',ma510:'突破前站上MA5／MA10',first:'突破第一根觀察',second:'突破第二根追蹤（非認證買點）',third:'突破第三根追蹤（非認證買點）',fourth:'突破第四根追蹤（非認證買點）',hold:'沿MA5／MA10趨勢追蹤（非追價買點）',maPullback:'沿MA5／MA10上漲後回測防守',launch:'量價啟動（未破大量K頸線）',reentry:'量縮回測／再度轉強觀察',trend:'六線確認／主升延續觀察'};
 const R29_PRIORITY=['hold','maPullback','ready','ma510','first','second','third','fourth','launch','reentry','trend'];
 // r26: restore the pre-r23 unified full battle card; keep radar stage classification independent.
 // The old compact r23 observe card removed 速覽/價位/技術/公司研究 and must not replace the full card.
@@ -703,11 +703,29 @@ function sectorDirectory(){
  }
  const radar=sectorRadar();
  r26ObserveGroups=new Map();
+ // Distinguish a raw historical breakout event from a currently qualified
+ // trading observation. This prevents a 0-eligible list looking like no events.
+ const rawAudit={first:0,second:0,third:0,fourth:0};
+ let maxBars=0;
+ for(const c of state.universe.rows){
+  if(c?.date!==state.payload.asOf||!Array.isArray(c.bars)||c.bars.at(-1)?.[0]!==state.payload.asOf)continue;
+  maxBars=Math.max(maxBars,c.bars.length);
+  const phase=c.breakoutSequence?.phase;
+  if(phase==='first')rawAudit.first++;
+  if(phase==='second')rawAudit.second++;
+  if(c.cycle?.firstHistoricalBreakout===true&&c.cycle?.daysSinceFirst===2)rawAudit.third++;
+  if(c.cycle?.firstHistoricalBreakout===true&&c.cycle?.daysSinceFirst===3)rawAudit.fourth++;
+ }
  const ordered=['ready','ma510','reentry','maPullback','first','second','third','fourth','launch','hold','trend'];
  const activeStages=ordered.filter(stage=>radar.watch.some(o=>o.stage===stage));
  const inactiveStages=ordered.filter(stage=>!activeStages.includes(stage));
  const stageBlock=stage=>{const arr=radar.watch.filter(o=>o.stage===stage);
-  return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${arr.length} 檔</span><span class="sector-arrow">⌄</span></summary>${r26GroupMarkup('stage-'+stage,arr)}</details>`;
+  const audit=rawAudit[stage];
+  const auditLabel=stage==='trend'&&maxBars<240?'資料不足，待MA240認證':
+   audit===undefined?`${arr.length} 檔`:`階段觀察${arr.length}／原始${audit} 檔`;
+  const auditNote=audit!==undefined?`<p class="r23-note">原始突破事件 ${audit} 檔，通過本頁基本量價與風險審查 ${arr.length} 檔；不是認證買點，兩者不是同一件事。重新站回新頸線不算首次突破。</p>`:
+   stage==='trend'&&maxBars<240?`<p class="r23-note">僅 ${maxBars} 根以下日K，無法計算 MA240。這是資料不足，不代表市場沒有六線強勢股。</p>`:'';
+  return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${auditLabel}</span><span class="sector-arrow">⌄</span></summary>${auditNote}${r26GroupMarkup('stage-'+stage,arr)}</details>`;
  };
  out.innerHTML=`<p class="r23-note">歷史突破第一～四根、均線、回測及頸線觀察邏輯保留在這裡。這是<strong>研究資料庫</strong>，不是今天漲幅排行榜，也不代表明天會漲；MA240 歷史不足仍標待認證。</p>`+
  activeStages.map(stageBlock).join('')+

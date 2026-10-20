@@ -154,32 +154,46 @@
      v.close/v.ma20>1.12){x.stage='blocked';x.reason='量能、長上影、MA20位置或乖離未通過';return x;}
   if(!(v.neck>0&&v.neck<Infinity)){x.reason='缺可核對的歷史頸線';return x;}
   const bars=c.bars;
+  // r42.2 audit: original breakout neckline and the LATEST large-volume neckline
+  // are different concepts. An old event MUST NOT become a fresh "first" when
+  // price re-crosses an updated resistance. The sequence is an EOD observation,
+  // not a certified entry recommendation.
   const cycleDate=String(c.cycle?.initialDate||'');
   const ix=bars.findIndex(b=>b[0]===cycleDate);
   const eventBar=ix>0?bars[ix]:null,preEvent=ix>0?bars[ix-1]:null;
-  // Stage 2/3 only applies to an actual historical breakout event; a matching
-  // cycle date/price label alone is insufficient and may refer to a failed push.
-  const reliableBreak=Boolean(eventBar&&preEvent&&num(c.cycle?.level)!==null&&
-   Math.abs(Number(c.cycle.level)/v.neck-1)<.03&&
-   Number(eventBar[4])>=v.neck&&Number(preEvent[4])<=v.neck&&
+  const eventLevel=num(c.cycle?.level),seq=c.breakoutSequence||{};
+  const offset=ix>=0?bars.length-1-ix:null;
+  const reliableBreak=Boolean(c.cycle?.firstHistoricalBreakout===true&&
+   eventLevel!==null&&eventLevel>0&&eventBar&&preEvent&&
+   String(seq.initialDate||'')===cycleDate&&num(seq.level)!==null&&
+   Math.abs(Number(seq.level)/eventLevel-1)<=.0001&&
+   Number(seq.daysSinceFirst)===offset&&
+   Number(eventBar[4])>eventLevel&&Number(preEvent[4])<=eventLevel&&
    Number(eventBar[5])>0);
   const trendOK=v.ma20!==null&&v.old20!==null&&v.ma20>=v.old20*.98;
   const maGrowing=v.old20!==null&&v.ma20>=v.old20*.995;
-  if(v.close>=v.neck&&v.prev<=v.neck&&v.ratio>=1.2&&v.position>=.55&&v.upper<.4&&trendOK&&v.close>=v.ma10){
-   x.stage='first';x.reason='收盤首度站回歷史頸線，量比與K棒位置通過；下一日仍要守穩';return x;
+  const oldLevelNote=eventLevel!==null&&v.neck>eventLevel*1.005?
+    '；原突破價'+eventLevel+'，較新的大量K頸線'+v.neck+'尚須另外確認':'';
+  if(reliableBreak&&offset===0&&seq.phase==='first'&&v.close>=v.neck&&
+     v.prev<=v.neck&&v.ratio>=1.2&&v.position>=.55&&v.upper<.4&&
+     trendOK&&v.close>=v.ma10){
+   x.stage='first';x.reason='核對原始事件日期與首次突破價，當日收盤突破；隔日需再認證';return x;
   }
-  if(reliableBreak&&ix===bars.length-2&&v.prev>v.neck&&v.close>v.neck&&v.position>=.45&&v.ratio>=.65&&trendOK){
-   x.stage='second';x.reason='有前一交易日突破事件，第二日仍守住原頸線';return x;
+  if(reliableBreak&&offset===1&&seq.phase==='second'&&seq.tone!=='danger'&&
+     v.close>eventLevel&&v.close>=v.ma10*.985&&v.position>=.45&&
+     v.ratio>=.65&&trendOK){
+   x.stage='second';x.reason='原突破事件的第二根守住原關卡；僅是階段追蹤，非認證買點'+(c.cycle?.initialQuality==='突破K有疑慮'?'；初始突破K有疑慮，須提高警戒':'')+oldLevelNote;return x;
   }
-  if(reliableBreak&&ix===bars.length-3&&
-     Number(bars.at(-2)[4])>v.neck&&v.close>v.neck&&
+  if(reliableBreak&&offset===2&&seq.phase==='follow'&&
+     bars.slice(-2).every(b=>num(b[4])>eventLevel)&&
      v.close>=v.ma10&&v.position>=.45&&v.ratio>=.60&&trendOK){
-   x.stage='third';x.reason='有效突破事件後第三根仍守住原頸線；屬續強觀察而非保證買點';return x;
+   x.stage='third';x.reason='原事件後第三根仍站在原突破價上；量價及新壓力須另行驗證'+oldLevelNote;return x;
   }
-  if(reliableBreak&&ix===bars.length-4&&bars.slice(-3).every(b=>num(b[4])!==null&&num(b[4])>v.neck)&&
+  if(reliableBreak&&offset===3&&seq.phase==='follow'&&
+     bars.slice(-3).every(b=>num(b[4])>eventLevel)&&
      v.close>=v.ma10&&v.position>=.45&&v.ratio>=.55&&trendOK&&
      v.close/v.ma10<=1.075){
-    x.stage='fourth';x.reason='突破後連續第四根收穩頸線，須檢查量能衰退／乖離與假突破風險，非保證可追';return x;
+   x.stage='fourth';x.reason='原事件後第四根持續守穩；不代表可追價'+oldLevelNote;return x;
   }
   // Independent continuation of an established above-neckline MA5/MA10 slope.
   // This is deliberately an observation phase: no official market history is available.
@@ -211,10 +225,10 @@
      v.ma20>=v.old20*.98&&v.ratio>=.60&&v.position>=.45&&v.close>v.prev){
    x.stage='ma510';x.reason='突破前已站上MA5／MA10且短均線回升，仍低於歷史頸線；僅列預備觀察，未確認突破';return x;
   }
-  if(reliableBreak&&ix<bars.length-2&&v.close>v.neck&&v.close>=v.ma10&&v.prev<=v.ma10*1.015&&v.close>v.prev&&v.position>=.50){
-   x.stage='reentry';x.reason='已知突破事件後，回測短均線再向上；須防範假反彈';return x;
+  if(reliableBreak&&offset>=2&&seq.phase==='follow'&&v.close>eventLevel&&v.close>=v.ma10&&v.prev<=v.ma10*1.015&&v.close>v.prev&&v.position>=.50){
+   x.stage='reentry';x.reason='已知突破事件後，回測短均線再向上；須防範假反彈'+oldLevelNote;return x;
   }
-  if(stage?.kind==='strong'&&sixLineAudit(c,v).confirmed&&reliableBreak&&v.close>v.neck&&v.close>=v.ma10&&v.ratio>=.65){
+  if(stage?.kind==='strong'&&sixLineAudit(c,v).confirmed&&reliableBreak&&v.close>eventLevel&&v.close>=v.ma10&&v.ratio>=.65){
    x.stage='trend';x.reason='多頭趨勢延續觀察，若回落仍須依支撐與移動停利管理';return x;
   }
   return x;

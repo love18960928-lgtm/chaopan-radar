@@ -55,7 +55,7 @@ function marketPanel(intel,asOf){
  const rawTx=ok&&intel.derivatives?.foreignTxOI?.date===asOf?intel.derivatives.foreignTxOI:null;
  const foreignTx=rawTx&&num(rawTx.longLots)!==null&&num(rawTx.shortLots)!==null&&num(rawTx.netLots)===num(rawTx.longLots)-num(rawTx.shortLots)?rawTx:null;
  const coverage=ok?intel.marginCoverage:null;
- const marginInfo=coverage?.date===asOf&&num(coverage.marginLotsSubtotal)!==null?coverage:null;
+ const marginInfo=coverage&&coverage.date===asOf&&num(coverage.marginLotsSubtotal)!==null?coverage:null;
  const marginTotal=marginInfo?num(marginInfo.marginLotsSubtotal):subtotal;
  const marginDelta=marginInfo?num(marginInfo.marginDeltaLotsSubtotal):subtotal===null?null:subtotal-previous;
  const covered=marginInfo?.matchedStocks||marginRows.length;
