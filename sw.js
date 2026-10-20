@@ -1,9 +1,9 @@
 'use strict';
 // V3.1.1-r44-index-regime-20261020 network-first shell: network-first app shell; preserve existing EOD snapshot cache.
 // This helps recover from older cache-first service workers after a successful GitHub Pages deploy.
-const STATIC = 'chaopan-static-v3.1.1-r44-4-market-comparison-20261020';
+const STATIC = 'chaopan-static-v3.1.1-r44-5-investor-review-20261020';
 const DATA = 'chaopan-eod-data-v311-r3';
-const CORE = ['./index.html', './app.css', './app-detail-swipe-v222.js', './stock-stage-v318.js', './market-intel-v311.js', './institutional-amount-v312.js', './maintrend_strategy_v320.js', './sector-stage-v325.js', './tomorrow-radar-v110.js', './battle-six-v138.js', './portfolio-manager-v140.js', './market-regime-v100.js'];
+const CORE = ['./index.html', './app.css', './app-detail-swipe-v222.js', './stock-stage-v318.js', './market-intel-v311.js', './institutional-amount-v312.js', './maintrend_strategy_v320.js', './sector-stage-v325.js', './tomorrow-radar-v110.js', './battle-six-v138.js', './portfolio-manager-v140.js', './market-regime-v100.js', './investor-desk-v100.js'];
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
@@ -48,7 +48,7 @@ self.addEventListener('fetch', event => {
   }
 
   const isShell = request.mode === 'navigate' ||
-    /\/(index\.html|app\.css|app-detail-swipe-v222\.js|stock-stage-v318\.js|phase-regime-v307\.js|rank-lenses-v308\.js|trade-desk-v310\.js|trade-guidance-v311\.js|market-intel-v311\.js|radar-extras-v311\.js|institutional-amount-v312\.js|maintrend_strategy_v320\.js|sector-stage-v325\.js|tomorrow-radar-v100\.js|tomorrow-radar-v110\.js|battle-six-v138\.js|portfolio-manager-v140\.js|market-regime-v100\.js|manifest\.webmanifest)$/.test(url.pathname);
+    /\/(index\.html|app\.css|app-detail-swipe-v222\.js|stock-stage-v318\.js|phase-regime-v307\.js|rank-lenses-v308\.js|trade-desk-v310\.js|trade-guidance-v311\.js|market-intel-v311\.js|radar-extras-v311\.js|institutional-amount-v312\.js|maintrend_strategy_v320\.js|sector-stage-v325\.js|tomorrow-radar-v100\.js|tomorrow-radar-v110\.js|battle-six-v138\.js|portfolio-manager-v140\.js|market-regime-v100\.js|investor-desk-v100\.js|manifest\.webmanifest)$/.test(url.pathname);
   if (!isShell) return;
 
   // Ask the server whether the app code changed; fall back to last working

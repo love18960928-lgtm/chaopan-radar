@@ -63,7 +63,7 @@ function statusText(){
  const sourceDates=r?.marketAsOf||{},localTime=r?.generatedAt?new Date(r.generatedAt):null;
  const time=localTime&&!Number.isNaN(localTime.getTime())?taipeiParts(localTime).date+' '+new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(localTime):'待核對';
  // A frontend version string is NOT a verifiable GitHub commit/deployment identifier.
- el.textContent=`程式：r44.4-QA（部署 commit 待核對）｜個股行情：${asOf}｜上市：${sourceDates['上市']||'待核對'}／上櫃：${sourceDates['上櫃']||'待核對'}｜盤後產製：${time}（台灣時間）｜收錄 ${r?.stockCount??'—'}、全市場診斷 ${r?.universeCount??'—'}｜${d.label}`;
+ el.textContent=`程式：r44.5-QA（部署 commit 待核對）｜個股行情：${asOf}｜上市：${sourceDates['上市']||'待核對'}／上櫃：${sourceDates['上櫃']||'待核對'}｜盤後產製：${time}（台灣時間）｜收錄 ${r?.stockCount??'—'}、全市場診斷 ${r?.universeCount??'—'}｜${d.label}`;
  el.setAttribute('role','status');el.setAttribute('data-quality',d.alert?'warning':'check');
 }
 let store=null, run=0;
@@ -105,6 +105,12 @@ function compareDaily(row,intel,asOf){
  } else clues.push('個股走勢接近平盤，不宜從單日漲跌推定趨勢');
  return {key,indexPct:ix.pct,stockPct:pct,delta,label,clues,asOf};
 }
+function badgeFor(c,intel,asOf){
+ const x=compareDaily(c,intel,asOf);
+ if(!x)return '';
+ const market=x.key==='taiex'?'加權':'櫃買',sign=n=>n>0?'+':'',clues=x.clues.slice(0,3).map(t=>`<li>${esc(t)}</li>`).join('');
+ return `<section class="r44-compare" aria-label="同交易日個股與大盤走勢比較"><strong>${esc(x.label)}</strong><div class="r44-compare-pct">個股 ${sign(x.stockPct)}${x.stockPct.toFixed(2)}%／${market} ${sign(x.indexPct)}${x.indexPct.toFixed(2)}%｜相差 ${sign(x.delta)}${x.delta.toFixed(2)} 個百分點</div><small>${esc(x.asOf)} 盤後 · 僅同日比較，非下一日買點</small><details><summary>檢查可能原因（非事實定論）</summary><ul>${clues}</ul><p>僅靠漲跌和成交量不能認定基本面出了問題；若有營收、財報或重大訊息，仍需核對來源與日期。加權指數可能由權值股主導。</p></details></section>`;
+}
 function stockBadge(c){
  const x=store?compareDaily(c,store.intel,store.asOf):null;
  if(!x)return ''; // No verified same-day stock/index data: omit rather than manufacture a market light.
@@ -127,5 +133,5 @@ async function refresh(){const id=++run;
  store={radar,asOf,intelDate:intel?.asOf,intel:intel?.asOf===asOf?intel:null,history:null};paint();
 }
 function init(){if(!document.querySelector('#r44VersionStatus'))return;refresh();document.querySelector('#refreshBtn')?.addEventListener('click',()=>refresh());}
-return {init,refresh,chart,classify,relative,cleanBars,dateStatus,expectedEod,compareDaily,checkedIndex,stockBadge,_setTestData:x=>{store=x;}};
+return {init,refresh,chart,classify,relative,cleanBars,dateStatus,expectedEod,compareDaily,checkedIndex,stockBadge,badgeFor,_setTestData:x=>{store=x;}};
 });

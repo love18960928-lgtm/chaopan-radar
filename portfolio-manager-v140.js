@@ -21,7 +21,7 @@
 
  const showPrice=x=>n(x)===null?'待核對':Number(x).toLocaleString('zh-TW',{maximumFractionDigits:2});
  function load(){try{const a=JSON.parse(localStorage.getItem(KEY)||'[]');return Array.isArray(a)?a.filter(x=>validCode(x.code)&&n(x.cost)>0&&n(x.lots)>0).slice(0,100):[]}catch(e){return []}}
- function persist(a){try{localStorage.setItem(KEY,JSON.stringify(a));return true}catch(e){return false}}
+ function persist(a){try{localStorage.setItem(KEY,JSON.stringify(a));if(typeof document!=='undefined')document.dispatchEvent(new Event('chaopan-portfolio-changed'));return true}catch(e){return false}}
  function ma(bars,len,skip=0){if(!Array.isArray(bars)||bars.length<len+skip)return null;const arr=bars.slice(bars.length-len-skip,bars.length-skip||undefined);let sum=0;for(const bar of arr){let close=n(bar?.[4]);if(close===null||close<=0)return null;sum+=close;}return sum/len;}
  function review(h,row,asOf){
   const last=n(row?.close),barClose=n(row?.bars?.at(-1)?.[4]),matched=!!row&&row.date===asOf&&validDate(h.buyDate)&&h.buyDate<=asOf&&Array.isArray(row.bars)&&row.bars.at(-1)?.[0]===asOf&&last!==null&&barClose!==null&&Math.abs(last-barClose)<=0.011;
