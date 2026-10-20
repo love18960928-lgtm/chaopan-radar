@@ -653,7 +653,7 @@ function sectorRadar(){
   {asOf,strong:[],watch:[],counts:{},coverage:[]};
  return sectorRadarCache;
 }
-const OBS_STAGE={qualified:'大盤與個股條件已核對',leader:'強勢族群／短中期轉強個股',ready:'預備突破頸線',ma510:'突破前站上MA5／MA10',first:'突破第一根觀察',second:'突破第二根確認觀察',third:'突破第三根續強觀察',fourth:'突破第四根守穩觀察',hold:'沿MA5／MA10趨勢追蹤（非追價買點）',maPullback:'沿MA5／MA10上漲後回測防守',launch:'量價啟動（未破大量K頸線）',reentry:'量縮回測／再度轉強觀察',trend:'六線確認／主升延續觀察'};
+const OBS_STAGE={tomorrow:'明日續攻候選（待隔日驗證）',r42pullback:'量縮回測再起（待隔日驗證）',r42pre:'頸線前蓄勢（提前布局觀察）',qualified:'大盤與個股條件已核對',leader:'強勢族群／短中期轉強個股',ready:'預備突破頸線',ma510:'突破前站上MA5／MA10',first:'突破第一根觀察',second:'突破第二根確認觀察',third:'突破第三根續強觀察',fourth:'突破第四根守穩觀察',hold:'沿MA5／MA10趨勢追蹤（非追價買點）',maPullback:'沿MA5／MA10上漲後回測防守',launch:'量價啟動（未破大量K頸線）',reentry:'量縮回測／再度轉強觀察',trend:'六線確認／主升延續觀察'};
 const R29_PRIORITY=['hold','maPullback','ready','ma510','first','second','third','fourth','launch','reentry','trend'];
 // r26: restore the pre-r23 unified full battle card; keep radar stage classification independent.
 // The old compact r23 observe card removed 速覽/價位/技術/公司研究 and must not replace the full card.
@@ -683,7 +683,7 @@ function r26GroupMarkup(id,arr){
 }
 function r30StockToggle(el){
  const group=el.dataset.r30Group,idx=Number(el.dataset.r30Index);
- const arr=group==='desk-priority'?r33PriorityRows:r26ObserveGroups.get(group);
+ const arr=group==='desk-priority'?r33PriorityRows:(r42EventRows.get(group)||r26ObserveGroups.get(group));
  const slot=el.querySelector('[data-r30-card-slot]');
  if(!slot)return;
  if(!el.open){slot.replaceChildren();delete el.dataset.r30Loaded;return;}
@@ -699,32 +699,45 @@ function r30StockToggle(el){
   :radarObserveCard(arr[idx]);
  el.dataset.r30Loaded='yes';
 }
+// r42: keep the pre-existing stage audits without promoting "today's strongest" as tomorrow's opportunities.
+const r42EventRows=new Map();
 function sectorDirectory(){
  const out=$('#sectorDirectory');if(!out)return;
  if(!globalThis.ChaopanSectorV325||!globalThis.ChaopanStageV318){
-  out.innerHTML='<div class="r23-empty">族群／頸線計算模組未載入，請確認 GitHub 主目錄 index.html、sector-stage-v325.js、stock-stage-v318.js 與 Service Worker 已同步更新。這不是當日無合格股票。</div>';return;
+  out.innerHTML='<div class="r23-empty">舊技術階段模組未載入，請核對程式版本。</div>';return;
  }
  if(!state.universe||state.universe.asOf!==state.payload?.asOf||state.mode==='demo'){
-  out.innerHTML='<div class="r23-empty">全市場交易日或資料模式未核對；暫停族群／頸線名單，不以舊資料當當日信號。</div>';return;
+  out.innerHTML='<div class="r23-empty">全市場日期尚未核對，暫停原始階段觀察。</div>';return;
  }
- const radar=sectorRadar(),asOf=radar.asOf||'日期待核對';
+ const radar=sectorRadar();
  r26ObserveGroups=new Map();
- const sectorBlock=(g,i)=>`<details class="sector-group r30-sector-group" data-r26-group="sector-strong-${i}"><summary><span class="sector-nom">${esc(g.name)}</span><span class="sector-sum">${g.leaderCount} 檔個股 · 中位漲幅 ${pct(g.median)}</span><span class="sector-arrow">⌄</span></summary>${r26GroupMarkup('sector-strong-'+i,g.leaders||[])}</details>`;
- const groups=radar.strong.filter(g=>g.leaderCount>0).map((g,i)=>sectorBlock(g,i)).join('');
- const activeStages=R29_PRIORITY.filter(s=>radar.watch.some(o=>o.stage===s));
- const inactiveStages=R29_PRIORITY.filter(s=>!activeStages.includes(s));
- const stageBlock=(s)=>{const arr=radar.watch.filter(x=>x.stage===s);
-  return `<details class="sector-group" data-r26-group="stage-${s}"><summary><span class="sector-nom">${esc(OBS_STAGE[s])}</span><span class="sector-sum">${arr.length} 檔</span><span class="sector-arrow">⌄</span></summary>${r26GroupMarkup('stage-'+s,arr)}</details>`;};
- const staged=activeStages.map(stageBlock).join('');
- const emptyStages=inactiveStages.map(stageBlock).join('');
- out.innerHTML=`<div class="r23-note"><b>只顯示「族群走強＋至少一檔個股通過技術與風險條件」的族群。</b> ${esc(asOf)} 盤後，非即時；先點族群看個股清單，再點股票才展開完整作戰字卡。六線確認強勢須有可核對的240日資料，短中期轉強不可冒稱已六線認證。</div>`+
- `<h3 class="r23-section-title">① 族群內符合的個股 <small>${radar.strong.length} 組</small></h3>`+
- (groups||'<div class="r23-empty">本交易日沒有「族群強勢且至少一檔個股合格」的組合；不為了湊名單列弱勢個股。</div>')+
- `<p class="r23-caption">僅族群中位漲幅≥0.8%、上漲家數比例≥55%，且至少一檔股票經過頸線、MA5／10／20／60、量價、乖離及風險檢查，才列入上方清單。缺 MA240 時只標「短中期轉強／六線待認證」。記憶體與被動元件目前只有部分代表股，未涵蓋全部成分股。</p>`+
- `<h3 class="r23-section-title">② 沿MA5／MA10趨勢 → 回測防守 → 頸線預備／突破 <small>${radar.watch.length} 檔觀察</small></h3>`+
- (staged||'<div class="r23-empty">目前無符合價量觀察條件的股票。</div>')+
- `<details class="r27-idle"><summary>其他尚未出現訊號的階段（${inactiveStages.length} 類）</summary>${emptyStages}</details>`+
- `<p class="r23-caption">各階段的個股也是「點股票才展開」；未出現訊號的階段仍保留入口。沿均線趨勢獨立於可買進評估，乖離過大／量縮會提示不追價；假突破、疑似出貨與跌破關鍵支撐依然排除。</p>`;
+ const ordered=['ready','ma510','reentry','maPullback','first','second','third','fourth','launch','hold','trend'];
+ const activeStages=ordered.filter(stage=>radar.watch.some(o=>o.stage===stage));
+ const inactiveStages=ordered.filter(stage=>!activeStages.includes(stage));
+ const stageBlock=stage=>{const arr=radar.watch.filter(o=>o.stage===stage);
+  return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${arr.length} 檔</span><span class="sector-arrow">⌄</span></summary>${r26GroupMarkup('stage-'+stage,arr)}</details>`;
+ };
+ out.innerHTML=`<p class="r23-note">歷史突破第一～四根、均線、回測及頸線觀察邏輯保留在這裡。這是<strong>研究資料庫</strong>，不是今天漲幅排行榜，也不代表明天會漲；MA240 歷史不足仍標待認證。</p>`+
+ activeStages.map(stageBlock).join('')+
+ `<details class="r27-idle"><summary>其他無訊號階段（${inactiveStages.length} 類）</summary>${inactiveStages.map(stageBlock).join('')}</details>`;
+}
+function renderEventRadar(result){
+ const target=$('#eventRadar');if(!target)return;
+ r42EventRows.clear();
+ if(!result||!Array.isArray(result.events)){
+  target.innerHTML='<div class="r23-empty">事件雷達暫停：個股交易日期尚未核對，勿用歷史資料判定事件買點。</div>';return;
+ }
+ if(!result.events.length){target.innerHTML='<div class="r23-empty">目前未接入可核對且符合日期窗口的事件；不編造下一個展覽。</div>';return;}
+ target.innerHTML=result.events.map(event=>{
+  const group='event-'+event.id;
+  const rows=event.selected.map(x=>({row:x.row,stage:r42StageKey(x.stage),sector:'事件題材研究',reason:x.reason,
+   quality:x.score,snapshot:x.snapshot,compactStatus:`${x.stage} · 觀察品質 ${x.score}/100（非勝率）`}));
+  r42EventRows.set(group,rows);
+  return `<section class="r42-event-card"><div class="r42-event-head"><b>${esc(event.title)}</b><small>${esc(event.status)} · ${esc(event.start)}～${esc(event.end)}</small></div>
+   <p>${esc(event.disclosure)}</p><p>本地池內 ${event.matchingCount} 檔；符合相同交易日、價量及風險條件 ${rows.length} 檔。</p>
+   ${rows.length?r26GroupMarkup(group,rows):'<div class="r23-empty">這個事件目前沒有符合早期布局條件的個股。不因展覽題材強行推薦，也不使用股價已大漲的標的湊名單。</div>'}
+   <small>資料日期 ${esc(result.asOf)}，非盤中即時；<a href="${esc(event.source)}" target="_blank" rel="noopener noreferrer">${esc(event.sourceLabel)}</a>（活動資訊來源）</small></section>`;
+ }).join('');
 }
 /* r7: Each chart is rendered from the selected stock's dated OHLCV rows. */
 function annotatedBattleChart(c,g){
@@ -937,27 +950,35 @@ function autoPendingReason(){
  if(!verifiedAutoFeed(day))return '加權／櫃買連續指數及市場騰落資料尚未完整認證，目前停止自動新買點。';
  return '本交易日沒有同時通過大盤、價量、支撐、風險與進場條件的股票；不以盤整或疑似出貨股補位。';
 }
+// r42 EOD preparation radar. A 0–100 observation score is NOT a calibrated next-day win probability.
+function r42StageKey(s){return s==='明日續攻候選'?'tomorrow':s==='量縮回測再起'?'r42pullback':'r42pre';}
+let r42RowsRef=null,r42Day='',r42ScanCache=null;
+function r42Scan(){
+ const rows=state.universe?.rows||[],day=state.payload?.asOf||'';
+ if(state.mode!=='live'||state.universe?.asOf!==day){r42ScanCache=null;return null;}
+ if(rows===r42RowsRef&&day===r42Day&&r42ScanCache)return r42ScanCache;
+ r42RowsRef=rows;r42Day=day;
+ r42ScanCache=globalThis.ChaopanTomorrowRadar&&state.mode==='live'&&state.universe?.asOf===day?
+  ChaopanTomorrowRadar.analyze(rows,day):null;
+ return r42ScanCache;
+}
 function renderTradeDesk(onlyDesk=false){
  const target=$('#deskList');if(!target)return;
- const current=state.payload?.asOf||'—';
- const picks=autoQualifiedEntries(),observed=sectorRadar().watch;
- const showing=picks.length?Math.min(picks.length,5):Math.min(observed.length,5);
+ const current=state.payload?.asOf||'—',result=r42Scan(),picks=result?.candidates||[];
+ const showing=Math.min(picks.length,8);
  $('#deskCount').textContent=showing+' 檔';
- $('#deskNote').textContent=`資料截止 ${current} 盤後｜${picks.length?'完整大盤門檻已核對，仍須下一交易日檢查':'目前只有個股頸線／突破觀察，非已認證買點'}｜勿將舊資料當作即時行情。`;
- // r33: uniform institutional-style summary rows. Never render full battle
- // cards in the five-stock desk until a specific row is opened. Each row
- // keeps the same quote / stage information as the other automated lists.
+ const pending=staleDeskSnapshot(current)||!result;
+ $('#deskNote').textContent=`資料截止 ${current} 盤後｜${pending?'資料非最新可核對交易日／尚未完整載入，請勿直接依此交易':'明日預備觀察，不代表已認證買點'}｜排名分數不是上漲機率。`;
+ r33PriorityRows=picks.slice(0,8).map(x=>({row:x.row,stage:r42StageKey(x.stage),sector:x.row.industry||'產業待核對',
+  reason:x.reason,quality:x.score,snapshot:x.snapshot,
+  compactStatus:`${x.stage} · 觀察品質 ${x.score}/100（非勝率）`}));
  const disclosure=$('#deskDisclosure');
- r33PriorityRows=picks.length?picks.slice(0,5).map(item=>({
-  row:item.row,stage:'qualified',sector:item.row.industry||'所屬族群待核對',
-  verifiedDecision:item.decision,
-  compactStatus:'已核對進場條件 · '+String(item.decision.action||'需盤中覆核')
- })):observed.slice(0,5);
  if(disclosure&&!disclosure.open){
-  target.innerHTML='<div class="desk-loading">點選「自動優先觀察名單」可查看五檔股票簡表；再點股票展開完整作戰字卡。</div>';
+  target.innerHTML='<div class="desk-loading">點開「明日攻擊候選」查看盤後預備名單；個股點入後仍是原本的作戰字卡。</div>';
  }else target.innerHTML=r33PriorityRows.length?
-  `${picks.length?'':`<div class="r23-note">${esc(autoPendingReason())}。以下僅為觀察名單，不是已認證買入訊號。</div>`}${r26GroupMarkup('desk-priority',r33PriorityRows)}`:
-  `<div class="desk-empty"><b>目前沒有符合風險門檻的優先觀察股票。</b><p>${esc(autoPendingReason())}</p></div>`;
+  `<div class="r23-note">${esc(current)} 盤後篩選 ${result.validated}/${result.inspected} 檔有效資料。${pending?'⚠ 這是歷史快照，請等最新資料：':''}僅預備觀察，盤中需核對頸線、量能與防守；名單按技術條件排序，不是隔日漲幅預測。</div>${r26GroupMarkup('desk-priority',r33PriorityRows)}`:
+  '<div class="desk-empty"><b>沒有符合風險、頸線與量價條件的明日攻擊候選。</b><p>資料不足時不補假資料，不把當日漲幅排行塞進明日候選。</p></div>';
+ renderEventRadar(result);
  if(!onlyDesk)setTimeout(()=>{if(state.universe?.asOf===current&&state.payload?.asOf===current){sectorDirectory();renderSectorPulse(allRows());}},40);
 }
 const lensMemo=new WeakMap();
