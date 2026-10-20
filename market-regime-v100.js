@@ -49,13 +49,13 @@ function expectedEod(date){
 }
 function dateStatus(radar,intel,now=new Date()){
  const asOf=radar?.asOf,expected=expectedEod(now),marketDates=radar?.marketAsOf||{};
- if(!realDate(asOf))return {label:'灰燈｜個股資料日期不合法或缺失',alert:true,expected};
+ if(!realDate(asOf))return {label:'資料異常｜個股資料日期不合法或缺失',alert:true,expected};
  const mismatches=['上市','上櫃'].filter(k=>marketDates[k]&&marketDates[k]!==asOf);
- if(mismatches.length)return {label:`灰燈｜${mismatches.join('、')}資料日期不同步`,alert:true,expected};
- if(asOf>taipeiParts(now).date)return {label:'灰燈｜行情日期晚於今天，請停用交易判斷',alert:true,expected};
- if(asOf<expected)return {label:'黃燈｜可能未更新（如遇休市，需核對官方行事曆）',alert:true,expected};
- if(asOf>expected)return {label:'黃燈｜今日行情已有快照，但盤後彙整可能尚未完成',alert:false,expected};
- return {label:intel?.asOf&&intel.asOf!==asOf?'黃燈｜個股日期正常，但指數／法人資料日不同步':'日期符合預期盤後交易日（仍需核對官方來源）',alert:!!(intel?.asOf&&intel.asOf!==asOf),expected};
+ if(mismatches.length)return {label:`資料異常｜${mismatches.join('、')}資料日期不同步`,alert:true,expected};
+ if(asOf>taipeiParts(now).date)return {label:'資料異常｜行情日期晚於今天，請停用交易判斷',alert:true,expected};
+ if(asOf<expected)return {label:'資料提醒｜可能未更新（如遇休市，需核對官方行事曆）',alert:true,expected};
+ if(asOf>expected)return {label:'資料提醒｜今日行情已有快照，但盤後彙整可能尚未完成',alert:false,expected};
+ return {label:intel?.asOf&&intel.asOf!==asOf?'資料提醒｜個股日期正常，但指數／法人資料日不同步':'日期符合預期盤後交易日（仍需核對官方來源）',alert:!!(intel?.asOf&&intel.asOf!==asOf),expected};
 }
 function statusText(){
  const el=document.querySelector('#r44VersionStatus');if(!el||!store)return;
@@ -63,18 +63,70 @@ function statusText(){
  const sourceDates=r?.marketAsOf||{},localTime=r?.generatedAt?new Date(r.generatedAt):null;
  const time=localTime&&!Number.isNaN(localTime.getTime())?taipeiParts(localTime).date+' '+new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(localTime):'待核對';
  // A frontend version string is NOT a verifiable GitHub commit/deployment identifier.
- el.textContent=`程式：r44.1-QA（部署 commit 待核對）｜個股行情：${asOf}｜上市：${sourceDates['上市']||'待核對'}／上櫃：${sourceDates['上櫃']||'待核對'}｜盤後產製：${time}（台灣時間）｜收錄 ${r?.stockCount??'—'}、全市場診斷 ${r?.universeCount??'—'}｜${d.label}`;
+ el.textContent=`大盤對照元件：r44.4-QA（網站部署 commit 待核對）｜個股行情：${asOf}｜上市：${sourceDates['上市']||'待核對'}／上櫃：${sourceDates['上櫃']||'待核對'}｜盤後產製：${time}（台灣時間）｜收錄 ${r?.stockCount??'—'}、全市場診斷 ${r?.universeCount??'—'}｜${d.label}`;
  el.setAttribute('role','status');el.setAttribute('data-quality',d.alert?'warning':'check');
 }
 let store=null, run=0;
+/* r44.4: benchmark relationship, NOT a prediction of cause. */
+function dailyRelationship(c,ix,asOf){
+ const mk=c?.market==='上市'?'taiex':c?.market==='上櫃'?'otc':null;
+ if(!mk||!realDate(asOf)||c?.date!==asOf||ix?.date!==asOf||c?.possiblePriceAdjustment===true)return null;
+ const sc=N(c.close),sd=N(c.changePct),ic=N(ix.close),id=N(ix.pct),chg=N(ix.change);
+ const bars=c.bars;
+ if(!(sc>0&&ic>0&&sd!==null&&id!==null&&Array.isArray(bars)&&bars.length>=2))return null;
+ const prev=bars.at(-2),last=bars.at(-1);
+ if(!Array.isArray(prev)||!Array.isArray(last)||!realDate(prev[0])||last[0]!==asOf||N(prev[4])<=0||N(last[4])<=0||N(last[4])!==sc)return null;
+ const stockCalc=100*(sc/N(prev[4])-1);
+ if(Math.abs(stockCalc-sd)>.16)return null;
+ if(chg!==null){const old=ic-chg;if(!(old>0)||Math.abs(100*chg/old-id)>.16)return null;}
+ if(Math.abs(id)>20||Math.abs(sd)>20)return null; // questionable split/quote: stop auto-labeling
+ const d=sd-id;
+ let label='大盤與個股皆接近平盤';
+ if(id>.1&&sd>.1)label=d>=1?'跟漲且跑贏大盤':'同向上漲';
+ else if(id>.1&&sd<-.1)label='大盤上漲、個股逆勢下跌';
+ else if(id<-.1&&sd>.1)label='大盤下跌、個股逆勢上漲';
+ else if(id<-.1&&sd<-.1)label=d>=1?'同跌但明顯抗跌':d<=-1?'同跌且相對落後':'同向下跌、表現接近大盤';
+ else if(sd>.1)label='個股上漲、大盤變動較小';
+ else if(sd<-.1)label=Math.abs(id)<=.1?'個股下跌、大盤變動較小':'個股偏弱、方向接近平盤';
+ return {stockPct:stockCalc,marketPct:id,excessPct:d,label,marketName:mk==='taiex'?'加權':'櫃買',marketKey:mk};
+}
+function evidenceForDivergence(c,relation){
+ const reasons=[];if(!relation)return reasons;
+ const bars=Array.isArray(c?.bars)?c.bars:[],last=bars.at(-1)||[];
+ const high=N(last[2]),low=N(last[3]),open=N(last[1]),close=N(last[4]);
+ const range=high!==null&&low!==null?high-low:0;
+ const closeLocation=range>0&&(close!==null)?(close-low)/range:null;
+ const upperWick=range>0&&open!==null&&close!==null?(high-Math.max(open,close))/range:null;
+ const vr=N(c?.volumeRatio),trend20=N(c?.trading?.return20Pct);
+ if(relation.stockPct<-.1){
+  if(trend20!==null&&trend20>=15)reasons.push(`近20日已漲 ${trend20.toFixed(1)}%，需核對是否漲多回檔；這不是當日跌因證據`);
+  if(vr!==null&&vr>=1.5&&closeLocation!==null&&closeLocation<=.3)reasons.push('相對放量且收在當日低檔，需防短線賣壓；不能直接認定主力出貨');
+  if(c?.riskEvidence?.breakoutFailed===true)reasons.push('既有突破失敗風險旗標，應先核對原大量K頸線');
+  if(c?.riskEvidence?.belowFallingMa20===true)reasons.push('股價低於走弱的MA20，短期結構風險較高');
+  const f=c?.fundamentals;
+  if(realDate((f?.revenuePeriod||'')+'-01')&&String(f.revenuePeriod).slice(0,7)<=String(c.date).slice(0,7)&&((Number(c.date.slice(0,4))*12+Number(c.date.slice(5,7)))-(Number(f.revenuePeriod.slice(0,4))*12+Number(f.revenuePeriod.slice(5,7))))<=4&&N(f?.revenueYoY)!==null&&N(f.revenueYoY)<=-10)
+    reasons.push(`已載入的營收年增率 ${N(f.revenueYoY).toFixed(1)}%，屬待核對的基本面線索，不能歸因於當日下跌`);
+  if(N(f?.eps)!==null&&N(f.eps)<0&&f?.epsPeriod)
+    reasons.push(`${esc(f.epsPeriod)} EPS為負，需先核對財報口徑與公告日期，不能當成當日下跌原因`);
+ }
+ if(relation.stockPct>.1){
+  if(c?.riskLevel==='high')reasons.push('個股雖上漲，但既有風險評級仍高，應回頭核對頸線與防守');
+  if(vr!==null&&vr<.8)reasons.push('量比偏低，價格反彈不代表新增資金明顯介入');
+  if(upperWick!==null&&upperWick>=.42&&closeLocation!==null&&closeLocation<.5)reasons.push('高檔上影、收盤偏弱，需核對是否假突破');
+ }
+ if(!reasons.length)reasons.push('目前沒有足夠的價量或財務異常證據，不能推論漲跌原因');
+ reasons.push('尚未核對當日公司重大訊息、法說、除權息及族群資金流；需排查才可討論原因');
+ return reasons;
+}
 function stockBadge(c){
  const key=c?.market==='上市'?'taiex':c?.market==='上櫃'?'otc':null;
- if(!store||!key||!store.asOf||c?.date!==store.asOf)return '<span class="r44-rel">相對大盤：待核對</span>';
- const res=relative(c,store.history?.markets?.[key],store.asOf);
- if(!res)return '<span class="r44-rel">相對大盤：同日K線不足</span>';
- const label=res.excess>=3?'逆勢／相對強勢觀察':res.excess>=0?'相對抗跌':'落後大盤';
- const css=res.excess>=3?'strong':res.excess<0?'weak':'neutral';
- return `<span class="r44-rel ${css}">近5日相對${key==='taiex'?'加權':'櫃買'} ${res.excess>=0?'+':''}${res.excess.toFixed(2)}% · ${label}（非買點）</span>`;
+ if(!store||!key||c?.date!==store.asOf)return '<small class="r44-rel">大盤比較：資料日期不一致</small>';
+ const ix=store.intel?.indices?.[key],res=dailyRelationship(c,ix,store.asOf);
+ if(!res)return '<small class="r44-rel">大盤比較：同日漲跌資料未核對，暫不判斷</small>';
+ const d=res.excessPct,sgn=x=>x>0?'+':'',tag=d>=1?'strong':d<=-1?'weak':'neutral';
+ const clues=evidenceForDivergence(c,res);
+ const showReasons=(res.stockPct<-.1||Math.abs(d)>=2);
+ return `<div class="r44-rel ${tag}">同日 ${esc(res.marketName)} ${sgn(res.marketPct)}${res.marketPct.toFixed(2)}%／個股 ${sgn(res.stockPct)}${res.stockPct.toFixed(2)}%｜差距 ${sgn(d)}${d.toFixed(2)} 個百分點 · ${esc(res.label)}</div>${showReasons?`<details class="r44-stock-why" style="font-size:12px;line-height:1.65;margin:4px 0 8px"><summary>漲跌差異：查看可核對線索</summary>${clues.map(x=>`<p style="margin:6px 0">${esc(x)}</p>`).join('')}</details>`:''}<small class="r44-rel">同日相對表現不代表未來漲跌，也不能證明跌因。</small>`;
 }
 function lightCard(key,label,icon){
  const m=store?.history?.markets?.[key];const ix=store?.intel?.indices?.[key];const breadth=store?.radar?.marketBreadth;
@@ -84,19 +136,25 @@ function lightCard(key,label,icon){
  return `<details class="r44-idx r44-${c.light}"><summary><span class="r44-dot" aria-hidden="true"></span><b>${label}</b><small>${dated?money(ix.close)+' 點 · '+esc(store.asOf):'收盤點數待核對'}</small><strong>${esc(c.label)}</strong><span>⌄</span></summary><div class="r44-inner">${c.bars.length&&m?.verified&&c.bars.at(-1)[0]===store.asOf?chart(c.bars):'<p class="r44-warn">官方完整指數日 K 未取得或尚未與同日收盤核對，暫不畫假 K 線。</p>'}<div class="r44-levels"><div>MA20：<b>${money(c.ma20)}</b></div><div>近期支撐：<b>${money(c.support)}</b></div><div>近期壓力：<b>${money(c.resistance)}</b></div><div>上漲占比：<b>${c.breadthPct==null?'待資料':c.breadthPct.toFixed(1)+'%'}</b></div></div><p class="r44-note">${esc(c.reason)}｜支撐／壓力為過去20交易日最高低參考，不是已證實的歷史大量K頸線。</p></div></details>`;
 }
 function paint(){statusText();const el=document.querySelector('#r44MarketRegime');if(!el)return;
- if(!store){el.innerHTML='<p class="r44-warn">正在核對兩市官方指數歷史與個股交易日…</p>';return;}
- const breadth=store.radar?.marketBreadth?.markets;
- const wide=(k)=>{const v=breadth?.[k];if(store.radar?.marketBreadth?.asOf!==store.asOf||!(N(v?.up)>=0&&N(v?.down)>=0)||N(v.up)+N(v.down)===0)return '未核對';return (100*N(v.up)/(N(v.up)+N(v.down))).toFixed(1)+'%';};
- el.innerHTML=`<header class="r44-heading"><b>大盤紅綠燈｜加權／櫃買</b><small>盤後 ${esc(store.asOf)} · 非即時</small></header><p class="r44-warn">指數 K 線與防守價只使用官方完整開高低收；未取得時維持灰燈。個股燈號不能單獨當作買點。</p>${lightCard('taiex','加權指數')}${lightCard('otc','櫃買指數')}<small class="r44-breadth">${esc(store.asOf)} 市場廣度（可作短線風險參考）：上市上漲占比 ${wide('上市')} · 上櫃上漲占比 ${wide('上櫃')}。此比例不等同指數紅綠燈。</small>`;
+ if(!store){el.innerHTML='<p class="r44-warn">核對大盤收盤資料中…</p>';return;}
+ el.setAttribute('aria-label','加權櫃買收盤與個股相對表現');
+ const asOf=store.asOf,idx=store.intel?.indices||{},breadth=store.radar?.marketBreadth;
+ const card=(key,name,market)=>{const v=idx[key],good=v?.date===asOf&&N(v.close)>0&&N(v.pct)!==null;
+  const b=breadth?.asOf===asOf?breadth?.markets?.[market]:null;
+  const n=N(b?.up),m=N(b?.down),count=N(b?.count);
+  const valid=n!==null&&m!==null&&n>=0&&m>=0&&n+m>=50&&count!==null&&n+m<=count&&count>=100;
+  const r=valid?`${(100*n/(n+m)).toFixed(1)}%（扣除平盤股）`:'待核對';
+  return `<div><b>${name}</b><div>${good?money(v.close)+' 點 · '+(N(v.pct)>0?'+':'')+N(v.pct).toFixed(2)+'%':'同日資料未核對'}</div><small>上漲家數比例：${r}</small></div>`;};
+ el.innerHTML=`<header class="r44-heading"><b>大盤收盤與個股對照</b><small>${esc(asOf||'日期待核對')} · 非即時</small></header><div class="r44-levels" style="margin-top:10px">${card('taiex','加權指數','上市')}${card('otc','櫃買指數','上櫃')}</div><small class="r44-breadth">已暫停沒有完整官方日K支持的紅綠燈與支撐／壓力圖。個股請看字卡中的「同日相對大盤」，不能單憑大盤或個股漲跌推定原因。</small>`;
 }
 async function requestJson(path){const ctl=new AbortController();const timer=setTimeout(()=>ctl.abort(),9000);try{const r=await fetch(path+'?r44='+Date.now(),{cache:'no-store',signal:ctl.signal});if(!r.ok)throw new Error('HTTP '+r.status);return await r.json();}finally{clearTimeout(timer);}}
 async function refresh(){const id=++run;const el=document.querySelector('#r44MarketRegime');if(el)el.innerHTML='<p class="r44-warn">核對官方指數日 K 與資料日期中…</p>';
- const [ra,mi,hi]=await Promise.allSettled(['./data/radar.json','./data/market-intel.json','./data/index-history.json'].map(requestJson));
+ const [ra,mi]=await Promise.allSettled(['./data/radar.json','./data/market-intel.json'].map(requestJson));
  if(id!==run)return;
- const radar=ra.status==='fulfilled'?ra.value:null,intel=mi.status==='fulfilled'?mi.value:null,history=hi.status==='fulfilled'?hi.value:null;
+ const radar=ra.status==='fulfilled'?ra.value:null,intel=mi.status==='fulfilled'?mi.value:null;
  const asOf=radar?.asOf;
- store={radar,asOf,intelDate:intel?.asOf,intel:intel?.asOf===asOf?intel:null,history:history?.asOf===asOf&&history?.schema==='chaopan.index-ohlc.v1'?history:null};paint();
+ store={radar,asOf,intelDate:intel?.asOf,intel:intel?.asOf===asOf?intel:null,history:null};paint();
 }
 function init(){if(!document.querySelector('#r44MarketRegime'))return;refresh();document.querySelector('#refreshBtn')?.addEventListener('click',()=>refresh());}
-return {init,refresh,chart,classify,relative,cleanBars,dateStatus,expectedEod,stockBadge,_setTestData:x=>{store=x;}};
+return {init,refresh,chart,classify,relative,cleanBars,dateStatus,expectedEod,dailyRelationship,evidenceForDivergence,stockBadge,_renderTest:paint,_setTestData:x=>{store=x;}};
 });
