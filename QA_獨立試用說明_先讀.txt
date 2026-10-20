@@ -1,0 +1,18 @@
+# 超盤手 RADAR r44.1 — 獨立試用包（不是正式更新）
+
+來源：使用者 2026-10-20 上傳的 chaopan-radar-main(4).zip + r44.1 第六輪 QA。
+這個 ZIP 只有根目錄 5 個修改／新增檔案，**不能單獨當作完整網站**。
+
+## 安全試用
+1. 在 GitHub 的 Import repository 匯入目前正式專案 https://github.com/love18960928-lgtm/chaopan-radar ，新存成公開獨立倉庫，例如 chaopan-radar-r44-test（切勿在正式 main 操作）。
+2. 在新倉庫的 main 根目錄，解壓上傳這 5 個檔案；不要上傳 ZIP 本體。
+3. 新倉庫的 Settings → Pages → Build and deployment → Deploy from a branch → main /(root)，等待發布。
+4. 在新的網站測試。不同 repo 的 Pages 網址不同，原正式網站不會更動。
+5. 先檢查作戰字卡、三分頁、持股備份（以假的資料測試）、市場日期、兩市灰燈，勿依試用資料下單。
+
+注意：
+- 未經線上遠端 main 比對；若 GitHub 的檔案比 2026-10-20 ZIP 新，試用網站的內容可能與正式版不同。
+- 沒有附 data/ 文件；沿用匯入的現有資料。若不存在已認證的 index-history.json，紅綠燈應為灰燈，不會有真實市場 K 線。
+- 目前未完成完整手機整站／正式官方指數 OHLC 驗收。
+- r43 每週強勢模組不是這份 r44.1 QA 包的一部分；試用版可能不顯示該功能。
+- 本更新只適合試用倉庫；不可把它當作全面認證成功版本。
