@@ -462,18 +462,10 @@ function staleDeskSnapshot(asOf){
 }
 function renderSectorPulse(rows){
  const output=$('#sectorPulse');if(!output)return;
- const map=new Map();
- for(const row of rows){
-  const name=String(row.industry||row.fundamentals?.industry||'').trim(),b=row.bars||[];
-  if(!name||/未分類|其他未分類|待分類|尚未分類|不詳|未知/.test(name)||b.length<21||b.at(-1)[0]!==row.date)continue;
-  const past=numeric(b.at(-6)[4]),close=numeric(b.at(-1)[4]);
-  if(!past||!close||!liquidityEvidence(row).launch)continue;
-  const v=100*(close/past-1);
-  if(!map.has(name))map.set(name,[]);map.get(name).push(v);
- }
- const median=a=>{const b=a.slice().sort((x,y)=>x-y);return (b[Math.floor((b.length-1)/2)]+b[Math.floor(b.length/2)])/2};
- const sectors=[...map].filter(([name,a])=>a.length>=6).map(([name,a])=>({name,count:a.length,median:median(a)})).sort((a,b)=>b.median-a.median).slice(0,3);
- output.innerHTML=sectors.length?'<span>近5日相對較強族群（同產業個股漲幅中位數；非法人資金流）</span><div>'+sectors.map(x=>`<b>${esc(x.name)} <small>${x.median>0?'+':''}${x.median.toFixed(1)}%</small></b>`).join('')+'</div>':'可用資料尚不足以評估產業強弱，不預設AI或其他產業永遠領漲';
+ const scan=r42Scan(),leaders=scan?.sectorLeaders||[];
+ output.innerHTML=leaders.length?
+  `<div>${leaders.map(x=>`<b>${esc(x.name)} <small>5日中位 ${x.median5>0?'+':''}${x.median5.toFixed(1)}%｜上漲 ${Math.round(x.advanceRatio*100)}%｜${x.sample} 檔</small></b>`).join('')}</div>`:
+  '目前沒有同時符合「近5日正報酬、族群過半上漲、優於市場中位數」的領漲族群，不把相對抗跌當成領漲。';
 }
 // r8: Expanded sectors use data-driven battle cards, not the old compact rows.
 // Keep expansion and pagination in memory; refreshing the same EOD snapshot does
@@ -977,7 +969,7 @@ function renderTradeDesk(onlyDesk=false){
   target.innerHTML='<div class="desk-loading">點開「明日攻擊候選」查看盤後預備名單；個股點入後仍是原本的作戰字卡。</div>';
  }else target.innerHTML=r33PriorityRows.length?
   `<div class="r23-note">${esc(current)} 盤後篩選 ${result.validated}/${result.inspected} 檔有效資料。${pending?'⚠ 這是歷史快照，請等最新資料：':''}僅預備觀察，盤中需核對頸線、量能與防守；名單按技術條件排序，不是隔日漲幅預測。</div>${r26GroupMarkup('desk-priority',r33PriorityRows)}`:
-  '<div class="desk-empty"><b>沒有符合風險、頸線與量價條件的明日攻擊候選。</b><p>資料不足時不補假資料，不把當日漲幅排行塞進明日候選。</p></div>';
+  '<div class="desk-empty"><b>目前沒有通過資金流動性、產業領漲、趨勢與防守審查的明日攻擊股。</b><p>當大盤廣度偏弱或只有少數低價股拉抬時，寧可空名單；不以今日漲幅、技術低標或相對抗跌湊數。</p></div>';
  renderEventRadar(result);
  if(!onlyDesk)setTimeout(()=>{if(state.universe?.asOf===current&&state.payload?.asOf===current){sectorDirectory();renderSectorPulse(allRows());}},40);
 }
