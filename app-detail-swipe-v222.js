@@ -1553,7 +1553,7 @@ function detailNavigationIds(id){
  return universeIds.includes(id)?universeIds:[id];
 }
 function showDetails(id,jumpIntraday=false){
- const c=allRows().find(x=>rowId(x)===id);if(!c)return;
+ const c=allRows().find(x=>rowId(x)===id)||(rowId(state.lookupRow||{})===id?state.lookupRow:null);if(!c)return;
  state.etfDetail=null;state.detailIds=detailNavigationIds(id);
  state.detail=c;state.chartDays=60;state.r41Page='card';
  if($('#modalOverlay').hidden){history.pushState({chaopanDetail:true},'',location.href);state.detailHistory=true;}
@@ -1799,7 +1799,7 @@ function mainTrendResearchPanel(c){
  <p class="ma-structure-note">核心倉守原頸線、MA20與經核對的移動停利；操作倉分段檢核風險倍數。沒有實際持股成本及交易紀錄，不能計算真實停利與獲利。${pattern?' 次日成交價格／跳空及滑價必須重新核算。':''}</p></section>`;
 }
 function renderDetail(){const c=state.detail;if(!c)return;const starred=state.watch.has(c.market+'-'+c.code),cls=c.changePct>0?'rising':c.changePct<0?'falling':'neutral';
-  $('#modalContent').innerHTML=`${detailNav()}<div class="detail-title"><div><div class="eyebrow">STOCK ANALYSIS / ${esc(c.market)}</div><h2 id="modalTitle">${esc(c.code)} ${esc(c.name)}</h2><div class="detail-sub">${esc(c.date)} 盤後資料${state.mode==='demo'?' · 示範':''}</div></div><div class="detail-price"><strong>${price(c.close)}</strong><div class="${cls}">${pct(c.changePct)}</div></div></div><div class="priority-levels"><span>近期頸線 <b>${price(latestNeck(c))}</b></span><span>第一支撐 <b>${price(supportLines(c)[0]?.lower)}</b></span><span>盤中觸發 <b>${price(c.intradayPlan?.crossPrice)}</b></span></div>${guidanceCard(c)}${globalThis.ChaopanMarketRegime?.badgeFor?.(c,state.marketIntel,state.payload?.asOf)||''}<div class="chart-area"><div class="chart-top"><strong>歷史K線／成交量／均線</strong><div class="chart-range"><button class="range-btn ${state.chartDays===20?'active':''}" data-days="20">20日</button><button class="range-btn ${state.chartDays===60?'active':''}" data-days="60">60日</button><button class="range-btn ${state.chartDays===120?'active':''}" data-days="120">120日</button><button type="button" class="zoom-btn" data-zoom="in" aria-label="K線放大">＋</button><button type="button" class="zoom-btn" data-zoom="out" aria-label="K線縮小">－</button></div></div><div id="chartSvg" aria-label="雙指捏合可縮放K線">${makeChart(c.bars||[],latestNeck(c),state.chartDays,supportLines(c),c.structureV23?.necklines||[],c.structureV23?.mainDefense)}</div><small class="chart-zoom-hint">雙指捏合或按 ＋／－ 放大縮小；只有現有歷史K棒，非即時。</small><div class="chart-legend"><span>━━ 橘色：最新頸線</span><span style="color:#c8a5e8">┄┄ 淺紫：其他頸線／最後防守</span><span style="color:#3dd9ba">━━ 第一支撐</span><span style="color:#76abfa">━━ 第二支撐</span><span style="color:#ffd36e">━━ MA5</span><span style="color:#8dafff">━━ MA10</span><span style="color:#eaa8ec">━━ MA20</span><span>紅漲綠跌</span></div></div><details class="fin-r13-details"><summary>📊 公司研究｜營收、EPS及合理價情境</summary>${financialPanel(c)}</details>
+  $('#modalContent').innerHTML=`${detailNav()}<div class="detail-title"><div><div class="eyebrow">STOCK ANALYSIS / ${esc(c.market)}</div><h2 id="modalTitle">${esc(c.code)} ${esc(c.name)}</h2><div class="detail-sub">${esc(c.date)} 盤後資料${state.mode==='demo'?' · 示範':''}</div></div><div class="detail-price"><strong>${price(c.close)}</strong><div class="${cls}">${pct(c.changePct)}</div></div></div><div class="priority-levels"><span>近期頸線 <b>${price(latestNeck(c))}</b></span><span>第一支撐 <b>${price(supportLines(c)[0]?.lower)}</b></span><span>次日預警參考 <b>${price(c.intradayPlan?.crossPrice)}</b></span></div>${guidanceCard(c)}${globalThis.ChaopanMarketRegime?.badgeFor?.(c,state.marketIntel,state.payload?.asOf)||''}<div class="chart-area"><div class="chart-top"><strong>歷史K線／成交量／均線</strong><div class="chart-range"><button class="range-btn ${state.chartDays===20?'active':''}" data-days="20">20日</button><button class="range-btn ${state.chartDays===60?'active':''}" data-days="60">60日</button><button class="range-btn ${state.chartDays===120?'active':''}" data-days="120">120日</button><button type="button" class="zoom-btn" data-zoom="in" aria-label="K線放大">＋</button><button type="button" class="zoom-btn" data-zoom="out" aria-label="K線縮小">－</button></div></div><div id="chartSvg" aria-label="雙指捏合可縮放K線">${makeChart(c.bars||[],latestNeck(c),state.chartDays,supportLines(c),c.structureV23?.necklines||[],c.structureV23?.mainDefense,c.date)}</div><small class="chart-zoom-hint">日K以 ${esc(c.date)} 收盤為準；選定期間K棒決定價格縱軸，範圍外歷史頸線仍可在「關卡圖解」查看。非即時。</small><div class="chart-legend"><span>━━ 橘色：最新頸線</span><span style="color:#c8a5e8">┄┄ 淺紫：其他頸線／最後防守</span><span style="color:#3dd9ba">━━ 第一支撐</span><span style="color:#76abfa">━━ 第二支撐</span><span style="color:#ffd36e">━━ MA5</span><span style="color:#8dafff">━━ MA10</span><span style="color:#eaa8ec">━━ MA20</span><span>紅漲綠跌</span></div></div><details class="fin-r13-details"><summary>📊 公司研究｜營收、EPS及合理價情境</summary>${financialPanel(c)}</details>
  ${mainTrendResearchPanel(c)}<details class="research-fold"><summary>▥ 均線強弱、六條均線與趨勢結構</summary>${maPanel(c)}${sixMaPanel(c)}${trendModePanel(c)}</details>
  <details class="research-fold"><summary>▥ 突破紅綠K、量價與續強證據</summary>${breakoutTrackPanel(c)}${liquidityPanel(c)}${continuationPanel(c)}${confirmedStrengthPanel(c)}${phasePanel(c)}</details>
  <details class="research-fold"><summary>▥ 完整價位計畫與法人風險</summary>${deskPlanHTML(c)}${ChaopanIntel.chipPanel(state.marketIntel,c,deskEvidence(c))}</details>
@@ -1823,18 +1823,42 @@ function renderDetail(){const c=state.detail;if(!c)return;const starred=state.wa
   $('#starButton').onclick=()=>{const key=c.market+'-'+c.code;if(state.watch.has(key))state.watch.delete(key);else state.watch.add(key);saveWatch();renderDetail();toast('已更新自選清單')};
   $('#shareButton').onclick=async()=>{const info=`超盤手大量K雷達｜${c.code} ${c.name}\n${c.date} 收盤 ${price(c.close)}\n近期主要突破頸線 ${price(latestNeck(c))}\n量比 ${c.volumeRatio} 倍｜20日漲停估算 ${c.limit20} 次\n資料非即時，僅供研究。`;try{await navigator.clipboard.writeText(info);toast('已複製資訊')}catch(e){toast('請用手機內建分享功能')}};
 }
-function makeChart(bars,neck,days,supports=[],necklines=[],mainDefense=null){const all=bars.filter(b=>[1,2,3,4,5].every(i=>Number.isFinite(Number(b[i]))));let data=all.slice(-days);if(!data.length)return '<div class="empty-state">沒有歷史K線可顯示</div>';
+function makeChart(bars,neck,days,supports=[],necklines=[],mainDefense=null,asOf=null){
+  // The chart must not silently discard a corrupt candle or plot future dates.
+  // Reject malformed, unordered, duplicated or out-of-session OHLCV instead.
+  if(!Array.isArray(bars)||!bars.length)return '<div class="empty-state">沒有歷史K線可顯示</div>';
+  let previous='';
+  const all=[];
+  for(const b of bars){
+    if(!Array.isArray(b)||b.length<6)return '<div class="empty-state">日K欄位不足，走勢圖待核對</div>';
+    const d=String(b[0]);
+    const n=b.slice(1,6).map(x=>x===null||x===undefined||x===''?NaN:Number(x));
+    const validDate=/^\d{4}-\d{2}-\d{2}$/.test(d)&&!Number.isNaN(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
+    if(!validDate||d<=previous||!n.every(Number.isFinite)||n[0]<=0||n[1]<=0||n[2]<=0||n[3]<=0||n[4]<0||n[1]<Math.max(n[0],n[2],n[3])||n[2]>Math.min(n[0],n[1],n[3]))return '<div class="empty-state">日K日期或價量異常，走勢圖待核對</div>';
+    previous=d;all.push(b);
+  }
+  if(asOf&&previous!==String(asOf))return '<div class="empty-state">個股收盤日與最後一根K線不同，走勢圖待核對</div>';
+  const length=Number(days);if(!Number.isInteger(length)||length<1)return '<div class="empty-state">K線顯示期間無效</div>';
+  let data=all.slice(-length);
   const W=600,H=289,P=33,plotW=W-P-36,top=20,kHeight=186,volTop=225,volHeight=42;
   const included=(supports||[]).map(s=>numeric(s.lower)).filter(v=>v!==null&&v>0);
   if(mainDefense?.lower>0)included.push(Number(mainDefense.lower));
-  const maxP=Math.max(...data.map(b=>Number(b[2])),Number(neck)||0)*1.02,minP=Math.min(...data.map(b=>Number(b[3])),Number(neck)||Infinity,...included)*.98;
-  let lo=Number.isFinite(minP)?minP:0,hi=maxP;if(hi<=lo)hi=lo+1;
+  // Candle scale belongs to the selected time window. An old 645-dollar
+  // anchor must not flatten a recent 380-dollar trading range. Keep far-away
+  // levels in the textual '關卡圖解', instead of expanding the Y-axis to them.
+  const hi=Math.max(...data.map(b=>Number(b[2])))*1.025;
+  const lo=Math.min(...data.map(b=>Number(b[3])))*.975;
   const py=n=>top+(hi-n)/(hi-lo)*kHeight,step=plotW/data.length,barW=Math.max(1.5,Math.min(8,step*.62));const maxV=Math.max(...data.map(b=>Number(b[5])),1);
   let svg=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="近${data.length}日收盤K線、成交量及大量K壓力線">`;
   for(let i=0;i<=4;i++){const y=top+kHeight*i/4,v=hi-(hi-lo)*i/4;svg+=`<line x1="${P}" x2="${W-36}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#284057" stroke-width="1" opacity=".65"/><text x="${W-32}" y="${y+4}" fill="#8198aa" font-size="10">${v.toFixed(1)}</text>`}
   const annotations=[];
-  const secondaryNecks=necklines.filter(v=>Number.isFinite(Number(v.price)) && Math.abs(Number(v.price)-Number(neck))>.0001 && v.price>=Number(data[data.length-1][4])*.97).slice(0,3);
-  for(const v of secondaryNecks){const val=Number(v.price);if(val<lo||val>hi)continue;const y=py(val);svg+=`<line x1="${P}" x2="${W-36}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#b49acf" stroke-width="1" stroke-dasharray="2 5" opacity=".8"/>`;annotations.push({y:y-5,color:'#b49acf',label:`歷史頸線 ${price(val)}`})}
+  const secondaryNecks=(necklines||[]).filter(v=>
+    v&&Number.isFinite(Number(v.price))&&Number(v.price)>0&&
+    Math.abs(Number(v.price)-Number(neck))>.0001&&Number(v.price)>=Number(data.at(-1)[4])*.97&&
+    (!asOf||!v.date||String(v.date)<=String(asOf)))
+    .sort((a,b)=>Math.abs(Number(a.price)-Number(data.at(-1)[4]))-Math.abs(Number(b.price)-Number(data.at(-1)[4])))
+    .slice(0,3);
+  for(const v of secondaryNecks){const val=Number(v.price);if(val<lo||val>hi)continue;const y=py(val);svg+=`<line x1="${P}" x2="${W-36}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#b49acf" stroke-width="1" stroke-dasharray="2 5" opacity=".8"/>`;const formedToday=v.formedToday===true||(asOf&&String(v.date)===String(asOf));annotations.push({y:y-5,color:'#b49acf',label:formedToday?`當日新大量K高點（次日參考） ${price(val)}`:`歷史頸線 ${price(val)}`})}
   if(mainDefense && Number.isFinite(Number(mainDefense.keyPrice??mainDefense.lower)) && (mainDefense.keyPrice??mainDefense.lower)>=lo && (mainDefense.keyPrice??mainDefense.lower)<=hi){const y=py(Number(mainDefense.keyPrice??mainDefense.lower));svg+=`<line x1="${P}" x2="${W-36}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#c8a5e8" stroke-width="2" stroke-dasharray="9 4"/>`;annotations.push({y:y-5,color:'#c8a5e8',label:`最後防守 ${price(mainDefense.keyPrice??mainDefense.lower)}`})}
   if(Number.isFinite(Number(neck))&&Number(neck)>=lo&&Number(neck)<=hi){const y=py(Number(neck));svg+=`<line x1="${P}" x2="${W-36}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#e7b365" stroke-width="1.4" stroke-dasharray="5 5"/>`;annotations.push({y:y-5,color:'#e7b365',label:`頸線 ${price(neck)}`})}
   const lineColors=['#3dd9ba','#76abfa'];
@@ -1893,6 +1917,67 @@ function setupDetailSwipe(){
 }
 function openSettings(opts={}){const isReady=state.mode==='live';$('#modalContent').innerHTML=`<div class="eyebrow">APP STATUS / SETTINGS</div><h2 id="modalTitle">資料與安裝設定</h2><div class="settings-card"><strong>目前：${modeName()}</strong><p>最近盤後日期：${esc(state.payload?.asOf||'尚無')}<br>掃描歷史完整股票：${integer(state.payload?.eligibleCount||0)} 檔<br>已記錄股票：${integer(state.payload?.stockCount||0)} 檔</p></div><div class="settings-card"><strong>如何使用免費版？</strong><p>把本程式上傳 GitHub 公開 Repository，啟用 Actions，先手動執行「初次回補約220天」，設定 Pages 從 main /root 發布，再以 Android Chrome 的「新增至主畫面」安裝。GitHub Actions 依排程在13:30、14:30、18:30、23:00以及隔日06:00、08:30嘗試核對盤後資料（實際排程可能延遲），若交易所阻擋雲端 IP，需改用在台灣網路執行的收集主機。</p></div><div class="settings-card"><strong>即時版升級狀態</strong><p>目前沒有盤中報價或推播。未來串接授權即時行情、雲端首次突破判斷及 Firebase 推播後升級；不會使用盤後資料假裝盤中訊號。</p></div><div class="settings-card"><strong>網站隱私與密碼：目前仍是公開網站</strong><p>GitHub Pages 的 JavaScript 密碼視窗不能真正保護行情或阻止已取得網址的人查看檔案，亦不能安全撤銷別人的存取權。若需要可取消授權的真正私密網站，應遷移到有伺服端登入控管的部署方式（例如 Cloudflare Pages + Access），並關閉舊公開 Pages、保護行情資料來源。不要在此公開程式中設定真實密碼。</p></div><div class="action-row"><button id="reloadData" class="primary-action">重新檢查盤後資料</button>${isReady?'':'<button id="demoModeBtn" class="secondary-action">開啟示範畫面</button>'}</div>`;$('#modalContent').insertAdjacentHTML('beforeend',`<details id="r41AdvancedSettings" class="r41-advanced-settings" ${opts.advanced?'open':''}><summary>進階功能｜技術研究、原始法人資料與盤中價量試算</summary>${r41AdvancedSettingsMarkup()}</details>`);const recent=allRows().find(x=>x.code===state.r41Advanced?.code&&x.date===state.r41Advanced?.date);if(recent){wireValuationScenario(recent);wireIntradayPanel(recent)};if($('#r41AdvancedSettings #intradayJump'))$('#r41AdvancedSettings #intradayJump').onclick=jumpToIntraday;$('#reloadData').onclick=()=>{hideDetails();loadData()};if($('#demoModeBtn'))$('#demoModeBtn').onclick=()=>{hideDetails();demoMode()};$('#modalOverlay').hidden=false;document.body.style.overflow='hidden'}
 function navTo(page){$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(page==='list'){setTab('all');(document.querySelector('#r45InvestorCenter')||$('.content-area')).scrollIntoView({behavior:'smooth'})}else if(page==='star'){state.tab='star';const adv=$('.advanced-radar');if(adv)adv.open=true;$$('.tab').forEach(x=>x.classList.remove('active'));renderList();$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='guide')$('#institutionalBoard').scrollIntoView({behavior:'smooth'});else openSettings()}
-function wire(){loadWatch();setupSixtyToolbar();setupDetailSwipe();$('#deskDisclosure')?.addEventListener('toggle',e=>{if(e.target.open&&state.payload)renderTradeDesk(true)});document.addEventListener('click',unifiedCardEvents);document.addEventListener('toggle',e=>{if(e.target.matches?.('details.r30-stock-entry'))r30StockToggle(e.target);},true);
+// r44.7 independent lookup: browsing stocks is NOT the same as being auto-qualified.
+// Date lock and market+code keys prevent stale and cross-listing mixups.
+let quickDirectory=null,quickDirectoryError='',quickDirectoryLoading=null,quickShardBusy=false;
+function quickMatches(q){
+ const rows=quickDirectory?.rows||allRows().map(x=>({code:String(x.code),name:x.name,market:x.market,date:x.date,close:x.close}));
+ const text=String(q||'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
+ return rows.filter(x=>String(x.code).toLowerCase().includes(text)||String(x.name).toLocaleLowerCase('zh-Hant').includes(text))
+  .sort((a,b)=>Number(String(b.code)===text)-Number(String(a.code)===text)||String(a.code).localeCompare(String(b.code),'zh-Hant',{numeric:true})).slice(0,12);
+}
+function quickDraw(){
+ const field=$('#quickStockSearch'),target=$('#quickStockResults');if(!field||!target)return;
+ const q=field.value.trim();if(!q){target.innerHTML='';return}
+ if(!quickDirectory&&!quickDirectoryLoading&&!quickDirectoryError){target.innerHTML='<p class="r447-msg">股票索引準備中…</p>';return}
+ const matches=quickMatches(q);
+ const escaped=matches.map(x=>`<button type="button" class="r447-result" data-quick-market="${esc(x.market)}" data-quick-code="${esc(x.code)}"><span><b>${esc(x.code)} ${esc(x.name)}</b><br><small>${esc(x.market)} · ${esc(x.date||'日期待核對')}</small></span><small>查看分析 ›</small></button>`).join('');
+ target.innerHTML=escaped||`<p class="r447-msg">${quickDirectory?'找不到符合的股票':'完整索引無法讀取，目前僅能查已載入股票。'} ${quickDirectoryError?esc(quickDirectoryError):''}</p>`;
+}
+async function loadQuickDirectory(){
+ if(quickDirectoryLoading)return quickDirectoryLoading;
+ quickDirectoryLoading=(async()=>{
+  try{
+   const r=await fetch('./data/stock-lookup/index.json',{cache:'no-cache'});if(!r.ok)throw Error('索引 HTTP '+r.status);
+   const d=await r.json();if(!d||!Array.isArray(d.rows)||d.rows.length<500||!/^\d{4}-\d{2}-\d{2}$/.test(d.asOf))throw Error('索引格式不符');
+   quickDirectory=d;quickDirectoryError='';
+  }catch(e){quickDirectoryError='股票索引尚未部署';console.warn(e)}finally{quickDirectoryLoading=null;quickDraw()}
+ })();return quickDirectoryLoading;
+}
+async function quickOpen(market,code){
+ const id=market+'-'+code;let row=allRows().find(x=>rowId(x)===id);
+ const expectedDay=state.payload?.asOf||quickDirectory?.asOf;
+ if(row&&(!expectedDay||row.date!==expectedDay)){
+   toast('股票歷史資料與最新盤後日不同，拒絕使用舊走勢與買點');return;
+ }
+ if(!row){
+   if(quickShardBusy)return;
+   quickShardBusy=true;
+   const target=$('#quickStockResults');if(target)target.insertAdjacentHTML('beforeend','<p class="r447-msg">正在下載個股歷史資料…</p>');
+   try{
+    const digit=String(code).charAt(0);if(!/^\d$/.test(digit))throw Error('代號格式不符');
+    const response=await fetch('./data/stock-lookup/'+digit+'.json',{cache:'no-cache'});
+    if(!response.ok)throw Error('個股分組未部署');
+    const data=await response.json();const latest=state.payload?.asOf||quickDirectory?.asOf;
+    if(!latest||data.asOf!==latest||data.asOf!==quickDirectory?.asOf)throw Error('股票資料與盤後資料日期不同，拒絕顯示舊行情');
+    if(!Array.isArray(data.rows)||data.rows.length<1)throw Error('歷史資料缺漏');
+    row=data.rows.find(x=>String(x.code)===String(code)&&x.market===market&&x.date===latest);
+    if(!row)throw Error('找不到同市場同日期完整股票資料');
+    state.lookupRow=row;
+   }catch(e){toast('無法開啟完整分析：'+e.message);console.warn(e);return}
+   finally{quickShardBusy=false;quickDraw()}
+ }
+ showDetails(id);
+}
+function initQuickStockSearch(){
+ const field=$('#quickStockSearch'),result=$('#quickStockResults');if(!field||!result)return;
+ field.addEventListener('input',()=>{quickDraw();if(!quickDirectory&&!quickDirectoryLoading)loadQuickDirectory()});
+ field.addEventListener('keydown',e=>{if(e.key==='Enter'){
+  const x=quickMatches(field.value)[0];if(x){e.preventDefault();quickOpen(x.market,String(x.code))}
+ }});
+ result.addEventListener('click',e=>{const b=e.target.closest('[data-quick-code]');if(b)quickOpen(b.dataset.quickMarket,b.dataset.quickCode)});
+ loadQuickDirectory();
+}
+function wire(){loadWatch();setupSixtyToolbar();setupDetailSwipe();initQuickStockSearch();$('#deskDisclosure')?.addEventListener('toggle',e=>{if(e.target.open&&state.payload)renderTradeDesk(true)});document.addEventListener('click',unifiedCardEvents);document.addEventListener('toggle',e=>{if(e.target.matches?.('details.r30-stock-entry'))r30StockToggle(e.target);},true);
  $$('.lens-scope').forEach(b=>b.onclick=()=>{state.rankLens=b.dataset.lens;state.rankView='20';state.stageView='all';state.tab='all';state.query='';$('#searchBox').value='';state.visible=30;renderList()});const liquidityToggle=$('#onlyLiquid');if(liquidityToggle){liquidityToggle.checked=state.liquidityOnly;liquidityToggle.addEventListener('change',e=>{state.liquidityOnly=e.target.checked;state.visible=30;renderList()})}$$('.rank-scope').forEach(b=>b.onclick=()=>{state.rankView=b.dataset.scope;state.visible=30;state.tab='all';renderList()});$$('.stage-scope').forEach(b=>b.onclick=()=>{state.stageView=b.dataset.stage;state.visible=30;state.tab='all';state.query='';$('#searchBox').value='';renderList()});const sort=$('#sortFilter');if(sort){sort.insertAdjacentHTML('afterbegin','<option value="trade">操盤品質與追高風險（預設）</option><option value="launch">第一根發動優先</option><option value="priority">基本面投資優先度</option>');sort.value='trade';state.sort='trade';}$$('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.stat-card').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.nav-item').forEach(b=>b.onclick=()=>navTo(b.dataset.page));$('#searchBox').oninput=e=>{state.query=e.target.value;state.visible=30;renderList()};$('#showMore').onclick=()=>{state.visible+=30;renderList()};$('#refreshBtn').onclick=()=>loadData();$('.advanced-radar')?.addEventListener('toggle',e=>{if(e.target.open&&state.payload){state.rankListDirty=false;renderList()}});$('#closeModal').onclick=()=>hideDetails();$('#modalOverlay').onclick=e=>{if(e.target===$('#modalOverlay'))hideDetails()};window.onkeydown=e=>{if(e.key==='Escape')hideDetails()};window.addEventListener('popstate',()=>{if(state.detail||state.etfDetail)hideDetails(true)});loadData();if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(console.warn)}}
 document.addEventListener('DOMContentLoaded',wire);
