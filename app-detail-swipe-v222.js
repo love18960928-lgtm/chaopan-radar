@@ -554,7 +554,7 @@ function valuationBadge(c){
 function financeCardPreview(c){
  const m=verifiedValuation(c),info=financeSnapshot(c);
  if(!m&&!info.revenue&&!info.eps&&!info.pe)return '';
- return `${financeQuickCard(c)}<button type="button" class="fin-card-open" data-card-finance-detail="${esc(rowId(c))}">查看完整營收、獲利與模型來源 →</button>`;
+ return financeQuickCard(c);
 }
 
 function unifiedCardShell({key,rankText,stage,code,name,industry,closeText,changeText,changeClass,summary,levels,evidence,finance,actions}){
@@ -576,14 +576,6 @@ function unifiedCardEvents(e){
   const selected=btn.dataset.cardTab;sectorCardTabs.set(card.dataset.cardKey,selected);
   card.querySelectorAll('[data-card-tab]').forEach(x=>{let yes=x.dataset.cardTab===selected;x.classList.toggle('active',yes);x.setAttribute('aria-selected',String(yes))});
   card.querySelectorAll('[data-card-panel]').forEach(x=>x.hidden=x.dataset.cardPanel!==selected);return;
- }
- const finBtn=e.target.closest('[data-card-finance-detail]');if(finBtn){
-  showDetails(finBtn.dataset.cardFinanceDetail);
-  const details=$('#modalContent .fin-r13-details'),sheet=$('#modalOverlay .sheet');
-  if(details&&sheet){details.open=true;requestAnimationFrame(()=>{
-   const rect=details.getBoundingClientRect(),parent=sheet.getBoundingClientRect();
-   sheet.scrollTop=Math.max(0,sheet.scrollTop+rect.top-parent.top-12);
-  });}return;
  }
  const stock=e.target.closest('[data-card-detail]');if(stock){showDetails(stock.dataset.cardDetail);return;}
  const intraday=e.target.closest('[data-card-intraday]');if(intraday){showDetails(intraday.dataset.cardIntraday,true);return;}
