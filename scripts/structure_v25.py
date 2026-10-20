@@ -169,6 +169,35 @@ def breakout_sequence(b, event, neck, risk_first=False):
             'tone':'watch','reasons':[f'追蹤第 {since+1} 個交易日'],
             'next':'重新站回不是新的第一根；注意原頸線、支撐與量價風險'}
 
+def _recent_high_volume_neckline_failure(b, base, lookback=20):
+    """Detect a failed recent *dated volume resistance* without erasing older events.
+
+    Requires price to have closed above the earlier heavy-volume bar HIGH and
+    then to close below it twice; today's pre-existing level never becomes its
+    own confirmed breakout. Returns auditable evidence, or None.
+    """
+    level=base.get('primaryNeckline')
+    date=base.get('primaryNecklineDate')
+    if not level or not date or len(b)<3:return None
+    anchor_index=next((i for i,z in enumerate(b[:-2]) if z[0]==date),None)
+    if anchor_index is None or len(b)-anchor_index>lookback+2:return None
+    heavy=any(x.get('date')==date and abs(float(x.get('price',0))/level-1)<.012
+              for x in base.get('necklines',[]))
+    if not heavy:return None
+    # A true upward CLOSE cross must follow a close at/below this dated level.
+    # Merely closing above the level again is not a new breakout date.
+    crosses=[i for i in range(anchor_index+1,len(b)-2)
+             if b[i-1][4]<=level<b[i][4]]
+    if not crosses:return None
+    if b[-1][4]>=level or b[-2][4]>=level:return None
+    if (level-b[-1][4])/level<.02:return None
+    return {'anchorDate':date,'level':float(level),
+            'initialCrossDate':b[crosses[0]][0],'lastCrossDate':b[crosses[-1]][0],
+            'crossCount':len(crosses),
+            'lastTwoCloses':[b[-2][4],b[-1][4]],
+            'failurePct':round(100*(level-b[-1][4])/level,2)}
+
+
 def cycle_judgement(b, structure=None, market_breadth=None):
     b=_valid_bars(b);base=structure if structure is not None else unified_structure(b)
     r={**base,'rules':'recent-cycle-v2.5','cycle':None,'signalQuality':None,
@@ -285,6 +314,15 @@ def cycle_judgement(b, structure=None, market_breadth=None):
     if risk_first:
         stage='結構破壞／風險優先' if recent_broken or giant_down else '趨勢轉弱／風險優先'
         score=min(score,12 if recent_broken or giant_down else 25)
+    # A different, nearer high-volume neckline can fail even while an older
+    # lower-priced breakout cycle remains above its original anchor.
+    # Keep both events but let the current failed resistance win risk gating.
+    recent_neck_fail=_recent_high_volume_neckline_failure(b,base)
+    if recent_neck_fail:
+        risk_first=True
+        stage='近期大量K頸線跌回／風險優先'
+        score=min(score,15)
+        risk.append(f"近期大量K {recent_neck_fail['anchorDate']} 高點 {recent_neck_fail['level']:g} 元曾站回，最近兩日收盤再失守")
     if stage=='近期首次突破／待驗證' and quality=='突破K有疑慮':
         stage='首次突破但品質偏弱／警戒'
         score=min(score,48)
@@ -330,7 +368,7 @@ def cycle_judgement(b, structure=None, market_breadth=None):
               'unifiedScore':round(max(0,min(100,score)),1),'unifiedReasons':reasons[:7],
               'entryReadiness':entry,'holdGuidance':hold,'riskFlags':risk[:7],
               'riskFirst':risk_first,'regime':regime,'marketBreadthAboveMA20Pct':market_breadth,
-              'setupEvidence':{'adx14':adx,'atr14Pct':round(atr_pct,2) if atr_pct is not None else None,
+              'setupEvidence':{'recentVolumeNecklineFailure':recent_neck_fail,'adx14':adx,'atr14Pct':round(atr_pct,2) if atr_pct is not None else None,
                                'atrContraction5v15':round(compression,2),'upDownVolumeRatio12':rv_flow,
                                'ma20Slope5Pct':round(ma_slope,2),'closeLocation':round(close_position,2),
                                'upperWickRatio':round(upper_wick,2),'volumeRatio20':round(volume_ratio,2),
