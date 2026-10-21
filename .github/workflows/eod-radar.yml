@@ -3,7 +3,11 @@ on:
   workflow_dispatch:
     inputs:
       backfill_days:
-        description: '回補日曆天數：0=最近7天；240日均線通常需約370至450日曆天歷史；建議分批、核對官方限額'
+        description: '回補日曆天數：0=最近7天；手動回補每批建議90天，最多120天'
+        required: false
+        default: '0'
+      backfill_offset_days:
+        description: '回補窗口結束距今幾天：依序執行 0、90、180、270、360（每批90天）'
         required: false
         default: '0'
   schedule:
@@ -31,8 +35,9 @@ jobs:
       - name: Collect official Taiwan market data
         env:
           BACKFILL: ${{ github.event.inputs.backfill_days || '0' }}
+          BACKFILL_OFFSET: ${{ github.event.inputs.backfill_offset_days || '0' }}
         run: |
-          python scripts/collector.py --backfill "$BACKFILL" --delay 1.1
+          python scripts/collector.py --backfill "$BACKFILL" --backfill-offset "$BACKFILL_OFFSET" --delay 1.1
           python -m unittest discover -s scripts -p 'test_*.py' -v
       - name: Collect verified supplemental official EOD data
         # Optional feed may be missing: do not break existing OHLCV data.
