@@ -606,3 +606,12 @@ html,body{overscroll-behavior-y:contain}
 .research-fold>.ma-structure-panel,.research-fold>.cycle-panel,.research-fold>.intraday-panel,.research-fold>.guidance-panel{margin:11px}
 .research-fold .detail-grid,.research-fold>.tagrow{margin:12px}
 @media(max-width:420px){.finance-glance{padding:10px 7px}.finance-glance-facts,.finance-glance-band{gap:4px}.finance-glance-facts span,.finance-glance-band span{padding:8px 3px}}
+
+/* r44.12 QA: collapsible relative-strength radar */
+.relative-strength-fold > summary {display:flex;justify-content:space-between;align-items:center;gap:12px;cursor:pointer;list-style:none;min-height:56px;}
+.relative-strength-fold > summary::-webkit-details-marker {display:none;}
+.relative-strength-fold > summary strong {display:block;font-size:clamp(20px,4vw,30px);margin-top:7px;}
+.relative-strength-fold .rs-chevron {font-size:26px;color:#60d8c3;transition:transform .2s;}
+.relative-strength-fold[open] .rs-chevron {transform:rotate(180deg);}
+.relative-strength-fold .rs-fold-content {padding-top:14px;}
+.relative-strength-fold > summary:focus-visible {outline:2px solid #60d8c3;outline-offset:4px;}
