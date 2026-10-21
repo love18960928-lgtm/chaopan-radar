@@ -706,16 +706,18 @@ function sectorDirectory(){
  // Distinguish a raw historical breakout event from a currently qualified
  // trading observation. This prevents a 0-eligible list looking like no events.
  const rawAudit={first:0,second:0,third:0,fourth:0};
+ const rawStageRows={first:[],second:[],third:[],fourth:[]};
  let maxBars=0;
  for(const c of state.universe.rows){
   if(c?.date!==state.payload.asOf||!Array.isArray(c.bars)||c.bars.at(-1)?.[0]!==state.payload.asOf)continue;
   maxBars=Math.max(maxBars,c.bars.length);
   const phase=c.breakoutSequence?.phase;
-  if(phase==='first')rawAudit.first++;
-  if(phase==='second')rawAudit.second++;
-  if(c.cycle?.firstHistoricalBreakout===true&&c.cycle?.daysSinceFirst===2)rawAudit.third++;
-  if(c.cycle?.firstHistoricalBreakout===true&&c.cycle?.daysSinceFirst===3)rawAudit.fourth++;
+  if(phase==='first')rawStageRows.first.push(c);
+  if(phase==='second')rawStageRows.second.push(c);
+  if(c.cycle?.firstHistoricalBreakout===true&&c.cycle?.daysSinceFirst===2)rawStageRows.third.push(c);
+  if(c.cycle?.firstHistoricalBreakout===true&&c.cycle?.daysSinceFirst===3)rawStageRows.fourth.push(c);
  }
+ for(const k of Object.keys(rawStageRows))rawAudit[k]=rawStageRows[k].length;
  const ordered=['ready','ma510','reentry','maPullback','first','second','third','fourth','launch','hold','trend'];
  const activeStages=ordered.filter(stage=>radar.watch.some(o=>o.stage===stage));
  const inactiveStages=ordered.filter(stage=>!activeStages.includes(stage));
@@ -725,7 +727,10 @@ function sectorDirectory(){
    audit===undefined?`${arr.length} 檔`:`階段觀察${arr.length}／原始${audit} 檔`;
   const auditNote=audit!==undefined?`<p class="r23-note">原始突破事件 ${audit} 檔，通過本頁基本量價與風險審查 ${arr.length} 檔；不是認證買點，兩者不是同一件事。重新站回新頸線不算首次突破。</p>`:
    stage==='trend'&&maxBars<240?`<p class="r23-note">僅 ${maxBars} 根以下日K，無法計算 MA240。這是資料不足，不代表市場沒有六線強勢股。</p>`:'';
-  return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${auditLabel}</span><span class="sector-arrow">⌄</span></summary>${auditNote}${r26GroupMarkup('stage-'+stage,arr)}</details>`;
+  const rawOnly=(rawStageRows[stage]||[]).filter(c=>!arr.some(o=>o.row?.code===c.code));
+  const rawGroup='raw-stage-'+stage;
+  const rawMarkup=rawOnly.length?`<details class="r27-idle"><summary>查看原始階段股票 ${rawOnly.length} 檔（尚未通過嚴格審查）</summary>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,compactStatus:'原始階段｜未通過嚴格審查',reason:'原始技術事件，非認證買點'})))}</details>`:'';
+  return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${auditLabel}</span><span class="sector-arrow">⌄</span></summary>${auditNote}${r26GroupMarkup('stage-'+stage,arr)}${rawMarkup}</details>`;
  };
  out.innerHTML=`<p class="r23-note">歷史突破第一～四根、均線、回測及頸線觀察邏輯保留在這裡。這是<strong>研究資料庫</strong>，不是今天漲幅排行榜，也不代表明天會漲；MA240 歷史不足仍標待認證。</p>`+
  activeStages.map(stageBlock).join('')+
