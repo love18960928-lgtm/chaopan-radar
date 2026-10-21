@@ -731,6 +731,38 @@ function sectorDirectory(){
  activeStages.map(stageBlock).join('')+
  `<details class="r27-idle"><summary>其他無訊號階段（${inactiveStages.length} 類）</summary>${inactiveStages.map(stageBlock).join('')}</details>`;
 }
+
+// r44.12: same-session relative performance, never infer missing index history.
+function renderRelativeStrength(){
+ const el=$('#relativeStrengthList');if(!el)return;
+ const intel=state.marketIntel||globalThis.ChaopanMarketIntel?.data||null;
+ const asOf=state.payload?.asOf;
+ const rows=state.universe?.asOf===asOf?state.universe.rows:[];
+ const index=state.marketIntel?.indices||state.intel?.indices||null;
+ // Market index is loaded asynchronously; use the verified comparison API where possible.
+ const cmp=globalThis.ChaopanMarketRegime;
+ if(!rows.length){el.textContent='全市場資料尚未核對，暫不排名';return;}
+ const results=[];
+ for(const c of rows){
+  if(c.date!==asOf||c.possiblePriceAdjustment||c.riskFirst||c.riskLevel==='high'||!Array.isArray(c.bars)||c.bars.length<21)continue;
+  const b=c.bars,prev=Number(b.at(-2)?.[4]),last=b.at(-1);
+  if(last?.[0]!==asOf||!(prev>0)||!(Number(c.close)>0)||!(Number(c.lots)>=1000))continue;
+  const daily=Number(c.changePct);
+  if(!Number.isFinite(daily)||daily<=0||Math.abs((Number(c.close)/prev-1)*100-daily)>.2)continue;
+  const m=state.marketIntel||state.intel||null;
+  const ix=m?.indices?.[c.market==='上市'?'taiex':'otc'];
+  if(!ix||ix.date!==asOf||!Number.isFinite(Number(ix.pct))||!(Number(ix.close)>0))continue;
+  const excess=daily-Number(ix.pct);
+  if(excess<=0||Number(c.close)<10)continue;
+  const ma20=b.slice(-20).reduce((a,v)=>a+Number(v[4]),0)/20;
+  if(Number(c.close)<ma20)continue;
+  results.push({row:c,excess,daily,marketPct:Number(ix.pct)});
+ }
+ results.sort((a,b)=>b.excess-a.excess||Number(b.row.lots)-Number(a.row.lots));
+ const top=results.slice(0,30);
+ r26ObserveGroups.set('relative-daily',top.map(x=>({row:x.row,stage:'leader',reason:`單日超額 ${x.excess.toFixed(2)}%，僅盤後觀察`,compactStatus:`較同市場指數強 ${x.excess.toFixed(2)}%｜個股 ${x.daily.toFixed(2)}%`})));
+ el.innerHTML=`<p class="r23-note">${esc(asOf||'—')} 同日指數確認後：${results.length} 檔符合正報酬、單日超額、MA20及基本流動性；顯示前 ${top.length} 檔。未提供有效指數時顯示0檔，不假造資料。</p>`+r26GroupMarkup('relative-daily',r26ObserveGroups.get('relative-daily'));
+}
 function renderEventRadar(result){
  const target=$('#eventRadar');if(!target)return;
  r42EventRows.clear();
@@ -988,8 +1020,8 @@ function renderTradeDesk(onlyDesk=false){
  }else target.innerHTML=r33PriorityRows.length?
   `<div class="r23-note">${esc(current)} 盤後篩選 ${result.validated}/${result.inspected} 檔有效資料。${pending?'⚠ 這是歷史快照，請等最新資料：':''}僅預備觀察，盤中需核對頸線、量能與防守；名單按技術條件排序，不是隔日漲幅預測。</div>${r26GroupMarkup('desk-priority',r33PriorityRows)}`:
   '<div class="desk-empty"><b>目前沒有通過資金流動性、產業領漲、趨勢與防守審查的明日攻擊股。</b><p>當大盤廣度偏弱或只有少數低價股拉抬時，寧可空名單；不以今日漲幅、技術低標或相對抗跌湊數。</p></div>';
- renderEventRadar(result);
- if(!onlyDesk)setTimeout(()=>{if(state.universe?.asOf===current&&state.payload?.asOf===current){sectorDirectory();renderSectorPulse(allRows());}},40);
+ renderRelativeStrength();
+ if(!onlyDesk)setTimeout(()=>{if(state.universe?.asOf===current&&state.payload?.asOf===current){sectorDirectory();renderSectorPulse(allRows());renderRelativeStrength();}},40);
 }
 const lensMemo=new WeakMap();
 function lensEvidence(c){
@@ -1223,7 +1255,7 @@ async function loadData(){
     if(state.payload?.asOf===obj.asOf){
      state.marketIntel=result.v;
      const el=$('#intelMarket');if(el)el.innerHTML=ChaopanIntel.marketPanel(result.v,obj.asOf);
-     institutionalBoard();
+     institutionalBoard();renderRelativeStrength();
      if(globalThis.ChaopanInvestorV100)ChaopanInvestorV100.mount({radar:state.payload,universe:state.universe,intel:state.marketIntel,mode:state.mode,tomorrow:r42ScanCache,holdings:globalThis.ChaopanPortfolioR140?.load?.()||[],review:globalThis.ChaopanPortfolioR140?.review});
     }
    }
@@ -1259,7 +1291,7 @@ async function loadData(){
    if(alreadyVisible||state.universe){
     stampStatus('全市場'+(universeFailure||'未驗證')+' · 保留 '+(state.payload?.asOf||'舊')+' 快照');
     if(intel&&state.payload?.asOf===obj.asOf){state.marketIntel=intel;
-     const el=$('#intelMarket');if(el)el.innerHTML=ChaopanIntel.marketPanel(intel,obj.asOf);institutionalBoard();}
+     const el=$('#intelMarket');if(el)el.innerHTML=ChaopanIntel.marketPanel(intel,obj.asOf);institutionalBoard();renderRelativeStrength();}
    }else{
     // Render base radar only, but never label it a verified universe.
     state.payload=obj;state.mode=['live','warming','partial'].includes(obj.mode)?obj.mode:'empty';state.loadingExtra=false;render();
