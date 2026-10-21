@@ -281,21 +281,29 @@ def fetch_csv_text(url,timeout=18):
         return resp.read(2000000).decode('utf-8-sig')
 
 def taifex_foreign_tx_oi(payload, target):
-    """TX ONLY, foreign open interest ONLY. Net is checked against gross long-short."""
-    if not isinstance(payload,list):return None
+    """Official TAIFEX TX foreign futures *open interest*; strict date/net check.
+
+    Provider field spellings have changed; allow known aliases, never trade volume.
+    """
+    if not isinstance(payload, list): return None
+    def pick(row, *names):
+        for name in names:
+            if name in row and row[name] not in (None, ''): return row[name]
+        return None
     matches=[]
     for row in payload:
-        if not isinstance(row,dict):continue
-        if date_iso(row.get('Date'))!=target:continue
-        if str(row.get('ContractCode','')).strip() not in ('臺股期貨','台股期貨'):continue
-        if str(row.get('Item','')).strip() not in ('外資及陸資','外資'):continue
-        long=number(row.get('OpenInterest(Long)'))
-        short=number(row.get('OpenInterest(Short)'))
-        net=number(row.get('OpenInterest(Net)'))
-        if any(x is None or x!=int(x) for x in (long,short,net)) or min(long,short)<0 or net!=long-short:continue
+        if not isinstance(row, dict): continue
+        day=pick(row,'Date','date','日期','DataDate')
+        product=str(pick(row,'ContractCode','Contract','Product','商品名稱','商品') or '').strip()
+        trader=str(pick(row,'Item','InstitutionalInvestor','Trader','身份別','身分別') or '').strip()
+        if date_iso(day)!=target or product not in ('臺股期貨','台股期貨','TX') or trader not in ('外資及陸資','外資','外資及陸資法人'): continue
+        long=number(pick(row,'OpenInterest(Long)','OpenInterestLong','OpenInterest(Long)(Lots)','未平倉多方口數'))
+        short=number(pick(row,'OpenInterest(Short)','OpenInterestShort','OpenInterest(Short)(Lots)','未平倉空方口數'))
+        net=number(pick(row,'OpenInterest(Net)','OpenInterestNet','OpenInterest(Net)(Lots)','未平倉多空淨額口數'))
+        if any(x is None or x!=int(x) for x in (long,short,net)) or min(long,short)<0 or net!=long-short: continue
         matches.append({'date':target,'contract':'臺股期貨 TX','trader':'外資及陸資',
-            'longLots':int(long),'shortLots':int(short),'netLots':int(net),
-            'unit':'口','source':'TAIFEX institutional futures by contract'})
+          'longLots':int(long),'shortLots':int(short),'netLots':int(net),'unit':'口',
+          'source':'TAIFEX institutional futures by contract'})
     return matches[0] if len(matches)==1 else None
 
 
