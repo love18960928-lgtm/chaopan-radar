@@ -724,12 +724,12 @@ function sectorDirectory(){
  const stageBlock=stage=>{const arr=radar.watch.filter(o=>o.stage===stage);
   const audit=rawAudit[stage];
   const auditLabel=stage==='trend'&&maxBars<240?'資料不足，待MA240認證':
-   audit===undefined?`${arr.length} 檔`:`階段觀察${arr.length}／原始${audit} 檔`;
-  const auditNote=audit!==undefined?`<p class="r23-note">原始突破事件 ${audit} 檔，通過本頁基本量價與風險審查 ${arr.length} 檔；不是認證買點，兩者不是同一件事。重新站回新頸線不算首次突破。</p>`:
+   audit===undefined?`${arr.length} 檔`:`${audit} 檔`;
+  const auditNote=audit!==undefined?`<p class="r23-note">本階段共 ${audit} 檔股票，可逐檔展開分析；其中 ${arr.length} 檔通過基本量價與風險審查。所有名單均非認證買點。</p>`:
    stage==='trend'&&maxBars<240?`<p class="r23-note">僅 ${maxBars} 根以下日K，無法計算 MA240。這是資料不足，不代表市場沒有六線強勢股。</p>`:'';
   const rawOnly=(rawStageRows[stage]||[]).filter(c=>!arr.some(o=>o.row?.code===c.code));
   const rawGroup='raw-stage-'+stage;
-  const rawMarkup=rawOnly.length?`<div class="r44-raw-stage-visible"><p class="r23-note">原始階段股票 ${rawOnly.length} 檔（非認證買點）｜直接列出，點選股票可展開分析</p>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,compactStatus:'原始階段｜未通過嚴格審查',reason:'原始技術事件，非認證買點'})))}</div>`:'';
+  const rawMarkup=rawOnly.length?`<div class="r44-raw-stage-visible"><p class="r23-note">其他 ${rawOnly.length} 檔觀察股｜點選股票可展開分析（未通過嚴格審查）</p>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,compactStatus:'原始階段｜未通過嚴格審查',reason:'原始技術事件，非認證買點'})))}</div>`:'';
   return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${auditLabel}</span><span class="sector-arrow">⌄</span></summary>${auditNote}${rawMarkup}${r26GroupMarkup('stage-'+stage,arr)}</details>`;
  };
  out.innerHTML=`<p class="r23-note">歷史突破第一～四根、均線、回測及頸線觀察邏輯保留在這裡。這是<strong>研究資料庫</strong>，不是今天漲幅排行榜，也不代表明天會漲；MA240 歷史不足仍標待認證。</p>`+
