@@ -3,13 +3,14 @@ on:
   workflow_dispatch:
     inputs:
       backfill_days:
-        description: '僅首次回補輸入220，平常留0'
+        description: '回補日曆天數：0=最近7天；240日均線通常需約370至450日曆天歷史；建議分批、核對官方限額'
         required: false
         default: '0'
   schedule:
     - cron: '30 5 * * 1-5'   # 臺灣週一至五 13:30：收盤後檢查
     - cron: '30 6 * * 1-5'   # 臺灣週一至五 14:30：盤後行情
     - cron: '30 10 * * 1-5'  # 臺灣週一至五 18:30：行情補抓，法人未串接
+    - cron: '20 12 * * 1-5'   # 臺灣週一至五 20:20：官方法人晚間定稿後再次核對
     - cron: '0 15 * * 1-5'   # 臺灣週一至五 23:00：盤後最終補抓
     - cron: '0 22 * * 0-5'   # 臺灣週一至六 06:00：舊資料補查，國際指數未串接
     - cron: '30 0 * * 1-6'   # 臺灣週一至六 08:30：開盤前補查，國際指數未串接
@@ -39,11 +40,22 @@ jobs:
           if [ -f data/radar.json ]; then
             AS_OF=$(python -c 'import json;print(json.load(open("data/radar.json")).get("asOf",""))')
             if echo "$AS_OF" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
-              python scripts/market_intel_v311.py --as-of "$AS_OF" || true
+              if ! python scripts/market_intel_v311.py --as-of "$AS_OF"; then
+                echo "::warning::官方盤後輔助來源抓取失敗；交易訊號不會套用未驗證法人資料，請看後續資料狀態報告"
+              fi
+            else
+              echo "::warning::行情 asOf 日期格式錯誤或無行情資料，跳過法人抓取"
             fi
+          else
+            echo "::warning::沒有 data/radar.json，跳過法人抓取"
           fi
       - name: Build independently searchable stocks
         run: python scripts/build_stock_lookup.py
+      - name: Validate published snapshots, canonical levels and stock lookup
+        run: python scripts/verify_release_gate_r4410.py
+      - name: Explain market and institutional freshness in Actions summary
+        if: always()
+        run: python scripts/eod_freshness_report_r4411.py
       - name: Commit updated market data
         run: |
           git config user.name "github-actions[bot]"
