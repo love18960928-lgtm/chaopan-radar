@@ -21,15 +21,21 @@ def tick(price):
 
 
 def next_tick(level):
-    if level <= 0: return None
-    # Strictly above the anchor; if tick boundary changes, the new tier rules.
-    curr = level
-    for _ in range(10):
-        t = tick(curr + 1e-7)
-        nxt = round((int(round(curr/t + 1e-8)) + 1)*t, 4)
-        if nxt > level + 1e-8: return nxt
-        curr += t
-    return None
+    """Smallest VALID Taiwan ordinary-share tick strictly above an anchor.
+
+    A tick-size change at 10/50/100/500/1000 must be evaluated using the
+    *resulting* quote, not the increment at the old price. For instance,
+    the quote after 49.99 is 50.00, never 50.05.
+    """
+    if level is None or not isfinite(float(level)) or float(level) <= 0:
+        return None
+    level=float(level)
+    candidate=ceil_tick(level)
+    if candidate is not None and candidate>level+1e-9:
+        return candidate
+    # Already on a tradable tick: move a small positive fraction of an old
+    # tick and let ceil_tick resolve a possible tier transition.
+    return ceil_tick(level+max(tick(level)*.0001,1e-7))
 
 
 def ceil_tick(value):

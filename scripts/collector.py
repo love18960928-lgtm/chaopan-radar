@@ -68,9 +68,11 @@ def four_digits(x):
 
 def make_bar(date,code,name,market,opn,high,low,close,shares,next_limit=None):
     values=[num(n) for n in (opn,high,low,close,shares)]
-    if not four_digits(code) or any(v is None or v<=0 for v in values):return None
+    if not four_digits(code) or any(v is None or not math.isfinite(v) or v<=0 for v in values):return None
     opn,high,low,close,shares=values
-    if high<low or close>high+0.01 or close<low-0.01: return None
+    # Reject impossible candles before they contaminate history, averages,
+    # charting, and the breakout scan. Closing prices alone are insufficient.
+    if high+1e-8<max(opn,low,close) or low-1e-8>min(opn,close):return None
     return {'code':str(code).strip(),'name':str(name).strip(),'market':market,
             'bar':[date,round(opn,3),round(high,3),round(low,3),round(close,3),round(shares/1000,2),num(next_limit)]}
 
@@ -442,6 +444,13 @@ def score_company(stock, candidate):
             'methodNote':'月營收年增與累計年增為主；EPS僅區分正負，不以EPS金額跨產業加分；毛利率僅展示',
             'datePolicy':'月營收至少次月11日、季報依保守揭露期限、本益比不得使用未來日期（並非實際公告時刻）'}
 
+
+def markets_needing_refresh(known,stamp):
+    """Retry missing market sessions without pretending a partial batch is complete."""
+    minimum={'上市':700,'上櫃':450}
+    return [m for m,threshold in minimum.items()
+            if len(known.get((m,stamp),()))<threshold]
+
 def run(days,delay,as_of=None):
     now=(dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()) if as_of is None else dt.date.fromisoformat(as_of)
     allstocks=read_existing()
@@ -449,7 +458,12 @@ def run(days,delay,as_of=None):
     prior_history=json.loads(HISTORY.read_text('utf-8')) if HISTORY.exists() else {}
     historical_signals=prior_history.get('signalEvents',[])
     structure_journal=prior_history.get('structureJournal',{})
-    known={(s['market'],row[0]) for s in allstocks.values() for row in s.get('bars',[])}
+    # One valid stock record is NOT proof that an entire exchange session was
+    # collected. Index by distinct market+date+code, then repair incomplete days.
+    known={}
+    for s in allstocks.values():
+        for row in s.get('bars',[]):
+            known.setdefault((s['market'],row[0]),set()).add(s['code'])
     if days>0:
         dates=[now-dt.timedelta(days=i) for i in range(days-1,-1,-1)]
     else:
@@ -458,7 +472,7 @@ def run(days,delay,as_of=None):
     for date in dates:
         if date.weekday()>=5:continue
         stamp=date.isoformat()
-        needed=[market for market in ('上市','上櫃') if (market,stamp) not in known]
+        needed=markets_needing_refresh(known,stamp)
         if not needed:continue
         fetched={}
         for market in needed:
@@ -475,7 +489,8 @@ def run(days,delay,as_of=None):
                 stock['name']=it['name']
                 stock['bars']=[b for b in stock['bars'] if b[0]!=stamp]
                 stock['bars'].append(it['bar']);stock['bars'].sort(key=lambda b:b[0]);stock['bars']=stock['bars'][-780:]
-            modified+=len(rows);known.add((market,stamp))
+            modified+=len(rows)
+            known.setdefault((market,stamp),set()).update(rows.keys())
         LOG.info('%s TWSE/OTC records: %s/%s',stamp,len(fetched.get('上市',{})),len(fetched.get('上櫃',{})))
     # Preserve prior valid snapshot if no adequate history updated.
     if not allstocks:
