@@ -43,17 +43,41 @@ class CanonicalEventTests(unittest.TestCase):
         self.assertEqual(out['followStatus'],'假突破警戒')
 
     def test_public_snapshots_share_canonical_event(self):
-        # One stock suffices to exercise public publication, without network.
-        stocks={(self.sample['market'],self.sample['code']):self.sample}
+        # Do not use the latest live history.json for a *positive* test: the
+        # sample may legitimately stop qualifying after a new session.
+        # This fixed synthetic first-breakout fixture is independent of EOD.
+        from test_launch_v14 import taihong_fixture
+        stock=taihong_fixture()
+        stocks={(stock['market'],stock['code']):stock}
         snap=build_snapshot(stocks)
-        uni=build_universe(stocks,snap,snap['asOf'])
+        self.assertEqual(snap['asOf'],'2026-07-13')
         self.assertEqual(len(snap['candidates']),1)
+        self.assertIn('first',snap['candidates'][0]['tags'])
+        uni=build_universe(stocks,snap,snap['asOf'])
         a=snap['candidates'][0]
         b=uni['rows'][0]
         for k in ('neck','neckDate','distancePct','priceConfirmed','preLaunch','launchStage','tags','followStatus','trading'):
             self.assertEqual(a.get(k),b.get(k),k)
         self.assertIn('legacySignal',a)
         self.assertEqual(snap['counts']['first'],sum('first' in c.get('tags',[]) for c in snap['candidates']))
+
+    def test_public_snapshots_allow_zero_candidates(self):
+        # A normal, quiet trading day has no entry signal; do not fabricate one.
+        # The public universe must still contain the stock for manual lookup.
+        import datetime as dt
+        start=dt.date(2026,5,1)
+        dates=[(start+dt.timedelta(days=i)).isoformat()
+               for i in range(120) if (start+dt.timedelta(days=i)).weekday()<5]
+        stock={'market':'上市','code':'9998','name':'固定無訊號測試',
+               'bars':[[day,100.,100.5,99.5,100.,2000,None] for day in dates]}
+        stocks={(stock['market'],stock['code']):stock}
+        snap=build_snapshot(stocks)
+        self.assertEqual(snap['candidates'],[])
+        self.assertEqual(snap['candidateCount'],0)
+        uni=build_universe(stocks,snap,snap['asOf'])
+        self.assertEqual(len(uni['rows']),1)
+        self.assertEqual(uni['rows'][0]['code'],'9998')
+        self.assertTrue(all(v==0 for v in snap['counts'].values()))
 
     def test_unmatched_candidate_blocks_publication(self):
         snap={'asOf':'2026-10-20','candidates':[{'market':'上市','code':'9999'}]}
