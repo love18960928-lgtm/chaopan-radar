@@ -661,7 +661,7 @@ function radarObserveCard(o){
  const maGate=globalThis.ChaopanSectorV325?.sixLineAudit(c,o.snapshot);
  const ratio=Number(o.snapshot?.ratio);
  const note=`<div class="r26-context"><b>${esc(stage)} · ${esc(group)}</b><span>${esc(o.reason||'確認價量與支撐後再觀察')} · 歷史頸線 ${price(o.snapshot?.neck)} · 量比 ${Number.isFinite(ratio)?ratio.toFixed(2):'待資料'} · 同階段品質 ${Number.isFinite(o.quality)?o.quality.toFixed(1):'待核對'}（非勝率）</span><span>六線狀態：${esc(maGate?.label||'待核對')}；${esc(maGate?.reason||'資料不足')}</span><small>盤後觀察，非已認證進場或保證獲利；個股買賣價位仍須核對有效資料日。</small></div>`;
- return `<div class="r26-card-wrap">${note}${sectorBattleCard(c,{source:'r30-expand-'+o.stage,rankText:'超盤手｜'+stage,stageLabel:stage})}</div>`;
+ return `<div class="r26-card-wrap">${sectorBattleCard(c,{source:'r30-expand-'+o.stage,rankText:'超盤手｜'+stage,stageLabel:stage})}</div>`;
 }
 function r26GroupMarkup(id,arr){
  r26ObserveGroups.set(id,arr);
@@ -894,6 +894,20 @@ function arrangeR41Detail(c){
   }
   // Advanced research is not deleted: move it into Settings -> Advanced Features.
   advanced.push(el.outerHTML);el.remove();
+ }
+ // r44.15: all lookup and ranked stocks share the exact same four-tab battle card.
+ // Retain the former detail research under an optional fold; chart and gates stay intact.
+ const originalDetailMarkup=card.innerHTML;
+ card.innerHTML=sectorBattleCard(c,{source:'lookup-detail',rankText:'超盤手｜個股完整分析'})
+   +'<details class="lookup-extra-research"><summary>展開原始技術研究與六價位細節</summary>'
+   +originalDetailMarkup+'</details>';
+ // A missing finance snapshot must not remove the Company Research tab.
+ const unified=card.querySelector('.unified-battle-card');
+ if(unified&&!unified.querySelector('[data-card-tab="finance"]')){
+   const tabs=unified.querySelector('.sector-r9-tabs');
+   if(tabs)tabs.insertAdjacentHTML('beforeend','<button type="button" role="tab" data-card-tab="finance" aria-selected="false">公司研究</button>');
+   const actions=unified.querySelector('.sector-card-actions');
+   if(actions)actions.insertAdjacentHTML('beforebegin','<div role="tabpanel" data-card-panel="finance" hidden><p>目前尚無足夠的同日可驗證財務資料，請以官方公告為準。</p></div>');
  }
  const sameDay=Array.isArray(c.bars)&&c.bars.length>0&&c.bars.at(-1)?.[0]===c.date&&c.date===state.payload?.asOf;
  const lastSupport=sameDay?supportLines(c):[], defens=sameDay?c.structureV23?.mainDefense:null;

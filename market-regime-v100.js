@@ -63,7 +63,7 @@ function statusText(){
  const sourceDates=r?.marketAsOf||{},localTime=r?.generatedAt?new Date(r.generatedAt):null;
  const time=localTime&&!Number.isNaN(localTime.getTime())?taipeiParts(localTime).date+' '+new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(localTime):'待核對';
  // A frontend version string is NOT a verifiable GitHub commit/deployment identifier.
- el.textContent=`程式：r44.11-QA（部署 commit 待核對）｜個股行情：${asOf}｜上市：${sourceDates['上市']||'待核對'}／上櫃：${sourceDates['上櫃']||'待核對'}｜盤後產製：${time}（台灣時間）｜收錄 ${r?.stockCount??'—'}、全市場診斷 ${r?.universeCount??'—'}｜${d.label}`;
+ el.textContent=`程式：r44.14-QA（部署 commit 待核對）｜個股行情：${asOf}｜上市：${sourceDates['上市']||'待核對'}／上櫃：${sourceDates['上櫃']||'待核對'}｜盤後產製：${time}（台灣時間）｜收錄 ${r?.stockCount??'—'}、全市場診斷 ${r?.universeCount??'—'}｜${d.label}`;
  el.setAttribute('role','status');el.setAttribute('data-quality',d.alert?'warning':'check');
 }
 let store=null, run=0;
