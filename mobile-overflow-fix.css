@@ -1,0 +1,13 @@
+/* Mobile layout overflow correction: r44.17 base */
+html,body{max-width:100%;overflow-x:clip}
+*,*::before,*::after{box-sizing:border-box}
+.content-area,.content-area *,#relativeStrengthSection,#relativeStrengthSection *{min-width:0;max-width:100%}
+#relativeStrengthDisclosure>summary{display:block!important;width:100%;white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;font-size:clamp(16px,4.3vw,19px)!important;line-height:1.5!important;padding:12px 4px!important}
+#relativeStrengthDisclosure>summary::marker{font-size:13px}
+/* Responsive financial stat cards: allow long values and their containers to wrap */
+@media(max-width:600px){
+  .content-area :is(.intel-stats,.intel-stat-grid,.market-intel-grid,.intel-metric-grid,.intel-kpi-grid){grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .content-area :is(.intel-stats,.intel-stat-grid,.market-intel-grid,.intel-metric-grid,.intel-kpi-grid)>*{min-width:0!important}
+  .content-area :is(.intel-stat,.intel-metric,.intel-kpi,.metric-card,.stat-card){min-width:0!important;max-width:100%!important;overflow-wrap:anywhere;word-break:break-word}
+  .content-area :is(.intel-stat,.intel-metric,.intel-kpi,.metric-card,.stat-card) :is(strong,b,.value){white-space:normal!important;overflow-wrap:anywhere;font-size:clamp(15px,4.4vw,23px)}
+}
