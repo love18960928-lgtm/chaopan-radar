@@ -609,3 +609,14 @@ html,body{overscroll-behavior-y:contain}
 
 /* r44.12: remove redundant advanced market screening card while preserving JS nodes */
 .advanced-radar { display: none !important; }
+
+/* 2026-10-24: finance data cards - prevent mobile horizontal overflow */
+.intel-flow-grid { grid-template-columns:repeat(3,minmax(0,1fr)); min-width:0; max-width:100%; }
+.intel-flow-grid .intel-flow { min-width:0; max-width:100%; box-sizing:border-box; }
+.intel-flow-grid .intel-flow b { display:block; max-width:100%; white-space:normal; overflow-wrap:anywhere; word-break:normal; line-height:1.35; font-size:clamp(12px,3vw,18px); }
+@media(max-width:650px){
+  .intel-flow-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .intel-flow-grid .intel-flow:last-child:nth-child(odd){grid-column:1 / -1;}
+  .intel-flow-grid .intel-flow b {font-size:clamp(15px,4vw,20px);}
+}
+@media(max-width:350px){.intel-flow-grid{grid-template-columns:minmax(0,1fr)}.intel-flow-grid .intel-flow:last-child:nth-child(odd){grid-column:auto}}
