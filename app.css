@@ -620,3 +620,6 @@ html,body{overscroll-behavior-y:contain}
   .intel-flow-grid .intel-flow b {font-size:clamp(15px,4vw,20px);}
 }
 @media(max-width:350px){.intel-flow-grid{grid-template-columns:minmax(0,1fr)}.intel-flow-grid .intel-flow:last-child:nth-child(odd){grid-column:auto}}
+
+/* Three-low integrated into the original four-tab battle card */
+.tl-details .sector-battle-card{margin:12px 0;max-width:100%;box-sizing:border-box}.tl-unified-extra{border:1px solid #398077;background:#123a40;border-radius:12px;padding:12px;margin:12px 0;overflow-wrap:anywhere}.tl-unified-extra strong{color:#7ee0cd}.tl-unified-extra p{margin:8px 0;line-height:1.7}.tl-details .sector-r9-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}.tl-details .sector-r9-tabs button{min-width:0;overflow-wrap:anywhere}
