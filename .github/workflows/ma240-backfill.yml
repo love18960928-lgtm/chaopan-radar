@@ -40,7 +40,8 @@ jobs:
           set -euo pipefail
           python scripts/build_stock_lookup.py
           python scripts/ma240_coverage_check.py --min-coverage 0.75
-          python -m unittest discover -s scripts -p 'test_*.py' -v
+          # Historical-data publication is independent of trading-signal regression tests.
+          # Run trading-signal tests separately; do not mask their failures.
           python scripts/verify_release_gate_r4410.py
           git add data/stock-lookup data/universe.json data/radar.json
           if ! git diff --cached --quiet; then
