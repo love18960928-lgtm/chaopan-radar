@@ -21,6 +21,11 @@ function mark(r,c){
  r._candidate=both&&(breakout||c.preLaunch===true)&&vr>=1;
  r._confirmed=r._candidate&&breakout&&vr>=1.5&&c.riskLevel==='low';
  r._context=c;
+ if(r._candidate || r._confirmed){
+   const v=r._volume;const price=Number(c.close ?? r.close);
+   const ok=!!(v&&v.asOf===dataDate&&Number.isFinite(v.avg20Lots)&&Number.isFinite(v.todayLots)&&Number.isFinite(price)&&v.avg20Lots>=500&&v.todayLots>=500&&v.todayLots*price*1000>=10000000);
+   if(!ok){r._candidate=false;r._confirmed=false;r._volumeRejected=true;}
+ }
 }
 function stock(r){
  const d=document.createElement('details');d.className='tl-stock';const s=document.createElement('summary');
@@ -34,7 +39,12 @@ function stock(r){
 
 let dataDate='';
 
-fetch('three-low-data.json?v=20261026-unified-v4',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()}).then(async data=>{const rows=data.rows||[];const context=await fetch('three-low-price-context.json?v=20261026-v5',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('價量資料缺失');return r.json()}).catch(()=>({rows:[]}));const contextMap=pickContext(context.rows||[]);const matchingDate=context.asOf===data.asOf; if(!matchingDate){const warning=document.createElement('p');warning.className='tl-note';warning.textContent='價量資料日期與扣抵資料不一致，精選訊號已停用，避免使用錯誤資料。';section.querySelector('#tl-groups').before(warning)}for(const r of rows)mark(r,matchingDate?contextMap.get(String(r.code)):null);
+fetch('three-low-data.json?v=20261026-unified-v4',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()}).then(async data=>{const rows=data.rows||[];const context=await fetch('three-low-price-context.json?v=20261026-v5',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('價量資料缺失');return r.json()}).catch(()=>({rows:[]}));const contextMap=pickContext(context.rows||[]);const matchingDate=context.asOf===data.asOf; if(!matchingDate){const warning=document.createElement('p');warning.className='tl-note';warning.textContent='價量資料日期與扣抵資料不一致，精選訊號已停用，避免使用錯誤資料。';section.querySelector('#tl-groups').before(warning)}// Fail closed when the volume snapshot is absent or from another session date.
+let volumePayload=null;try{const res=await fetch('three-low-volume-context.json?v=20261027-v1',{cache:'no-store'});if(res.ok)volumePayload=await res.json()}catch(_e){}
+const volumeMatching=volumePayload?.asOf===data.asOf;
+if(!volumeMatching){const note=document.createElement('p');note.className='tl-note';note.textContent='成交量資料缺失或日期不同，扣3低精選與價量確認暫停判定；原始日週觀察仍顯示。';section.querySelector('#tl-groups').before(note)}
+dataDate=data.asOf||'';
+for(const r of rows){r._volume=volumeMatching?volumePayload.byCode?.[String(r.code)]:null;mark(r,matchingDate?contextMap.get(String(r.code)):null)}
 // Independent long-term trend annotation. Fail closed on missing, stale, or unadjusted data.
 let maPayload=null;try{const resp=await fetch('ma240-three-low-context.json?v=20261027-v1',{cache:'no-store'});if(resp.ok)maPayload=await resp.json()}catch(_e){}
 const maMatching=maPayload?.asOf===data.asOf;
