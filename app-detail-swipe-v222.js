@@ -611,7 +611,7 @@ function sectorBattleCard(c,options={}){
   return `<div class="sector-price-line"><small>${esc(name)}</small><span class="sector-price-track"><i style="width:${w.toFixed(1)}%"></i></span><b>${v===null?'—':n(v)}</b></div>`;
  }).join('');
  const threeLow=globalThis.ChaopanThreeLow?.byCode?.get(String(c.code));
- const threeLowValid=threeLow&&globalThis.ChaopanThreeLow?.asOf===c.date&&['day','week','month'].some(k=>threeLow[k]?.state==='符合');
+ const threeLowValid=threeLow&&globalThis.ChaopanThreeLow?.asOf===c.date&&['day','week'].some(k=>threeLow[k]?.state==='符合');
  const threeLowBlock=threeLowValid?`<section class="tl-unified-extra"><strong>扣3低｜符合條件的買賣價位觀察</strong><p>日 ${esc(threeLow.day?.state||'不足')}／週 ${esc(threeLow.week?.state||'不足')}／月 ${esc(threeLow.month?.state||'不足')}｜${esc(c.date)} 盤後</p>${threeLow.day?.state==='符合'&&numeric(threeLow.day.ma)>0?`<p>日MA20 回測觀察參考：<b>${price(threeLow.day.ma)}</b> 元（非直接委託買價）</p>`:''}<p>扣抵符合只代表均線可能上彎；仍須核對突破、支撐、量能與停損。請依下方原本買賣價位判斷。</p></section>`:'';
  const levels=r38PlanCard(c,g,true)+threeLowBlock;
  const trackLine=track.length?`紅K×${track[0].red}／綠K×${track[0].green}；${esc(track[0].source)}`:'歷史突破K線事件尚未核對';
