@@ -1,0 +1,49 @@
+name: MA120 MA240 歷史資料回補與驗證
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: eod-radar-updater
+  cancel-in-progress: false
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Backfill historical candles in 90-calendar-day windows
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # Most recent first, then progressively older; each batch is saved
+          # so an interrupted run can be restarted without losing completed work.
+          for offset in 0 90 180 270 360 450; do
+            echo "::group::History backfill offset=${offset}"
+            python scripts/collector.py --backfill 90 --backfill-offset "$offset" --delay 1.1
+            python scripts/ma240_coverage_check.py --min-coverage 0
+            git add storage/history.json data/radar.json data/universe.json
+            if ! git diff --cached --quiet; then
+              git commit -m "data: backfill MA240 history offset ${offset}"
+              git push
+            fi
+            echo '::endgroup::'
+          done
+      - name: Rebuild stock lookup and check MA240 coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/build_stock_lookup.py
+          python scripts/ma240_coverage_check.py --min-coverage 0.75
+          python -m unittest discover -s scripts -p 'test_*.py' -v
+          python scripts/verify_release_gate_r4410.py
+          git add data/stock-lookup data/universe.json data/radar.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'data: publish verified MA240 history lookup'
+            git push
+          fi
