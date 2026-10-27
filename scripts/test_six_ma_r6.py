@@ -2,7 +2,7 @@ import unittest
 from risk_v22 import assess_stock, market_context, build_universe
 
 class SixMATests(unittest.TestCase):
-    def test_full_history_six_ma_with_65_chart_candles(self):
+    def test_full_history_six_ma_with_260_chart_candles(self):
         b=[]
         from datetime import date,timedelta
         start=date(2025,1,1)
@@ -14,7 +14,7 @@ class SixMATests(unittest.TestCase):
         snapshot={'candidates':[],'asOf':asof,'marketAsOf':{'上市':asof,'上櫃':asof},'activeMarketCount':1}
         ctx=market_context({'x':st},asof)
         result=assess_stock(st,None,ctx,asof)
-        self.assertEqual(len(result['bars']),65)
+        self.assertEqual(len(result['bars']),260)
         self.assertEqual(result['maAll']['count'],260)
         self.assertEqual(result['maAll']['asOf'],asof)
         self.assertIsNotNone(result['maAll']['values']['240'])
