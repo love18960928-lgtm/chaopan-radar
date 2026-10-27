@@ -726,10 +726,10 @@ function sectorDirectory(){
  const inactiveStages=ordered.filter(stage=>!activeStages.includes(stage));
  const stageBlock=stage=>{const arr=radar.watch.filter(o=>o.stage===stage);
   const audit=rawAudit[stage];
-  const auditLabel=stage==='trend'&&maxBars<240?'資料不足，待MA240認證':
+  const auditLabel=stage==='trend'&&maxBars<245?'資料不足，待MA240認證':
    audit===undefined?`${arr.length} 檔`:`${audit} 檔`;
   const auditNote=audit!==undefined?`<p class="r23-note">本階段共 ${audit} 檔股票，可逐檔展開分析；其中 ${arr.length} 檔通過基本量價與風險審查。所有名單均非認證買點。</p>`:
-   stage==='trend'&&maxBars<240?`<p class="r23-note">僅 ${maxBars} 根以下日K，無法計算 MA240。這是資料不足，不代表市場沒有六線強勢股。</p>`:'';
+   stage==='trend'&&maxBars<245?`<p class="r23-note">僅 ${maxBars} 根以下日K，無法完整核算 MA240 與5日斜率。這是資料不足，不代表市場沒有六線強勢股。</p>`:'';
   const rawOnly=(rawStageRows[stage]||[]).filter(c=>!arr.some(o=>o.row?.code===c.code));
   const rawGroup='raw-stage-'+stage;
   const rawMarkup=rawOnly.length?`<div class="r44-raw-stage-visible"><p class="r23-note">其他 ${rawOnly.length} 檔觀察股｜點選股票可展開分析（未通過嚴格審查）</p>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,compactStatus:'原始階段｜未通過嚴格審查',reason:'原始技術事件，非認證買點'})))}</div>`:'';

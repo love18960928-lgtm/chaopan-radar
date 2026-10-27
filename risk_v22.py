@@ -135,13 +135,11 @@ def assess_stock(st, snapshot_row, context, asof):
     if not b or b[-1][0]!=asof:
         c.update({'riskLevel':'unknown','riskStatus':'資料日期不一致','riskReasons':['缺少最新同交易日行情'],
                   'opportunityScore':None,'decision':'資料不足','relMarket5Pct':None,'relSector5Pct':None})
-        c['bars']=b[-65:];return c
+        c['bars']=b[-260:];return c
     n=len(b)
-    c['bars']=[[x[0],float(x[1]),float(x[2]),float(x[3]),float(x[4]),round(float(x[5]))] for x in b[-65:]]
+    c['bars']=[[x[0],float(x[1]),float(x[2]),float(x[3]),float(x[4]),round(float(x[5]))] for x in b[-260:]]
     c['date']=asof
-    # Publish long-term averages as date-locked diagnostics rather than
-    # shipping 240 daily candles to every mobile user. The chart can remain
-    # capped at 65 bars without mislabeling MA120/MA240 as missing.
+    # Publish up to 260 daily candles for independently verified six-line checks.
     average_days=(5,10,20,60,120,240)
     close_series=[float(z[4]) for z in b]
     ma_values={str(d):round(mean(close_series[-d:]),3) if n>=d else None for d in average_days}

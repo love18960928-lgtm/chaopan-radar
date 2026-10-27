@@ -10,8 +10,6 @@
  const themeCodes=new Set(['2327','2492','2375','2472','3026']); // limited sample, not entire passive-component universe
  const memoryCodes=new Set(['2344','2408','2337','3006','3260','4967','8299','2451','8271','5289','8088']); // curated memory-sector representatives
  const banned=/假突破|跌破|突破失敗|結構破壞|出貨|賣壓|轉弱|不宜追價|破位|長上影警戒/;
- const MIN_AVG_LOTS=500, MIN_DAY_LOTS=500, MIN_TURNOVER_K=10000; // lots; close*lots = NT$ thousands
- const liquid=v=>Boolean(v&&v.avgLots>=MIN_AVG_LOTS&&v.volume>=MIN_DAY_LOTS&&v.dayTradingValue>=MIN_TURNOVER_K);
  const structuralDanger=/假突破|跌破|突破失敗|結構破壞|出貨|賣壓|轉弱|破位|長上影警戒/;
  function sectorName(c){const name=String(c?.industry||c?.fundamentals?.industry||'').trim();if(!name||/未分類|待分類|不詳|未知/.test(name))return null;
   if(themeCodes.has(String(c.code))&&name==='電子零組件業')return '被動元件（代表股5檔）';
@@ -53,7 +51,7 @@
   const v=snapshot||validate(c,c?.date);
   const bars=c?.bars;
   if(!v||!Array.isArray(bars))return {status:'invalid',confirmed:false,label:'六線認證：行情待核對',reason:'交易日或OHLCV不完整'};
-  if(bars.length<240)return {status:'insufficient',confirmed:false,label:'六線待認證',reason:'僅有'+bars.length+'根日K，需至少240根才能核算MA240',bars:bars.length};
+  if(bars.length<245)return {status:'insufficient',confirmed:false,label:'六線待認證',reason:'僅有'+bars.length+'根日K，需至少245根才能驗證MA240及5日斜率',bars:bars.length};
   const prices=bars.map(b=>num(b[4]));
   const avg=(n,end=prices.length)=>mean(prices.slice(end-n,end));
   const levels={};for(const n of [5,10,20,60,120,240])levels[n]=avg(n);
@@ -64,7 +62,7 @@
   const cleanCandle=v.position>=.45&&v.upper<.40&&v.ratio>=.60&&v.ratio<=5;
   const risk=c.riskFirst||c.possiblePriceAdjustment||c.overextended||['high','medium'].includes(c.riskLevel)||
     banned.test([c.followStatus,c.unifiedStage,c.trading?.status].join(' '))||v.close/v.ma20>1.12;
-  const confirmed=liquid(v)&&slope20&&slope60&&alignment&&cleanCandle&&!risk;
+  const confirmed=slope20&&slope60&&alignment&&cleanCandle&&!risk;
   return {status:confirmed?'confirmed':'six-above',confirmed,
    label:confirmed?'六線確認強勢':'六線站上／趨勢未確認',
    reason:confirmed?'站上六線、均線多頭排列、MA20與MA60上彎且未觸發賣壓門檻':
@@ -74,7 +72,6 @@
  // confirmed 6-MA strong stock. Do not turn unknown 120/240D MAs into passes.
  function leaderAudit(c,v,stage){
   if(!v)return {eligible:false,reason:'交易日或價量資料不足'};
-  if(!liquid(v))return {eligible:false,reason:'成交量或成交金額未達門檻（20日均量500張、當日500張、當日成交金額1000萬元）'};
   if(c?.riskFirst||c?.possiblePriceAdjustment||c?.overextended||
      ['medium','high'].includes(String(c?.riskLevel||''))||
      banned.test([c?.followStatus,c?.unifiedStage,c?.trading?.status].join(' '))||
@@ -139,7 +136,7 @@
      ['high','medium'].includes(String(c.riskLevel||''))||
      structuralDanger.test([c.followStatus,c.unifiedStage,c.trading?.status].join(' '))||
      ['danger','supply','unknown'].includes(upstream?.kind))return null;
-  if(!liquid(v)||v.high<=v.low||
+  if(v.avgLots<300||v.volume<50||v.high<=v.low||v.dayTradingValue<10000||
      (v.upper>=.44&&v.position<=.45)||(v.ratio>=2&&v.position<.32))return null;
   return movingTrendAudit(c,v);
  }
@@ -152,7 +149,7 @@
    x.stage='blocked';x.reason='結構或賣壓風險，禁止列入進場觀察';return x;
   }
   // Minimum liquidity, wick and chase gate independent of upstream scores.
-  if(!liquid(v)||v.high<=v.low||v.upper>=.44&&v.position<=.45||
+  if(v.avgLots<300||v.volume<50||v.dayTradingValue<10000||v.high<=v.low||v.upper>=.44&&v.position<=.45||
      v.ratio>=2&&v.position<.32||v.ma20===null||v.close<v.ma20*.99||
      v.close/v.ma20>1.12){x.stage='blocked';x.reason='量能、長上影、MA20位置或乖離未通過';return x;}
   if(!(v.neck>0&&v.neck<Infinity)){x.reason='缺可核對的歷史頸線';return x;}
