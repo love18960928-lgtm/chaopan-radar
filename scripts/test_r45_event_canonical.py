@@ -27,7 +27,9 @@ class CanonicalEventTests(unittest.TestCase):
         self.assertEqual(second['breakoutDate'],'2026-10-12')
         self.assertEqual(second['neck'],first['neck'])
         self.assertEqual(second['secondaryCrossedNeck'],34.9)
-        self.assertEqual(cycle_judgement(self.prefix('2026-10-13')['bars'])['breakoutSequence']['phase'],'second')
+        # The historical neckline was crossed before this episode; its next
+        # trading day must not be mislabelled as a first-breakout second bar.
+        self.assertEqual(cycle_judgement(self.prefix('2026-10-13')['bars'])['breakoutSequence']['phase'],'reclaim-follow')
 
     def test_first_result_not_affected_by_future(self):
         early=scan_stock(self.prefix('2026-10-12'))
