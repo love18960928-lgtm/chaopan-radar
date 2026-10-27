@@ -47,6 +47,7 @@
  // We require 240+ same-date, chronological, valid daily bars and compute all
  // averages ourselves. In particular, 65-bar snapshots and unverified cached
  // MA240 fields must never be certified as a six-MA leader.
+ function liquidityOK(v){return !!(v&&v.avgLots>=500&&v.volume>=500&&v.dayTradingValue>=10000);}
  function sixLineAudit(c,snapshot){
   const v=snapshot||validate(c,c?.date);
   const bars=c?.bars;
@@ -62,22 +63,23 @@
   const cleanCandle=v.position>=.45&&v.upper<.40&&v.ratio>=.60&&v.ratio<=5;
   const risk=c.riskFirst||c.possiblePriceAdjustment||c.overextended||['high','medium'].includes(c.riskLevel)||
     banned.test([c.followStatus,c.unifiedStage,c.trading?.status].join(' '))||v.close/v.ma20>1.12;
-  const confirmed=slope20&&slope60&&alignment&&cleanCandle&&!risk;
+  const confirmed=liquidityOK(v)&&slope20&&slope60&&alignment&&cleanCandle&&!risk;
   return {status:confirmed?'confirmed':'six-above',confirmed,
    label:confirmed?'六線確認強勢':'六線站上／趨勢未確認',
    reason:confirmed?'站上六線、均線多頭排列、MA20與MA60上彎且未觸發賣壓門檻':
-      [!alignment?'均線尚未全數多頭排列':'',!(slope20&&slope60)?'MA20／MA60斜率尚未同步轉正':'',!cleanCandle?'當日K棒／量比未通過':'',risk?'風險訊號未解除':''].filter(Boolean).join('；'),levels};
+      [!alignment?'均線尚未全數多頭排列':'',!(slope20&&slope60)?'MA20／MA60斜率尚未同步轉正':'',!cleanCandle?'當日K棒／量比未通過':'',!liquidityOK(v)?'流動性未達500張與千萬元門檻':'',risk?'風險訊號未解除':''].filter(Boolean).join('；'),levels};
  }
  // "Short/mid-term sector leader watch" is distinct from the strictly
  // confirmed 6-MA strong stock. Do not turn unknown 120/240D MAs into passes.
  function leaderAudit(c,v,stage){
   if(!v)return {eligible:false,reason:'交易日或價量資料不足'};
+  if(!liquidityOK(v))return {eligible:false,reason:'流動性未達20日均量500張、當日500張及千萬元'};
   if(c?.riskFirst||c?.possiblePriceAdjustment||c?.overextended||
      ['medium','high'].includes(String(c?.riskLevel||''))||
      banned.test([c?.followStatus,c?.unifiedStage,c?.trading?.status].join(' '))||
      ['supply','danger','unknown'].includes(stage?.kind))return {eligible:false,reason:'賣壓／結構／風險旗標未解除'};
   const b=c.bars;
-  if(b.length<65||v.volume<50||v.avgLots<300||!(v.neck>0)||v.close<=v.neck)return {eligible:false,reason:'均線、頸線或流動性不足／尚未站上頸線'};
+  if(b.length<65||!liquidityOK(v)||!(v.neck>0)||v.close<=v.neck)return {eligible:false,reason:'均線、頸線或流動性不足／尚未站上頸線'};
   const closes=b.map(bar=>num(bar[4]));
   const avg=(n,end=closes.length)=>mean(closes.slice(end-n,end));
   const averages=[5,10,20,60].map(n=>avg(n));
@@ -131,25 +133,26 @@
  // stage outcomes intact; only add a trend watch when that scan had no candidate.
  function inspectTrend(c,asOf,upstream){
   const v=validate(c,asOf);
-  if(!v)return null;
+  if(!v||!liquidityOK(v))return null;
   if(c.possiblePriceAdjustment||c.onePriceLimit||c.riskFirst||
      ['high','medium'].includes(String(c.riskLevel||''))||
      structuralDanger.test([c.followStatus,c.unifiedStage,c.trading?.status].join(' '))||
      ['danger','supply','unknown'].includes(upstream?.kind))return null;
-  if(v.avgLots<300||v.volume<50||v.high<=v.low||v.dayTradingValue<10000||
+  if(!liquidityOK(v)||v.high<=v.low||
      (v.upper>=.44&&v.position<=.45)||(v.ratio>=2&&v.position<.32))return null;
   return movingTrendAudit(c,v);
  }
  function inspect(c,asOf,stage){
   const v=validate(c,asOf);if(!v)return {stage:'unknown',reason:'價格／日期／成交量資料不完整',snapshot:null};
   const x={stage:'none',reason:'暫不符合本輪觀察條件',snapshot:v};
+  if(!liquidityOK(v)){x.stage='blocked';x.reason='流動性未達20日均量500張、當日500張及千萬元';return x;}
   if(c.possiblePriceAdjustment||c.overextended||c.onePriceLimit||c.riskFirst||['high','medium'].includes(String(c.riskLevel||''))||
      banned.test([c.followStatus,c.unifiedStage,c.trading?.status].join(' '))||
      ['danger','supply','unknown'].includes(stage?.kind)){
    x.stage='blocked';x.reason='結構或賣壓風險，禁止列入進場觀察';return x;
   }
   // Minimum liquidity, wick and chase gate independent of upstream scores.
-  if(v.avgLots<300||v.volume<50||v.dayTradingValue<10000||v.high<=v.low||v.upper>=.44&&v.position<=.45||
+  if(!liquidityOK(v)||v.high<=v.low||v.upper>=.44&&v.position<=.45||
      v.ratio>=2&&v.position<.32||v.ma20===null||v.close<v.ma20*.99||
      v.close/v.ma20>1.12){x.stage='blocked';x.reason='量能、長上影、MA20位置或乖離未通過';return x;}
   if(!(v.neck>0&&v.neck<Infinity)){x.reason='缺可核對的歷史頸線';return x;}
@@ -298,5 +301,5 @@
   for(const g of coverage)g.stocks.sort(compare);
   return {asOf,strong:qualifiedStrong,otherBroadStrong:strong.filter(g=>g.leaderCount===0),warming,watch:observations,coverage,counts:observations.reduce((a,x)=>(a[x.stage]=(a[x.stage]||0)+1,a),{})};
  }
- return {sectorName,validate,sixLineAudit,leaderAudit,inspect,inspectTrend,analyze,themeCodes:[...themeCodes],memoryCodes:[...memoryCodes]};
+ return {sectorName,validate,liquidityOK,sixLineAudit,leaderAudit,inspect,inspectTrend,analyze,themeCodes:[...themeCodes],memoryCodes:[...memoryCodes]};
 });
