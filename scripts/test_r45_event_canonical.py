@@ -27,8 +27,8 @@ class CanonicalEventTests(unittest.TestCase):
         self.assertEqual(second['breakoutDate'],'2026-10-12')
         self.assertEqual(second['neck'],first['neck'])
         self.assertEqual(second['secondaryCrossedNeck'],34.9)
-        # The canonical first breakout stays on 10/12; a later neckline reclaim
-        # is not a new first/second breakout cycle.
+        # The historical neckline was crossed before this episode; its next
+        # trading day must not be mislabelled as a first-breakout second bar.
         self.assertEqual(cycle_judgement(self.prefix('2026-10-13')['bars'])['breakoutSequence']['phase'],'reclaim-follow')
 
     def test_first_result_not_affected_by_future(self):
