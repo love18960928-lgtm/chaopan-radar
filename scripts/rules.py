@@ -97,9 +97,13 @@ def scan_stock(stock, detect_follow=True, include_all=False):
     # A: reference the heaviest intact anchor that today's close crosses.
     anchor=max(crossings,key=lambda a:(a['vol'],a['high'])) if crossings else None
     if not anchor:
-        # B and legacy near signal: closest unbroken upper resistance.
+        # Prefer a meaningful historical high-volume resistance in the actionable
+        # 10% price band. A recent low-volume peak must not displace an older
+        # dominant volume anchor merely because it is a little closer.
         ceilings=[a for a in anchors if a['high']>=close]
-        anchor=min(ceilings,key=lambda a:(a['high']-close,-a['vol'])) if ceilings else None
+        actionable=[a for a in ceilings if a['high']<=close/0.90]
+        anchor=max(actionable,key=lambda a:(a['vol'],a['high'],a['date'])) if actionable else (
+            min(ceilings,key=lambda a:(a['high']-close,-a['vol'])) if ceilings else None)
     neck=anchor['high'] if anchor else None
     dist=round(100*(close/neck-1),2) if neck else None
     first=bool(anchor and anchor in crossings)
