@@ -11,13 +11,14 @@ on:
         required: false
         default: '0'
   schedule:
-    - cron: '30 5 * * 1-5'   # 臺灣週一至五 13:30：收盤後檢查
-    - cron: '30 6 * * 1-5'   # 臺灣週一至五 14:30：盤後行情
-    - cron: '30 10 * * 1-5'  # 臺灣週一至五 18:30：行情補抓，法人未串接
-    - cron: '20 12 * * 1-5'   # 臺灣週一至五 20:20：官方法人晚間定稿後再次核對
-    - cron: '0 15 * * 1-5'   # 臺灣週一至五 23:00：盤後最終補抓
-    - cron: '0 22 * * 0-5'   # 臺灣週一至六 06:00：舊資料補查，國際指數未串接
-    - cron: '30 0 * * 1-6'   # 臺灣週一至六 08:30：開盤前補查，國際指數未串接
+    # 台灣週一至週五 09:00–20:30，每30分鐘嘗試補抓官方已公布資料。
+    # GitHub Actions 使用 UTC；01:00–12:30 UTC = 台灣09:00–20:30。
+    # 官方資料未公布時不會憑空產生新行情；排程亦可能延遲。
+    - cron: '*/30 1-12 * * 1-5'
+    # 週一至週五23:00再補抓一次晚間可能延後的資料。
+    - cron: '0 15 * * 1-5'
+    # 週一至週六08:30補查前一交易日資料。
+    - cron: '30 0 * * 1-6'
 permissions:
   contents: write
 concurrency:
@@ -56,26 +57,19 @@ jobs:
           fi
       - name: Build independently searchable stocks
         run: python scripts/build_stock_lookup.py
+      - name: Rebuild all four three-low payloads from validated EOD data
+        run: python scripts/build_three_low.py
       - name: Validate published snapshots, canonical levels and stock lookup
         run: python scripts/verify_release_gate_r4410.py
       - name: Explain market and institutional freshness in Actions summary
         if: always()
         run: python scripts/eod_freshness_report_r4411.py
-      - name: Audit three-low freshness and publish readiness
-        if: always()
-        run: python scripts/audit_three_low_publish.py
       - name: Commit updated market data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add storage/history.json data/radar.json data/universe.json data/stock-lookup
+          git add storage/history.json data/radar.json data/universe.json data/stock-lookup three-low-data.json three-low-price-context.json three-low-volume-context.json ma240-three-low-context.json
           if [ -f data/market-intel.json ]; then git add data/market-intel.json; fi
-          # Publish only regenerated and date-consistent three-low snapshots.
-          if [ -f .three_low_publish_ready ]; then
-            git add three-low-data.json three-low-price-context.json three-low-volume-context.json ma240-three-low-context.json
-          else
-            echo "::warning::Three-low files are stale or mismatched; keeping last published snapshot"
-          fi
           if ! git diff --cached --quiet; then
             git commit -m "data: update V2.2 unified radar"
             git push
