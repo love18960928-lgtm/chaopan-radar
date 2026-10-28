@@ -1,0 +1,23 @@
+name: 超盤手每30分鐘資料日期巡檢（非即時行情）
+on:
+  workflow_dispatch:
+  schedule:
+    # GitHub cron is UTC; Taiwan weekday 09:00–13:30.
+    - cron: '0,30 1-4 * * 1-5'
+    - cron: '0,30 5 * * 1-5'
+permissions:
+  contents: read
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check snapshot consistency without publishing fake updates
+        run: |
+          python scripts/audit_three_low_freshness.py | tee freshness.txt
+          cat freshness.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '此巡檢不抓盤中即時行情，也不修改資料。' >> "$GITHUB_STEP_SUMMARY"
