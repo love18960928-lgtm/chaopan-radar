@@ -27,9 +27,14 @@ class CanonicalEventTests(unittest.TestCase):
         self.assertEqual(second['breakoutDate'],'2026-10-12')
         self.assertEqual(second['neck'],first['neck'])
         self.assertEqual(second['secondaryCrossedNeck'],34.9)
-        # The historical neckline was crossed before this episode; its next
-        # trading day must not be mislabelled as a first-breakout second bar.
-        self.assertEqual(cycle_judgement(self.prefix('2026-10-13')['bars'])['breakoutSequence']['phase'],'reclaim-follow')
+        # The structure module tracks historical re-crossing of its own resistance
+        # zone.  It must not relabel an already-crossed level as a fresh first
+        # or second breakout. The rules module's separate intact-volume anchor
+        # is not the same event; the two labels must not be equated.
+        seq=cycle_judgement(self.prefix('2026-10-13')['bars'])['breakoutSequence']
+        self.assertEqual(seq['phase'],'reclaim-follow')
+        self.assertLess(seq['initialDate'],'2026-10-13')
+        self.assertEqual(seq['daysSinceFirst'],1)
 
     def test_first_result_not_affected_by_future(self):
         early=scan_stock(self.prefix('2026-10-12'))
