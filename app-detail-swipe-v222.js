@@ -1929,6 +1929,7 @@ function makeChart(bars,neck,days,supports=[],necklines=[],mainDefense=null,asOf
   for(const a of annotations){const yy=Math.max(top+12,Math.min(top+kHeight-4,Math.max(a.y,last+13)));last=yy;
     svg+=`<text x="${P+3}" y="${yy.toFixed(1)}" fill="${a.color}" font-size="10" paint-order="stroke" stroke="#0d1a29" stroke-width="2">${esc(a.label)}</text>`;
   }
+  const offset=all.length-data.length, allCloses=all.map(x=>Number(x[4]));
   // Confirmed pivot trendlines. Only display lines derived from verified historical candles.
   const trend=globalThis.ChaopanTrendLines?.analyze(all,asOf);
   if(trend?.status==='ok'){
@@ -1945,7 +1946,6 @@ function makeChart(bars,neck,days,supports=[],necklines=[],mainDefense=null,asOf
     for(const ev of trend.events){if(ev.level>=lo&&ev.level<=hi){const color=ev.kind==='support-break'?'#ff777f':'#31c9a8';svg+=`<circle cx="${(P+step*(data.length-.5)).toFixed(1)}" cy="${py(ev.level).toFixed(1)}" r="4" fill="${color}"/>`;}}
   }
   // Moving averages are calculated only from closes on or before each bar.
-  const offset=all.length-data.length, allCloses=all.map(x=>Number(x[4]));
   [[5,'#ffd36e'],[10,'#8dafff'],[20,'#eaa8ec']].forEach(([window,color])=>{
     const points=[];
     data.forEach((b,i)=>{const j=offset+i;if(j+1<window)return;
