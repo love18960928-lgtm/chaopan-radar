@@ -689,16 +689,24 @@ function sectorRadar(){
 // Missing values are NOT interpreted as a positive institutional/technical confirmation.
 const STRICT_BREAKOUT_STAGES=new Set(['first','second','third','fourth']);
 function strictBreakoutDecision(c,stage){
- if(!STRICT_BREAKOUT_STAGES.has(stage))return {eligible:true,reason:'非突破續攻階段'};
- if(!c||!c.breakoutEvent||!Number.isFinite(Number(c.breakoutEvent.level))||Number(c.breakoutEvent.level)<=0)
-  return {eligible:false,reason:'缺少有效突破事件頸線'};
- if(Number(c.close)<Number(c.breakoutEvent.level))return {eligible:false,reason:'收盤跌破突破頸線'};
- if(c.starPhase==='invalid'||c.breakoutQuality==='invalid')return {eligible:false,reason:'突破事件已失效'};
- if(c.fallingLimitRisk===true)return {eligible:false,reason:'疑似跌停／接近跌停'};
- if(c.continuationEligible!==true)return {eligible:false,reason:c.continuationEligible===false?'量價續攻條件未通過':'盤後續攻資格尚未更新'};
- if(c.breakoutQuality!=='strong')return {eligible:false,reason:'量價品質尚未認證續強'};
- if(stage!=='first'&&c.abovePrevHigh!==true)return {eligible:false,reason:'未收盤突破昨日高點'};
- return {eligible:true,reason:'突破事件與量價續攻條件已確認'};
+ const pass=(reason)=>({eligible:true,pending:false,reason});
+ const fail=(reason)=>({eligible:false,pending:false,reason});
+ const pending=(reason)=>({eligible:false,pending:true,reason});
+ if(!STRICT_BREAKOUT_STAGES.has(stage))return pass('非突破續攻階段');
+ if(!c)return pending('個股資料尚未載入');
+ const level=Number(c.breakoutEvent?.level),close=Number(c.close);
+ if(!c.breakoutEvent||!Number.isFinite(level)||level<=0)return pending('缺少有效突破事件頸線');
+ if(!Number.isFinite(close)||close<=0)return pending('收盤價格待核對');
+ if(close<level)return fail('收盤跌破突破頸線');
+ if(c.starPhase==='invalid'||c.breakoutQuality==='invalid')return fail('突破事件已失效');
+ if(c.fallingLimitRisk===true)return fail('疑似跌停／接近跌停');
+ if(c.continuationEligible===false)return fail('量價續攻條件未通過');
+ if(c.continuationEligible!==true)return pending('盤後續攻資格尚未更新');
+ if(c.breakoutQuality==='weak'||c.breakoutQuality==='watch')return fail('量價品質未達續強標準');
+ if(c.breakoutQuality!=='strong')return pending('盤後量價品質尚未更新');
+ if(stage!=='first'&&c.abovePrevHigh===false)return fail('未收盤突破昨日高點');
+ if(stage!=='first'&&c.abovePrevHigh!==true)return pending('昨日高點比較資料待核對');
+ return pass('突破事件與量價續攻條件已確認');
 }
 const OBS_STAGE={tomorrow:'明日續攻候選（待隔日驗證）',r42pullback:'量縮回測再起（待隔日驗證）',r42pre:'頸線前蓄勢（提前布局觀察）',qualified:'大盤與個股條件已核對',leader:'強勢族群／短中期轉強個股',ready:'預備突破頸線',ma510:'突破前站上MA5／MA10',first:'突破第一根觀察',second:'突破第二根追蹤（非認證買點）',third:'突破第三根追蹤（非認證買點）',fourth:'突破第四根追蹤（非認證買點）',hold:'沿MA5／MA10趨勢追蹤（非追價買點）',maPullback:'沿MA5／MA10上漲後回測防守',launch:'量價啟動（未破大量K頸線）',reentry:'量縮回測／再度轉強觀察',trend:'六線確認／主升延續觀察'};
 const R29_PRIORITY=['hold','maPullback','ready','ma510','first','second','third','fourth','launch','reentry','trend'];
@@ -781,13 +789,15 @@ function sectorDirectory(){
   const audit=rawAudit[stage];
   const auditLabel=stage==='trend'&&maxBars<245?'資料不足，待MA240認證':
    audit===undefined?`${arr.length} 檔`:`${arr.length} 檔`;
-  const auditNote=audit!==undefined?`<p class="r23-note">僅顯示通過嚴格認證的檔數；未通過者保留在下方觀察清單，並非認證買點。</p>`:
+  const pendingCount=STRICT_BREAKOUT_STAGES.has(stage)?radar.watch.filter(o=>o.stage===stage&&strictBreakoutDecision(o.row,stage).pending).length:0;
+  const displayCount=pendingCount&&arr.length===0?'待認證':auditLabel;
+  const auditNote=audit!==undefined?`<p class="r23-note">僅顯示通過嚴格認證的檔數；資料不足者列待核對，未通過者保留觀察，不代表認證買點。</p>`:
    stage==='trend'&&maxBars<245?`<p class="r23-note">僅 ${maxBars} 根以下日K，無法完整核算 MA240 與5日斜率。這是資料不足，不代表市場沒有六線強勢股。</p>`:'';
   const rejected=STRICT_BREAKOUT_STAGES.has(stage)?radar.watch.filter(o=>o.stage===stage&&!strictBreakoutDecision(o.row,stage).eligible).map(o=>o.row):[];
   const rawOnly=[...(rawStageRows[stage]||[]),...rejected].filter((c,i,all)=>c?.code&&!arr.some(o=>o.row?.code===c.code)&&all.findIndex(x=>x?.code===c.code)===i);
   const rawGroup='raw-stage-'+stage;
   const rawMarkup=rawOnly.length?`<div class="r44-raw-stage-visible"><p class="r23-note">其他 ${rawOnly.length} 檔觀察股｜點選股票可展開分析（未通過嚴格審查）</p>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,compactStatus:'觀察｜'+strictBreakoutDecision(c,stage).reason,reason:strictBreakoutDecision(c,stage).reason})))}</div>`:'';
-  return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${auditLabel}</span><span class="sector-arrow">⌄</span></summary>${auditNote}${rawMarkup}${r26GroupMarkup('stage-'+stage,arr)}</details>`;
+  return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${displayCount}</span><span class="sector-arrow">⌄</span></summary>${auditNote}${rawMarkup}${r26GroupMarkup('stage-'+stage,arr)}</details>`;
  };
  out.innerHTML=`<p class="r23-note">歷史突破第一～四根、均線、回測及頸線觀察邏輯保留在這裡。這是<strong>研究資料庫</strong>，不是今天漲幅排行榜，也不代表明天會漲；MA240 歷史不足仍標待認證。</p>`+
  activeStages.map(stageBlock).join('')+
