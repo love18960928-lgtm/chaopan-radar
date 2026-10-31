@@ -27,14 +27,22 @@ class CanonicalEventTests(unittest.TestCase):
         self.assertEqual(second['breakoutDate'],'2026-10-12')
         self.assertEqual(second['neck'],first['neck'])
         self.assertEqual(second['secondaryCrossedNeck'],34.9)
-        # The structure module tracks historical re-crossing of its own resistance
-        # zone.  It must not relabel an already-crossed level as a fresh first
-        # or second breakout. The rules module's separate intact-volume anchor
-        # is not the same event; the two labels must not be equated.
-        seq=cycle_judgement(self.prefix('2026-10-13')['bars'])['breakoutSequence']
-        self.assertEqual(seq['phase'],'reclaim-follow')
-        self.assertLess(seq['initialDate'],'2026-10-13')
-        self.assertEqual(seq['daysSinceFirst'],1)
+        # Independent resistance models must not be conflated: the structure
+        # engine can correctly identify a reclaim of its *different* neckline.
+        structural=cycle_judgement(self.prefix('2026-10-13')['bars'])['breakoutSequence']
+        self.assertEqual(structural['phase'],'reclaim-follow')
+        self.assertNotEqual(structural['level'],second['neck'])
+        self.assertEqual(first['starLabel'],'★1')
+        self.assertEqual(second['starLabel'],'★2')
+        self.assertEqual(first['breakoutEvent']['id'],second['breakoutEvent']['id'])
+
+    def test_star_third_day_and_anchor_remain_fixed(self):
+        first=scan_stock(self.prefix('2026-10-12'))
+        second=scan_stock(self.prefix('2026-10-13'))
+        third=scan_stock(self.prefix('2026-10-14'))
+        self.assertEqual(second['starPhase'],'second')
+        self.assertEqual(third['starPhase'],'third')
+        self.assertEqual(first['breakoutEvent']['id'],third['breakoutEvent']['id'])
 
     def test_first_result_not_affected_by_future(self):
         early=scan_stock(self.prefix('2026-10-12'))

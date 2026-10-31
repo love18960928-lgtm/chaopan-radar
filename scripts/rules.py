@@ -97,13 +97,9 @@ def scan_stock(stock, detect_follow=True, include_all=False):
     # A: reference the heaviest intact anchor that today's close crosses.
     anchor=max(crossings,key=lambda a:(a['vol'],a['high'])) if crossings else None
     if not anchor:
-        # Prefer a meaningful historical high-volume resistance in the actionable
-        # 10% price band. A recent low-volume peak must not displace an older
-        # dominant volume anchor merely because it is a little closer.
+        # B and legacy near signal: closest unbroken upper resistance.
         ceilings=[a for a in anchors if a['high']>=close]
-        actionable=[a for a in ceilings if a['high']<=close/0.90]
-        anchor=max(actionable,key=lambda a:(a['vol'],a['high'],a['date'])) if actionable else (
-            min(ceilings,key=lambda a:(a['high']-close,-a['vol'])) if ceilings else None)
+        anchor=min(ceilings,key=lambda a:(a['high']-close,-a['vol'])) if ceilings else None
     neck=anchor['high'] if anchor else None
     dist=round(100*(close/neck-1),2) if neck else None
     first=bool(anchor and anchor in crossings)
@@ -207,7 +203,24 @@ def scan_stock(stock, detect_follow=True, include_all=False):
                     '距歷史大量K高點3%以內，尚未正式突破' if near else
                     '今日成交量與收盤價均突破前120日最大量K' if new_volume else
                     '20日內有多次漲停，但不能代替突破')
+    # A star belongs to the volume-K anchor, not an unrelated structure neckline.
+    # The event date stays fixed during follow-up; a secondary crossed level
+    # cannot reset the first bar.
+    star_phase = ('first' if first else
+                  ('invalid' if follow_status=='假突破警戒' else
+                   ('second' if recent_event[0]==1 else
+                    'third' if recent_event[0]==2 else 'fourth_plus')) if recent_event else
+                  'ready' if (near or prep) else 'none')
+    star_label = {'first':'★1','second':'★2','third':'★3',
+                  'fourth_plus':'★4+','ready':'☆','invalid':'⚠','none':''}[star_phase]
+    event_date = recent_event[1]['date'] if recent_event else t[0] if first else None
+    event_level = recent_event[1]['neck'] if recent_event else neck if first else None
+    event_anchor_date = recent_event[1]['neckDate'] if recent_event else anchor['date'] if first and anchor else None
     return {
+        'starPhase':star_phase,'starLabel':star_label,
+        'breakoutEvent':({'id':f"{stock['market']}:{stock['code']}:{event_anchor_date}:{event_level:g}:{event_date}",
+                          'anchorDate':event_anchor_date,'level':event_level,
+                          'firstDate':event_date,'stage':star_phase} if event_date and event_level else None),
         'code':stock['code'],'name':stock['name'],'market':stock['market'],
         'date':t[0],'open':opn,'high':high,'low':low,'close':close,'lots':round(vol),
         'prevClose':prev_close,'changePct':round(100*(close/prev_close-1),2) if prev_close>0 else None,
