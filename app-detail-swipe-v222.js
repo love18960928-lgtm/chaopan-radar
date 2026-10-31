@@ -335,14 +335,21 @@ function breakoutReadoutCore(c){
 // Star labels are derived only from confirmed backend event data.
 // A prior screening appearance is shown only when stageHistory is present.
 function breakoutStar(c){
- const b=breakoutReadout(c),phase=String(b.phase||'');
- const n=Number(c.cycle?.daysSinceFirst ?? b.daysSinceFirst);
- const valid=!!(c.cycle?.initialDate||b.initialDate);
- if(phase==='ready')return {mark:'☆',title:'預備突破（尚未收盤突破）'};
- if(phase==='first')return {mark:'★1',title:'突破第一根'};
- if(phase==='second')return {mark:'★2',title:'突破第二根'};
- if(valid&&Number.isInteger(n)&&n>=2&&n<=3&&c.cycle?.hadBelow!==true)return {mark:n===2?'★3':'★4',title:'原頸線突破後第'+(n+1)+'個交易日'};
- if(valid&&Number.isInteger(n)&&n>3&&c.cycle?.hadBelow!==true)return {mark:'★4+',title:'原頸線突破後持續追蹤'};
+ // The official EOD star state is authoritative; no star survives a close below its event neckline.
+ const close=numeric(c.close);
+ const eventLevel=numeric(c.breakoutEvent?.level);
+ const neck=eventLevel>0?eventLevel:numeric(c.neck);
+ if(neck>0&&Number.isFinite(close)&&close<neck)return null;
+ const official=String(c.starPhase||'').toLowerCase();
+ const officialMarks={ready:'☆',first:'★1',second:'★2',third:'★3',fourth_plus:'★4+'};
+ if(official){
+   if(!officialMarks[official])return null;
+   if(official!=='ready'&&!(neck>0&&(official==='first'?close>neck:close>=neck)))return null;
+   return {mark:officialMarks[official],title:official==='ready'?'預備突破':`同一頸線突破階段 ${officialMarks[official]}`};
+ }
+ // Legacy snapshots have no canonical event state. Do not fabricate a ★ from an unrelated structural neckline.
+ const b=breakoutReadout(c);
+ if(b.phase==='ready'&&neck>0&&close<=neck)return {mark:'☆',title:'預備突破（舊資料，待盤後核對）'};
  return null;
 }
 function breakoutStarHTML(c){
