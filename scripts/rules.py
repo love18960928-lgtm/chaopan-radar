@@ -229,11 +229,39 @@ def scan_stock(stock, detect_follow=True, include_all=False):
                   'ready' if (near or prep) else 'none')
     star_label = {'first':'★1','second':'★2','third':'★3',
                   'fourth_plus':'★4+','ready':'☆','invalid':'⚠','none':''}[star_phase]
+    # Independent quality signal: ★ counts sessions, NOT a guaranteed continuation.
+    # MA/volume warnings never erase a valid event; only closing below its neck does.
+    quality = 'none'
+    quality_reasons = []
+    if star_phase == 'invalid':
+        quality = 'invalid'
+        quality_reasons.append('收盤跌破事件頸線')
+    elif star_phase == 'ready':
+        quality = 'watch'
+        quality_reasons.append('尚未收盤突破')
+    elif star_phase in ('first', 'second', 'third', 'fourth_plus'):
+        if star_phase == 'first':
+            if locked_limit or (vol_ratio >= 1.3 and close_in_top >= .7):
+                quality = 'strong'
+            else:
+                quality = 'watch'
+                quality_reasons.append('首根量能或收盤位置尚未確認')
+        else:
+            # MA5 is a caution flag, never a replacement for the event neckline.
+            ma5 = mean(float(b[4]) for b in bars[-5:])
+            if close < ma5:
+                quality_reasons.append('收盤低於MA5')
+            if high > low and close_in_top < .35 and vol_ratio >= 1.3:
+                quality_reasons.append('放量收在當日偏低位置')
+            if close < prev_close and vol_ratio >= 1.5:
+                quality_reasons.append('放量下跌')
+            quality = 'weak' if len(quality_reasons) >= 2 else 'watch' if quality_reasons else 'strong'
     event_date = recent_event[1]['date'] if recent_event else t[0] if first else None
     event_level = recent_event[1]['neck'] if recent_event else neck if first else None
     event_anchor_date = recent_event[1]['neckDate'] if recent_event else anchor['date'] if first and anchor else None
     return {
         'starPhase':star_phase,'starLabel':star_label,
+        'breakoutQuality':quality,'breakoutQualityReasons':quality_reasons,
         'breakoutEvent':({'id':f"{stock['market']}:{stock['code']}:{event_anchor_date}:{event_level:g}:{event_date}",
                           'anchorDate':event_anchor_date,'level':event_level,
                           'firstDate':event_date,'stage':star_phase} if event_date and event_level else None),
