@@ -142,7 +142,7 @@ def scan_stock(stock, detect_follow=True, include_all=False):
             if not old_signal or not old_signal.get('priceConfirmed'):
                 continue
             old_level=old_signal.get('neck')
-            if not old_level or (first and close<old_level*.985):
+            if not old_level or (first and prev_close < old_level):
                 continue
             intervening=bars[-lag:]
             if first and any(intervening[i-1][4]<old_level*.97 and intervening[i][4]<old_level*.97
@@ -158,16 +158,32 @@ def scan_stock(stock, detect_follow=True, include_all=False):
         anchor={'high':old_signal['neck'],'date':old_signal['neckDate'],'vol':old_signal['neckLots']}
         neck=anchor['high']
         dist=round(100*(close/neck-1),2)
+    # A confirmed close below the event neckline ends that episode. A later
+    # close crossing back above that same level starts a NEW episode (★1).
+    if recent_event:
+        old_level=float(recent_event[1]['neck'])
+        if prev_close < old_level < close:
+            old=recent_event[1]
+            anchor={'high':old_level,'date':old['neckDate'],'vol':old['neckLots']}
+            neck=old_level
+            dist=round(100*(close/neck-1),2)
+            first=True
+            price_confirmed=True
+            volume_confirmed=bool(vol_ratio>=1.5 and close_in_top>=.7)
+            confirmed=volume_confirmed
+            near=False
+            prep=False
+            recent_event=None
     follow_status=None
     if recent_event:
         lag,old_signal=recent_event
         old_neck=old_signal['neck']; breakout_close=old_signal['close']
         breakout_vol=old_signal['lots']
-        if close < old_neck*.99:
+        if close < old_neck or (prev_close < old_neck and close <= old_neck):
             follow_status='假突破警戒'
         elif close>=breakout_close and close>=sma10:
             follow_status='突破續強'
-        elif close>=old_neck*.985 and vol<=breakout_vol*.75:
+        elif close>=old_neck and vol<=breakout_vol*.75:
             follow_status='縮量回測'
         else:
             follow_status='突破後觀察'
