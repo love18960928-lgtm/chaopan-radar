@@ -626,3 +626,6 @@ html,body{overscroll-behavior-y:contain}
 
 /* Breakout stage star badges — display only when source stage is present */
 .breakout-star-line{margin-top:5px}.breakout-star-badge{display:inline-block;padding:4px 9px;border-radius:999px;background:#453916;color:#ffe18a;font-size:13px;font-weight:750;border:1px solid #a98932}.breakout-star-empty{color:#9ca3af;font-size:12px}
+
+/* Breakout phase explanation (2026-10-31) */
+.breakout-stage-audit{margin:8px 0;padding:9px 12px;border:1px solid var(--line,#556);border-radius:9px;font-size:13px;line-height:1.55}.breakout-stage-audit small{display:block;opacity:.8;margin-top:3px}
