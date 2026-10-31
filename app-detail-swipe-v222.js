@@ -780,8 +780,8 @@ function sectorDirectory(){
  const stageBlock=stage=>{const arr=qualifiedRows(stage);
   const audit=rawAudit[stage];
   const auditLabel=stage==='trend'&&maxBars<245?'資料不足，待MA240認證':
-   audit===undefined?`${arr.length} 檔`:`${arr.length} 檔認證／${audit} 檔原始`;
-  const auditNote=audit!==undefined?`<p class="r23-note">本階段原始事件 ${audit} 檔，其中 ${arr.length} 檔通過突破事件與量價續攻資格。其餘列觀察；並非認證買點。</p>`:
+   audit===undefined?`${arr.length} 檔`:`${arr.length} 檔`;
+  const auditNote=audit!==undefined?`<p class="r23-note">僅顯示通過嚴格認證的檔數；未通過者保留在下方觀察清單，並非認證買點。</p>`:
    stage==='trend'&&maxBars<245?`<p class="r23-note">僅 ${maxBars} 根以下日K，無法完整核算 MA240 與5日斜率。這是資料不足，不代表市場沒有六線強勢股。</p>`:'';
   const rejected=STRICT_BREAKOUT_STAGES.has(stage)?radar.watch.filter(o=>o.stage===stage&&!strictBreakoutDecision(o.row,stage).eligible).map(o=>o.row):[];
   const rawOnly=[...(rawStageRows[stage]||[]),...rejected].filter((c,i,all)=>c?.code&&!arr.some(o=>o.row?.code===c.code)&&all.findIndex(x=>x?.code===c.code)===i);
