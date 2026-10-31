@@ -623,3 +623,6 @@ html,body{overscroll-behavior-y:contain}
 
 /* Three-low integrated into the original four-tab battle card */
 .tl-details .sector-battle-card{margin:12px 0;max-width:100%;box-sizing:border-box}.tl-unified-extra{border:1px solid #398077;background:#123a40;border-radius:12px;padding:12px;margin:12px 0;overflow-wrap:anywhere}.tl-unified-extra strong{color:#7ee0cd}.tl-unified-extra p{margin:8px 0;line-height:1.7}.tl-details .sector-r9-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}.tl-details .sector-r9-tabs button{min-width:0;overflow-wrap:anywhere}
+
+/* Breakout stage star badges — display only when source stage is present */
+.breakout-star-line{margin-top:5px}.breakout-star-badge{display:inline-block;padding:4px 9px;border-radius:999px;background:#453916;color:#ffe18a;font-size:13px;font-weight:750;border:1px solid #a98932}.breakout-star-empty{color:#9ca3af;font-size:12px}
