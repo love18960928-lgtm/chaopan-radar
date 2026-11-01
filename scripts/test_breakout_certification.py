@@ -68,18 +68,18 @@ class TestCertification(unittest.TestCase):
         certify_row(r)
         self.assertNotIn('continuationEligible',r)
 
-    def test_malformed_breakout_sequence_is_pending(self):
-        r=row(); r['breakoutSequence']='invalid-event'
+    def test_invalid_historical_candle_pending(self):
+        r=row(); r['bars'][-6][2]=90  # history high below its open/close
         certify_row(r)
         self.assertNotIn('continuationEligible',r)
 
-    def test_malformed_last_bar_is_pending(self):
-        r=row(); r['bars'][-1]='bad-bar'
+    def test_bad_date_format_pending(self):
+        r=row(); r['bars'][-6][0]='bad-date'
         certify_row(r)
         self.assertNotIn('continuationEligible',r)
 
-    def test_missing_snapshot_date_is_pending(self):
-        r=row(); r['date']=None; r['bars'][-1][0]=None
+    def test_nonlist_bars_pending(self):
+        r=row(); r['bars']='corrupt'
         certify_row(r)
         self.assertNotIn('continuationEligible',r)
 

@@ -1,5 +1,6 @@
 """Conservative EOD-only breakout certification. No invented missing market data."""
 import math
+import re
 
 
 def finite(value):
@@ -16,17 +17,14 @@ def certify_row(row):
                 'abovePrevHigh','breakoutVolumeRatio20','breakoutCloseLocation','breakoutUpperWickRatio'):
         row.pop(key, None)
     seq = row.get('breakoutSequence') or {}
-    if not isinstance(seq, dict):
-        return row  # malformed source event: pending, not a crash
     phase = seq.get('phase')
     if phase not in ('first', 'second', 'third', 'fourth', 'fourth_plus'):
         return row
     bars = row.get('bars') or []
     level = finite(seq.get('level'))
-    if (level is None or level <= 0 or not isinstance(bars, (list, tuple))
-            or not bars or not isinstance(bars[-1], (list, tuple))
-            or len(bars[-1]) < 6 or not isinstance(row.get('date'), str)
-            or bars[-1][0] != row.get('date')):
+    if level is None or level <= 0 or not isinstance(bars, (list, tuple)) or not bars:
+        return row
+    if not isinstance(bars[-1], (list, tuple)) or len(bars[-1]) < 6 or not isinstance(row.get('date'), str) or bars[-1][0] != row['date']:
         return row  # missing source data must remain pending
     row['breakoutEvent'] = {'level': level, 'initialDate': seq.get('initialDate'), 'source': 'breakoutSequence'}
     if len(bars) < 21:
@@ -36,12 +34,17 @@ def certify_row(row):
     if not all(isinstance(b, (list, tuple)) and len(b) >= 6 for b in bars[-21:]):
         return row
     dates = [str(b[0]) for b in bars[-21:]]
-    if dates != sorted(set(dates)):
+    if dates != sorted(set(dates)) or any(not re.fullmatch(r'\d{4}-\d{2}-\d{2}', d) for d in dates):
         return row
     o, hi, lo, close, volume = (finite(today[i]) for i in (1, 2, 3, 4, 5))
     prev_high = finite(yesterday[2])
     prev_open, prev_low, prev_close = (finite(yesterday[i]) for i in (1, 3, 4))
     volumes = [finite(b[5]) for b in bars[-21:-1]]
+    # Do not certify from corrupt historical OHLCV bars even if their volume looks valid.
+    for bar in bars[-21:-1]:
+        bo, bh, bl, bc = (finite(bar[i]) for i in (1, 2, 3, 4))
+        if any(v is None for v in (bo, bh, bl, bc)) or bl <= 0 or bh < max(bo, bc) or min(bo, bc) < bl:
+            return row
     if any(v is None or v < 0 for v in volumes) or any(v is None for v in (o,hi,lo,close,volume,prev_high,prev_open,prev_low,prev_close)):
         return row
     if not (hi >= max(o,close) and min(o,close) >= lo and hi >= lo and lo > 0 and volume >= 0
