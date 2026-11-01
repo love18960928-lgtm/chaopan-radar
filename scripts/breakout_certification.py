@@ -1,6 +1,7 @@
 """Conservative EOD-only breakout certification. No invented missing market data."""
 import math
 import re
+import datetime as dt
 
 
 def finite(value):
@@ -16,7 +17,9 @@ def certify_row(row):
     for key in ('breakoutEvent','continuationEligible','breakoutQuality','breakoutQualityReasons',
                 'abovePrevHigh','breakoutVolumeRatio20','breakoutCloseLocation','breakoutUpperWickRatio'):
         row.pop(key, None)
-    seq = row.get('breakoutSequence') or {}
+    seq = row.get('breakoutSequence')
+    if not isinstance(seq, dict):
+        return row  # malformed event metadata is not a valid breakout
     phase = seq.get('phase')
     if phase not in ('first', 'second', 'third', 'fourth', 'fourth_plus'):
         return row
@@ -35,6 +38,12 @@ def certify_row(row):
         return row
     dates = [str(b[0]) for b in bars[-21:]]
     if dates != sorted(set(dates)) or any(not re.fullmatch(r'\d{4}-\d{2}-\d{2}', d) for d in dates):
+        return row
+    try:
+        # ISO-shaped strings such as 2026-02-30 are not real sessions.
+        for date in dates:
+            dt.date.fromisoformat(date)
+    except ValueError:
         return row
     o, hi, lo, close, volume = (finite(today[i]) for i in (1, 2, 3, 4, 5))
     prev_high = finite(yesterday[2])

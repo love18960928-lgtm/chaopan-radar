@@ -83,6 +83,28 @@ class TestCertification(unittest.TestCase):
         certify_row(r)
         self.assertNotIn('continuationEligible',r)
 
+    def test_malformed_breakout_sequence_pending(self):
+        for malformed in ('bad', ['first'], 12):
+            r = row()
+            r['breakoutSequence'] = malformed
+            certify_row(r)
+            self.assertNotIn('continuationEligible', r)
+            self.assertNotIn('breakoutEvent', r)
+
+    def test_impossible_calendar_date_pending(self):
+        r = row()
+        r['bars'][-6][0] = '2026-09-31'
+        certify_row(r)
+        self.assertNotIn('continuationEligible', r)
+
+    def test_recertify_clears_stale_fields_on_malformed_sequence(self):
+        r = certify_row(row())
+        self.assertTrue(r['continuationEligible'])
+        r['breakoutSequence'] = 'bad'
+        certify_row(r)
+        self.assertNotIn('continuationEligible', r)
+        self.assertNotIn('breakoutEvent', r)
+
     def test_no_event_no_certification(self):
         r=row(phase='ready');certify_row(r);self.assertNotIn('breakoutEvent',r)
 
