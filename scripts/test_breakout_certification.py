@@ -26,6 +26,12 @@ class TestCertification(unittest.TestCase):
         r=certify_row(row(close=110, high=111, low=112, volume=200))
         self.assertNotIn('continuationEligible',r)
 
+    def test_invalid_previous_day_ohlc_remains_pending(self):
+        r=row()
+        r['bars'][-2][2]=90  # previous high below its open/close
+        certify_row(r)
+        self.assertNotIn('continuationEligible',r)
+
     def test_stale_certification_cleared_when_bars_missing(self):
         r=certify_row(row())
         self.assertTrue(r['continuationEligible'])

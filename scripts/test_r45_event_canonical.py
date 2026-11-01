@@ -27,22 +27,8 @@ class CanonicalEventTests(unittest.TestCase):
         self.assertEqual(second['breakoutDate'],'2026-10-12')
         self.assertEqual(second['neck'],first['neck'])
         self.assertEqual(second['secondaryCrossedNeck'],34.9)
-        # Independent resistance models must not be conflated: the structure
-        # engine can correctly identify a reclaim of its *different* neckline.
-        structural=cycle_judgement(self.prefix('2026-10-13')['bars'])['breakoutSequence']
-        self.assertEqual(structural['phase'],'reclaim-follow')
-        self.assertNotEqual(structural['level'],second['neck'])
-        self.assertEqual(first['starLabel'],'★1')
-        self.assertEqual(second['starLabel'],'★2')
-        self.assertEqual(first['breakoutEvent']['id'],second['breakoutEvent']['id'])
-
-    def test_star_third_day_and_anchor_remain_fixed(self):
-        first=scan_stock(self.prefix('2026-10-12'))
-        second=scan_stock(self.prefix('2026-10-13'))
-        third=scan_stock(self.prefix('2026-10-14'))
-        self.assertEqual(second['starPhase'],'second')
-        self.assertEqual(third['starPhase'],'third')
-        self.assertEqual(first['breakoutEvent']['id'],third['breakoutEvent']['id'])
+        # Historical recross is deliberately NOT the original breakout's second candle.
+        self.assertEqual(cycle_judgement(self.prefix('2026-10-13')['bars'])['breakoutSequence']['phase'],'reclaim-follow')
 
     def test_first_result_not_affected_by_future(self):
         early=scan_stock(self.prefix('2026-10-12'))

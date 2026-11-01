@@ -29,10 +29,13 @@ def certify_row(row):
     today, yesterday = bars[-1], bars[-2]
     o, hi, lo, close, volume = (finite(today[i]) for i in (1, 2, 3, 4, 5))
     prev_high = finite(yesterday[2])
+    prev_open, prev_low, prev_close = (finite(yesterday[i]) for i in (1, 3, 4))
     volumes = [finite(b[5]) for b in bars[-21:-1]]
-    if any(v is None or v < 0 for v in volumes) or any(v is None for v in (o,hi,lo,close,volume,prev_high)):
+    if any(v is None or v < 0 for v in volumes) or any(v is None for v in (o,hi,lo,close,volume,prev_high,prev_open,prev_low,prev_close)):
         return row
-    if not (hi >= max(o,close) and min(o,close) >= lo and hi >= lo and lo > 0 and volume >= 0):
+    if not (hi >= max(o,close) and min(o,close) >= lo and hi >= lo and lo > 0 and volume >= 0
+            and prev_high >= max(prev_open,prev_close) and min(prev_open,prev_close) >= prev_low
+            and prev_low > 0):
         return row
     avg_volume = sum(volumes) / len(volumes)
     if avg_volume <= 0:
