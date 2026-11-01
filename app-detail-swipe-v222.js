@@ -782,22 +782,28 @@ function sectorDirectory(){
  }
  for(const k of Object.keys(rawStageRows))rawAudit[k]=rawStageRows[k].length;
  const ordered=['ready','ma510','reentry','maPullback','first','second','third','fourth','launch','hold','trend'];
+ // Audit from BOTH historical events and sector watch results. A historical
+ // event without current EOD certification must not silently become "0 stocks".
+ const candidatesForStage=stage=>{
+  const all=[...(rawStageRows[stage]||[]),...radar.watch.filter(o=>o.stage===stage).map(o=>o.row)];
+  return all.filter((c,i)=>c?.code&&all.findIndex(x=>x?.code===c.code)===i);
+ };
  const qualifiedRows=stage=>radar.watch.filter(o=>o.stage===stage&&strictBreakoutDecision(o.row,stage).eligible);
- const activeStages=ordered.filter(stage=>qualifiedRows(stage).length||rawStageRows[stage]?.length||radar.watch.some(o=>o.stage===stage));
+ const activeStages=ordered.filter(stage=>qualifiedRows(stage).length||candidatesForStage(stage).length||radar.watch.some(o=>o.stage===stage));
  const inactiveStages=ordered.filter(stage=>!activeStages.includes(stage));
- const stageBlock=stage=>{const arr=qualifiedRows(stage);
-  const audit=rawAudit[stage];
-  const auditLabel=stage==='trend'&&maxBars<245?'資料不足，待MA240認證':
-   audit===undefined?`${arr.length} 檔`:`${arr.length} 檔`;
-  const pendingCount=STRICT_BREAKOUT_STAGES.has(stage)?radar.watch.filter(o=>o.stage===stage&&strictBreakoutDecision(o.row,stage).pending).length:0;
-  const displayCount=pendingCount&&arr.length===0?'待認證':auditLabel;
-  const auditNote=audit!==undefined?`<p class="r23-note">僅顯示通過嚴格認證的檔數；資料不足者列待核對，未通過者保留觀察，不代表認證買點。</p>`:
-   stage==='trend'&&maxBars<245?`<p class="r23-note">僅 ${maxBars} 根以下日K，無法完整核算 MA240 與5日斜率。這是資料不足，不代表市場沒有六線強勢股。</p>`:'';
-  const rejected=STRICT_BREAKOUT_STAGES.has(stage)?radar.watch.filter(o=>o.stage===stage&&!strictBreakoutDecision(o.row,stage).eligible).map(o=>o.row):[];
-  const rawOnly=[...(rawStageRows[stage]||[]),...rejected].filter((c,i,all)=>c?.code&&!arr.some(o=>o.row?.code===c.code)&&all.findIndex(x=>x?.code===c.code)===i);
+ const stageBlock=stage=>{
+  const arr=qualifiedRows(stage),strict=STRICT_BREAKOUT_STAGES.has(stage);
+  const candidates=strict?candidatesForStage(stage):[];
+  const pendingCount=strict?candidates.filter(c=>strictBreakoutDecision(c,stage).pending).length:0;
+  const failedCount=strict?candidates.filter(c=>!strictBreakoutDecision(c,stage).eligible&&!strictBreakoutDecision(c,stage).pending).length:0;
+  const displayCount=stage==='trend'&&maxBars<245?'資料不足，待MA240認證':
+   strict&&arr.length===0&&pendingCount>0?'待認證':`${arr.length} 檔`;
+  const auditNote=strict?`<p class="r23-note">僅顯示已認證檔數；${pendingCount?'部分股票資料待認證。':''}${failedCount?'未通過者保留在觀察區。':''}不代表買進建議。</p>`:
+   stage==='trend'&&maxBars<245?`<p class="r23-note">日K不足以核算MA240，資料待認證。</p>`:'';
+  const rawOnly=strict?candidates.filter(c=>!arr.some(o=>o.row?.code===c.code)):[];
   const rawGroup='raw-stage-'+stage;
-  const rawMarkup=rawOnly.length?`<div class="r44-raw-stage-visible"><p class="r23-note">其他 ${rawOnly.length} 檔觀察股｜點選股票可展開分析（未通過嚴格審查）</p>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,compactStatus:'觀察｜'+strictBreakoutDecision(c,stage).reason,reason:strictBreakoutDecision(c,stage).reason})))}</div>`:'';
-  return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${displayCount}</span><span class="sector-arrow">⌄</span></summary>${auditNote}${rawMarkup}${r26GroupMarkup('stage-'+stage,arr)}</details>`;
+  const rawMarkup=rawOnly.length?`<div class="r44-raw-stage-visible"><p class="r23-note">其他觀察股｜點選股票可展開分析（非認證買點）</p>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,compactStatus:'觀察｜'+strictBreakoutDecision(c,stage).reason,reason:strictBreakoutDecision(c,stage).reason})))}</div>`:'';
+  return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${displayCount}</span><span class="sector-arrow">⌄</span></summary>${auditNote}${r26GroupMarkup('stage-'+stage,arr)}${rawMarkup}</details>`;
  };
  out.innerHTML=`<p class="r23-note">歷史突破第一～四根、均線、回測及頸線觀察邏輯保留在這裡。這是<strong>研究資料庫</strong>，不是今天漲幅排行榜，也不代表明天會漲；MA240 歷史不足仍標待認證。</p>`+
  activeStages.map(stageBlock).join('')+
