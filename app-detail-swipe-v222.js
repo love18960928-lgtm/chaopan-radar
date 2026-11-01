@@ -788,7 +788,9 @@ function sectorDirectory(){
   const all=[...(rawStageRows[stage]||[]),...radar.watch.filter(o=>o.stage===stage).map(o=>o.row)];
   return all.filter((c,i)=>c?.code&&all.findIndex(x=>x?.code===c.code)===i);
  };
- const qualifiedRows=stage=>radar.watch.filter(o=>o.stage===stage&&strictBreakoutDecision(o.row,stage).eligible);
+ const qualifiedRows=stage=>STRICT_BREAKOUT_STAGES.has(stage)
+  ?candidatesForStage(stage).filter(c=>strictBreakoutDecision(c,stage).eligible).map(c=>({row:c,stage,sector:c.sector||'產業待核對',compactStatus:'已認證｜'+strictBreakoutDecision(c,stage).reason}))
+  :radar.watch.filter(o=>o.stage===stage&&strictBreakoutDecision(o.row,stage).eligible);
  const activeStages=ordered.filter(stage=>qualifiedRows(stage).length||candidatesForStage(stage).length||radar.watch.some(o=>o.stage===stage));
  const inactiveStages=ordered.filter(stage=>!activeStages.includes(stage));
  const stageBlock=stage=>{
