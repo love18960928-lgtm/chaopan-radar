@@ -16,17 +16,28 @@ def certify_row(row):
                 'abovePrevHigh','breakoutVolumeRatio20','breakoutCloseLocation','breakoutUpperWickRatio'):
         row.pop(key, None)
     seq = row.get('breakoutSequence') or {}
+    if not isinstance(seq, dict):
+        return row  # malformed source event: pending, not a crash
     phase = seq.get('phase')
-    if phase not in ('first', 'second', 'third', 'fourth'):
+    if phase not in ('first', 'second', 'third', 'fourth', 'fourth_plus'):
         return row
     bars = row.get('bars') or []
     level = finite(seq.get('level'))
-    if level is None or level <= 0 or not bars or bars[-1][0] != row.get('date'):
+    if (level is None or level <= 0 or not isinstance(bars, (list, tuple))
+            or not bars or not isinstance(bars[-1], (list, tuple))
+            or len(bars[-1]) < 6 or not isinstance(row.get('date'), str)
+            or bars[-1][0] != row.get('date')):
         return row  # missing source data must remain pending
     row['breakoutEvent'] = {'level': level, 'initialDate': seq.get('initialDate'), 'source': 'breakoutSequence'}
     if len(bars) < 21:
         return row
     today, yesterday = bars[-1], bars[-2]
+    # A duplicated or out-of-order final session cannot establish a new daily candle.
+    if not all(isinstance(b, (list, tuple)) and len(b) >= 6 for b in bars[-21:]):
+        return row
+    dates = [str(b[0]) for b in bars[-21:]]
+    if dates != sorted(set(dates)):
+        return row
     o, hi, lo, close, volume = (finite(today[i]) for i in (1, 2, 3, 4, 5))
     prev_high = finite(yesterday[2])
     prev_open, prev_low, prev_close = (finite(yesterday[i]) for i in (1, 3, 4))
@@ -40,6 +51,10 @@ def certify_row(row):
     avg_volume = sum(volumes) / len(volumes)
     if avg_volume <= 0:
         return row
+    # The universe row and its last OHLCV bar must describe the same close.
+    row_close = finite(row.get('close'))
+    if row_close is not None and abs(row_close - close) > max(0.00001, abs(close) * 0.000001):
+        return row
     candle_range = hi - lo
     close_location = (close-lo)/candle_range if candle_range > 0 else 0.5
     upper_wick = (hi-max(o,close))/candle_range if candle_range > 0 else 0.0
@@ -48,7 +63,9 @@ def certify_row(row):
     row['breakoutVolumeRatio20'] = round(ratio, 3)
     row['breakoutCloseLocation'] = round(close_location, 3)
     row['breakoutUpperWickRatio'] = round(upper_wick, 3)
-    if close < level:
+    # A first breakout must CLOSE strictly above the event neckline.
+    # Subsequent candles may touch it without breaking the established event.
+    if close < level or (phase == 'first' and close <= level):
         row['continuationEligible'] = False
         row['breakoutQuality'] = 'invalid'
         row['breakoutQualityReasons'] = ['收盤跌破固定頸線']

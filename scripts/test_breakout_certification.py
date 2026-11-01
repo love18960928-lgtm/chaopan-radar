@@ -40,6 +40,49 @@ class TestCertification(unittest.TestCase):
         self.assertNotIn('continuationEligible',r)
         self.assertNotIn('breakoutQuality',r)
 
+    def test_first_candle_equal_neckline_is_not_breakout(self):
+        r=row(close=101, low=99)
+        certify_row(r)
+        self.assertFalse(r['continuationEligible'])
+        self.assertEqual(r['breakoutQuality'], 'invalid')
+
+    def test_fourth_plus_can_be_certified(self):
+        r=certify_row(row(phase='fourth_plus'))
+        self.assertTrue(r['continuationEligible'])
+
+    def test_mismatched_snapshot_close_remains_pending(self):
+        r=row()
+        r['close']=90
+        certify_row(r)
+        self.assertNotIn('continuationEligible',r)
+
+    def test_duplicate_latest_bar_remains_pending(self):
+        r=row()
+        r['bars'][-2][0]=r['bars'][-1][0]
+        certify_row(r)
+        self.assertNotIn('continuationEligible',r)
+
+    def test_malformed_history_remains_pending(self):
+        r=row()
+        r['bars'][-5]=['2026-09-17']
+        certify_row(r)
+        self.assertNotIn('continuationEligible',r)
+
+    def test_malformed_breakout_sequence_is_pending(self):
+        r=row(); r['breakoutSequence']='invalid-event'
+        certify_row(r)
+        self.assertNotIn('continuationEligible',r)
+
+    def test_malformed_last_bar_is_pending(self):
+        r=row(); r['bars'][-1]='bad-bar'
+        certify_row(r)
+        self.assertNotIn('continuationEligible',r)
+
+    def test_missing_snapshot_date_is_pending(self):
+        r=row(); r['date']=None; r['bars'][-1][0]=None
+        certify_row(r)
+        self.assertNotIn('continuationEligible',r)
+
     def test_no_event_no_certification(self):
         r=row(phase='ready');certify_row(r);self.assertNotIn('breakoutEvent',r)
 
