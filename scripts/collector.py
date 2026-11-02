@@ -26,6 +26,7 @@ from trader import trader_overlay,apply_sector_relative_strength
 from performance import update_diary
 from market_quality import breadth
 from risk_v22 import build_universe, published_fundamentals
+from breakout_certification import certify_universe
 from valuation_verified_v14 import enrich_verified_targets
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -451,9 +452,7 @@ def markets_needing_refresh(known,stamp):
     return [m for m,threshold in minimum.items()
             if len(known.get((m,stamp),()))<threshold]
 
-def run(days,delay,as_of=None,backfill_offset=0):
-    if days < 0 or backfill_offset < 0 or days > 120 or backfill_offset > 1000:
-        raise ValueError("Backfill window must be 0..120 days; offset 0..1000 days")
+def run(days,delay,as_of=None):
     now=(dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()) if as_of is None else dt.date.fromisoformat(as_of)
     allstocks=read_existing()
     # Keep prospective signal diary when rebuilding/updating history.
@@ -467,7 +466,7 @@ def run(days,delay,as_of=None,backfill_offset=0):
         for row in s.get('bars',[]):
             known.setdefault((s['market'],row[0]),set()).add(s['code'])
     if days>0:
-        dates=[now-dt.timedelta(days=i) for i in range(backfill_offset+days-1,backfill_offset-1,-1)]
+        dates=[now-dt.timedelta(days=i) for i in range(days-1,-1,-1)]
     else:
         dates=[now-dt.timedelta(days=i) for i in range(6,-1,-1)]  # repair missed weekday/holiday jobs
     modified=0
@@ -542,6 +541,8 @@ def run(days,delay,as_of=None,backfill_offset=0):
                                for c in sorted(snapshot['candidates'],key=rank_trade,reverse=True)[:60]]
     snapshot['generatedAt']=dt.datetime.now(dt.timezone.utc).isoformat()
     universe=build_universe(allstocks,snapshot,snapshot['asOf'])
+    # Populate EOD breakout certification fields before publishing universe.json.
+    certify_universe(universe)
     # The published universe is authoritative, not the pre-normalization shortlist.
     snapshot['performance'],updated_signals=update_diary(
         historical_signals,allstocks,universe['rows'],snapshot['asOf'],
@@ -588,8 +589,7 @@ if __name__=='__main__':
     logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s')
     ap=argparse.ArgumentParser()
     ap.add_argument('--backfill',type=int,default=0,metavar='CALENDAR_DAYS',help='Backfill past N calendar days (e.g. 220)')
-    ap.add_argument('--backfill-offset',type=int,default=0,metavar='CALENDAR_DAYS',help='How many calendar days before as-of to end the backfill window')
     ap.add_argument('--delay',type=float,default=1.1,help='Sleep between each market request')
     ap.add_argument('--as-of',help='Test date YYYY-MM-DD')
     args=ap.parse_args()
-    run(args.backfill,max(.35,args.delay),args.as_of,args.backfill_offset)
+    run(args.backfill,max(.35,args.delay),args.as_of)

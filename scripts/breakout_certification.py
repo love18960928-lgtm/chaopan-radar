@@ -23,6 +23,16 @@ def certify_row(row):
     if not isinstance(seq, dict):
         return row  # malformed event metadata is not a valid breakout
     phase = seq.get('phase')
+    # structure_v25 reports day 3+ as 'follow', while the frontend has
+    # distinct third/fourth groups. Only map genuine FIRST historical events;
+    # reclaim-follow must never become a new breakout.
+    cycle = row.get('cycle')
+    if phase == 'follow' and isinstance(cycle, dict) and cycle.get('firstHistoricalBreakout') is True:
+        days = cycle.get('daysSinceFirst')
+        if type(days) is int and days == 2:
+            phase = 'third'
+        elif type(days) is int and days == 3:
+            phase = 'fourth'
     if phase not in ('first', 'second', 'third', 'fourth', 'fourth_plus'):
         return row
     bars = row.get('bars')
