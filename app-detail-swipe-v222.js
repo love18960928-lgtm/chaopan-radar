@@ -710,6 +710,20 @@ function strictBreakoutDecision(c,stage){
  const pending=(reason)=>({eligible:false,pending:true,reason});
  if(!STRICT_BREAKOUT_STAGES.has(stage))return pass('非突破續攻階段');
  if(!c)return pending('個股資料尚未載入');
+ // Match the certified event to the displayed star stage BEFORE checking price/volume.
+ // A day-2 candidate must never qualify as ★1 merely because its candles are strong.
+ const seq=c.breakoutSequence;
+ if(!seq||typeof seq!=='object')return pending('突破階段資料尚未更新');
+ const phase=seq.phase,cycle=c.cycle;
+ let actualStage=null;
+ if(phase==='first'||phase==='second')actualStage=phase;
+ else if(phase==='third'||phase==='fourth')actualStage=phase;
+ else if(phase==='follow'&&cycle?.firstHistoricalBreakout===true&&Number.isInteger(cycle.daysSinceFirst)){
+  if(cycle.daysSinceFirst===2)actualStage='third';
+  else if(cycle.daysSinceFirst===3)actualStage='fourth';
+ }
+ if(!actualStage)return fail('不是有效的首次突破延續事件');
+ if(actualStage!==stage)return fail('突破階段不符：實際為'+(OBS_STAGE[actualStage]||actualStage));
  const level=Number(c.breakoutEvent?.level),close=Number(c.close);
  if(!c.breakoutEvent||!Number.isFinite(level)||level<=0)return pending('缺少有效突破事件頸線');
  if(!Number.isFinite(close)||close<=0)return pending('收盤價格待核對');
@@ -794,8 +808,8 @@ function sectorDirectory(){
   const phase=c.breakoutSequence?.phase;
   if(phase==='first')rawStageRows.first.push(c);
   if(phase==='second')rawStageRows.second.push(c);
-  if(c.cycle?.firstHistoricalBreakout===true&&c.cycle?.daysSinceFirst===2)rawStageRows.third.push(c);
-  if(c.cycle?.firstHistoricalBreakout===true&&c.cycle?.daysSinceFirst===3)rawStageRows.fourth.push(c);
+  if((phase==='follow'||phase==='third')&&c.cycle?.firstHistoricalBreakout===true&&c.cycle?.daysSinceFirst===2)rawStageRows.third.push(c);
+  if((phase==='follow'||phase==='fourth')&&c.cycle?.firstHistoricalBreakout===true&&c.cycle?.daysSinceFirst===3)rawStageRows.fourth.push(c);
  }
  for(const k of Object.keys(rawStageRows))rawAudit[k]=rawStageRows[k].length;
  const ordered=['ready','ma510','reentry','maPullback','first','second','third','fourth','launch','hold','trend'];
