@@ -1525,16 +1525,32 @@ function structureInsight(c){
  return {status,tone,first,second,defense,bands,neck,close,levelText,reasons,latestBroken};
 }
 function indicatorSnapshot(c){
- const b=(c.bars||[]).filter(x=>[2,3,4,5].every(j=>numeric(x[j])!==null));
- if(b.length<35)return {rsi:null,macd:null,macdSignal:null,obvDelta:null};
- const closes=b.map(x=>Number(x[4]));const vol=b.map(x=>Number(x[5]));
- const ema=(series,n)=>{const k=2/(n+1);let a=series[0];return series.map(v=>a=k*v+(1-k)*a)};
- const m12=ema(closes,12),m26=ema(closes,26),macd=m12.map((x,i)=>x-m26[i]);const signal=ema(macd,9);
- let obv=0;const obvHist=[0];for(let i=1;i<closes.length;i++){obv+=(Math.sign(closes[i]-closes[i-1])*vol[i]);obvHist.push(obv)}
- const recent=closes.slice(-15),changes=recent.slice(1).map((x,i)=>x-recent[i]);
- const ups=changes.reduce((a,v)=>a+Math.max(0,v),0),downs=changes.reduce((a,v)=>a+Math.max(0,-v),0);
- return {rsi:downs===0?100:100-100/(1+ups/downs),macd:macd.at(-1),macdSignal:signal.at(-1),obvDelta:obvHist.at(-1)-obvHist.at(-6)};
+ // Indicators are descriptive only: do not silently turn missing history into buy signals.
+ const bars=(Array.isArray(c.bars)?c.bars:[]).filter(x=>Array.isArray(x)&&x.length>=6&&[2,3,4,5].every(j=>numeric(x[j])!==null)&&Number(x[3])<=Math.min(Number(x[2]),Number(x[4]))&&Number(x[2])>=Math.max(Number(x[3]),Number(x[4]))&&Number(x[5])>=0);
+ const blank={rsi:null,macd:null,macdSignal:null,obvDelta:null,k:null,d:null,j:null,bollUpper:null,bollMid:null,bollLower:null,pdi:null,mdi:null,adx:null,volumeRatio:null,candle:null};
+ if(bars.length<35)return blank;
+ const hi=bars.map(x=>Number(x[2])),lo=bars.map(x=>Number(x[3])),cl=bars.map(x=>Number(x[4])),vol=bars.map(x=>Number(x[5]));
+ const n=cl.length,mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
+ const ema=(arr,period)=>{const alpha=2/(period+1);let v=arr[0];return arr.map(x=>(v=alpha*x+(1-alpha)*v))};
+ const ema26=ema(cl,26);const macdLine=ema(cl,12).map((x,i)=>x-ema26[i]);
+ const signal=ema(macdLine,9);
+ let gain=0,loss=0;for(let i=1;i<=14;i++){const d=cl[i]-cl[i-1];gain+=Math.max(d,0);loss+=Math.max(-d,0)}gain/=14;loss/=14;
+ for(let i=15;i<n;i++){const d=cl[i]-cl[i-1];gain=(gain*13+Math.max(d,0))/14;loss=(loss*13+Math.max(-d,0))/14}
+ const rsi=loss===0?(gain===0?50:100):100-100/(1+gain/loss);
+ let obv=0;const obvHist=[0];for(let i=1;i<n;i++){obv+=Math.sign(cl[i]-cl[i-1])*vol[i];obvHist.push(obv)}
+ let k=50,d=50;for(let i=8;i<n;i++){const h=Math.max(...hi.slice(i-8,i+1)),l=Math.min(...lo.slice(i-8,i+1));const rsv=h===l?50:100*(cl[i]-l)/(h-l);k=(2*k+rsv)/3;d=(2*d+k)/3}
+ const last20=cl.slice(-20),mid=mean(last20),sd=Math.sqrt(mean(last20.map(v=>(v-mid)**2)));
+ let plus=0,minus=0,tr=0,adx=null;let dxValues=[];
+ // Wilder-smoothed 14-period directional movement and true range.
+ const dmPlus=[],dmMinus=[],trs=[];
+ for(let i=1;i<n;i++){const up=hi[i]-hi[i-1],down=lo[i-1]-lo[i];dmPlus.push(up>down&&up>0?up:0);dmMinus.push(down>up&&down>0?down:0);trs.push(Math.max(hi[i]-lo[i],Math.abs(hi[i]-cl[i-1]),Math.abs(lo[i]-cl[i-1])))}
+ if(trs.length>=28){plus=dmPlus.slice(0,14).reduce((a,b)=>a+b,0);minus=dmMinus.slice(0,14).reduce((a,b)=>a+b,0);tr=trs.slice(0,14).reduce((a,b)=>a+b,0);
+ for(let i=14;i<trs.length;i++){plus=plus-plus/14+dmPlus[i];minus=minus-minus/14+dmMinus[i];tr=tr-tr/14+trs[i];const p=tr?100*plus/tr:0,m=tr?100*minus/tr:0;dxValues.push(p+m?100*Math.abs(p-m)/(p+m):0)}
+ if(dxValues.length>=14){adx=mean(dxValues.slice(0,14));for(let i=14;i<dxValues.length;i++)adx=(adx*13+dxValues[i])/14}}
+ const vavg=mean(vol.slice(-21,-1));const range=hi[n-1]-lo[n-1];
+ return {rsi,macd:macdLine.at(-1),macdSignal:signal.at(-1),obvDelta:obvHist.at(-1)-obvHist.at(-6),k,d,j:3*k-2*d,bollUpper:mid+2*sd,bollMid:mid,bollLower:mid-2*sd,pdi:tr?100*plus/tr:null,mdi:tr?100*minus/tr:null,adx,volumeRatio:vavg>0?vol.at(-1)/vavg:null,candle:range>0?(cl.at(-1)-lo.at(-1))/range:null};
 }
+
 function summaryPanel(c){
  const x=structureInsight(c),s=x.bands;
  const riskText=c.riskLevel==='high'?'高風險':c.riskLevel==='medium'?'需要警戒':c.riskLevel==='low'?'尚無高風險組合':'資料待補';
@@ -1619,10 +1635,11 @@ function wireValuationScenario(c){
 
 function technicalVisual(c){
  const k=techMetrics(c),i=indicatorSnapshot(c);
+ const f=v=>v===null||!Number.isFinite(v)?'待資料':v.toFixed(1);
  const obv=i.obvDelta===null?'待資料':i.obvDelta>0?'量能偏累積':i.obvDelta<0?'量能偏流出':'量能持平';
  const macd=i.macd===null?'待資料':i.macd>=i.macdSignal?'MACD 高於訊號線':'MACD 低於訊號線';
- const rsi=i.rsi===null?'—':i.rsi.toFixed(1);
- return `<section class="visual-tech"><div class="panel-head"><span>量價輔助判讀</span><small>以公開日K自行計算</small></div><div class="tech-chips"><div><small>RSI(14)</small><strong>${rsi}</strong></div><div><small>MACD</small><strong>${esc(macd)}</strong></div><div><small>OBV近5日</small><strong>${esc(obv)}</strong></div></div><details class="fin-notes"><summary>技術數據與限制</summary><p>MA5 ${price(k.ma5)} ／ MA10 ${price(k.ma10)} ／ MA20 ${price(k.ma20)} ／ MA60 ${price(k.ma60)}。近20日 ${pct(k.ret20)} ／ 近60日 ${pct(k.ret60)}。</p><p>MACD、OBV與RSI僅作輔助，沒有將彼此高度相關的訊號重複加分。不是三竹專屬數據，也不能由此證明主力正在出貨。</p></details></section>`;
+ const breadth='騰落指標須以同交易日全市場上漲／下跌家數計算，不能由單一股票K線推算。';
+ return `<section class="visual-tech"><div class="panel-head"><span>技術指標交叉檢查</span><small>以公開日K自行計算；非買賣指令</small></div><div class="tech-chips"><div><small>RSI(14)</small><strong>${f(i.rsi)}</strong></div><div><small>MACD(12,26,9)</small><strong>${esc(macd)}</strong></div><div><small>OBV近5日</small><strong>${esc(obv)}</strong></div><div><small>KD(9,3,3)</small><strong>K ${f(i.k)} / D ${f(i.d)}</strong></div><div><small>KDJ J值</small><strong>${f(i.j)}</strong></div><div><small>布林(20,2)</small><strong>${f(i.bollLower)} / ${f(i.bollMid)} / ${f(i.bollUpper)}</strong></div><div><small>DMI +DI / -DI / ADX</small><strong>${f(i.pdi)} / ${f(i.mdi)} / ${f(i.adx)}</strong></div><div><small>當日量 / 前20日均量</small><strong>${i.volumeRatio===null?'待資料':f(i.volumeRatio)+'倍'}</strong></div><div><small>K棒收盤位置</small><strong>${i.candle===null?'待資料':f(i.candle*100)+'%'}</strong></div></div><details class="fin-notes"><summary>計算方法、限制與騰落指標</summary><p>MA5 ${price(k.ma5)} ／ MA10 ${price(k.ma10)} ／ MA20 ${price(k.ma20)} ／ MA60 ${price(k.ma60)}。近20日 ${pct(k.ret20)} ／ 近60日 ${pct(k.ret60)}。</p><p>${breadth}</p><p>KDJ的K、D與KD共用同一組數值，不能重複加分。DMI的ADX只衡量趨勢強度、不代表方向。RSI、MACD、OBV等只作輔助，尚未接入盤後選股認證或歷史回測。</p></details></section>`;
 }
 
 function extraTechnical(c){
@@ -1730,16 +1747,6 @@ function riskPanel(c){
  <p><small>⚠ ${esc(evidence.note||'尚待新版行情重新掃描。')} 股價僅盤中觸及支撐不算確認跌破；此分析不是自動賣出建議。</small></p></div>
  </section>`;
 }
-function detailNav(){
- const idx=state.detailIds.indexOf(rowId(state.detail));
- return `<nav id="detailSwitcher" class="detail-switcher" aria-label="切換個股詳情">
- <button type="button" id="detailPrev" ${idx<=0?'disabled':''}>‹ 上一檔</button>
- <span>${idx+1} / ${state.detailIds.length} 檔<br><small>左右切換已啟用 v2.5｜上下滑閱讀</small></span>
- <button type="button" id="detailNext" ${idx>=state.detailIds.length-1?'disabled':''}>下一檔 ›</button>
- </nav>`;
-}
-
-
 /* V2.6 manual same-session checkpoint. NO quotes are fetched. Never label
    these inputs as a completed D1 close or historical calibrated intraday RVOL. */
 // Daily close-based trend phase: use only bars available AS OF that close;
@@ -1925,7 +1932,7 @@ function mainTrendResearchPanel(c){
  <p class="ma-structure-note">核心倉守原頸線、MA20與經核對的移動停利；操作倉分段檢核風險倍數。沒有實際持股成本及交易紀錄，不能計算真實停利與獲利。${pattern?' 次日成交價格／跳空及滑價必須重新核算。':''}</p></section>`;
 }
 function renderDetail(){const c=state.detail;if(!c)return;const starred=state.watch.has(c.market+'-'+c.code),cls=c.changePct>0?'rising':c.changePct<0?'falling':'neutral';
-  $('#modalContent').innerHTML=`${detailNav()}<div class="detail-title"><div><div class="eyebrow">STOCK ANALYSIS / ${esc(c.market)}</div><h2 id="modalTitle">${esc(c.code)} ${esc(c.name)}</h2><div class="breakout-star-line">${breakoutStarHTML(c)} ${breakoutQualityHTML(c)}</div>${breakoutQualityExplanation(c)}<div class="detail-sub">${esc(c.date)} 盤後資料${state.mode==='demo'?' · 示範':''}</div></div><div class="detail-price"><strong>${price(c.close)}</strong><div class="${cls}">${pct(c.changePct)}</div></div></div><div class="priority-levels"><span>近期頸線 <b>${price(latestNeck(c))}</b></span><span>第一支撐 <b>${price(supportLines(c)[0]?.lower)}</b></span><span>次日預警參考 <b>${price(c.intradayPlan?.crossPrice)}</b></span></div>${guidanceCard(c)}${globalThis.ChaopanMarketRegime?.badgeFor?.(c,state.marketIntel,state.payload?.asOf)||''}<div class="chart-area"><div class="chart-top"><strong>歷史K線／成交量／均線</strong><div class="chart-range"><button class="range-btn ${state.chartDays===20?'active':''}" data-days="20">20日</button><button class="range-btn ${state.chartDays===60?'active':''}" data-days="60">60日</button><button class="range-btn ${state.chartDays===120?'active':''}" data-days="120">120日</button><button type="button" class="zoom-btn" data-zoom="in" aria-label="K線放大">＋</button><button type="button" class="zoom-btn" data-zoom="out" aria-label="K線縮小">－</button></div></div><div class="chart-window-notice" role="status">${(c.bars||[]).length<state.chartDays?`⚠ 已選 ${state.chartDays} 日，目前只有 ${(c.bars||[]).length} 根可用K線；不得視為完整 ${state.chartDays} 日型態。`:`本圖使用最近 ${Math.min(state.chartDays,(c.bars||[]).length)} 根K線。`}</div><div id="chartSvg" aria-label="雙指捏合可縮放K線">${makeChart(c.bars||[],latestNeck(c),state.chartDays,supportLines(c),c.structureV23?.necklines||[],c.structureV23?.mainDefense,c.date)}</div><small class="chart-zoom-hint">日K以 ${esc(c.date)} 收盤為準；選定期間K棒決定價格縱軸，範圍外歷史頸線仍可在「關卡圖解」查看。非即時。</small><div class="chart-legend"><span>━━ 橘色：最新頸線</span><span style="color:#c8a5e8">┄┄ 淺紫：其他頸線／最後防守</span><span style="color:#3dd9ba">━━ 第一支撐</span><span style="color:#76abfa">━━ 第二支撐</span><span style="color:#ffd36e">━━ MA5</span><span style="color:#8dafff">━━ MA10</span><span style="color:#eaa8ec">━━ MA20</span><span>紅漲綠跌</span></div></div><details class="fin-r13-details"><summary>📊 公司研究｜營收、EPS及合理價情境</summary>${financialPanel(c)}</details>
+  $('#modalContent').innerHTML=`<div class="detail-title"><div><div class="eyebrow">STOCK ANALYSIS / ${esc(c.market)}</div><h2 id="modalTitle">${esc(c.code)} ${esc(c.name)}</h2><div class="breakout-star-line">${breakoutStarHTML(c)} ${breakoutQualityHTML(c)}</div>${breakoutQualityExplanation(c)}<div class="detail-sub">${esc(c.date)} 盤後資料${state.mode==='demo'?' · 示範':''}</div></div><div class="detail-price"><strong>${price(c.close)}</strong><div class="${cls}">${pct(c.changePct)}</div></div></div><div class="priority-levels"><span>近期頸線 <b>${price(latestNeck(c))}</b></span><span>第一支撐 <b>${price(supportLines(c)[0]?.lower)}</b></span><span>次日預警參考 <b>${price(c.intradayPlan?.crossPrice)}</b></span></div>${guidanceCard(c)}${globalThis.ChaopanMarketRegime?.badgeFor?.(c,state.marketIntel,state.payload?.asOf)||''}<div class="chart-area"><div class="chart-top"><strong>歷史K線／成交量／均線</strong><div class="chart-range"><button class="range-btn ${state.chartDays===20?'active':''}" data-days="20">20日</button><button class="range-btn ${state.chartDays===60?'active':''}" data-days="60">60日</button><button class="range-btn ${state.chartDays===120?'active':''}" data-days="120">120日</button><button type="button" class="zoom-btn" data-zoom="in" aria-label="K線放大">＋</button><button type="button" class="zoom-btn" data-zoom="out" aria-label="K線縮小">－</button></div></div><div class="chart-window-notice" role="status">${(c.bars||[]).length<state.chartDays?`⚠ 已選 ${state.chartDays} 日，目前只有 ${(c.bars||[]).length} 根可用K線；不得視為完整 ${state.chartDays} 日型態。`:`本圖使用最近 ${Math.min(state.chartDays,(c.bars||[]).length)} 根K線。`}</div><div id="chartSvg" aria-label="雙指捏合可縮放K線">${makeChart(c.bars||[],latestNeck(c),state.chartDays,supportLines(c),c.structureV23?.necklines||[],c.structureV23?.mainDefense,c.date)}</div><small class="chart-zoom-hint">日K以 ${esc(c.date)} 收盤為準；選定期間K棒決定價格縱軸，範圍外歷史頸線仍可在「關卡圖解」查看。非即時。</small><div class="chart-legend"><span>━━ 橘色：最新頸線</span><span style="color:#c8a5e8">┄┄ 淺紫：其他頸線／最後防守</span><span style="color:#3dd9ba">━━ 第一支撐</span><span style="color:#76abfa">━━ 第二支撐</span><span style="color:#ffd36e">━━ MA5</span><span style="color:#8dafff">━━ MA10</span><span style="color:#eaa8ec">━━ MA20</span><span>紅漲綠跌</span></div></div><details class="fin-r13-details"><summary>📊 公司研究｜營收、EPS及合理價情境</summary>${financialPanel(c)}</details>
  ${mainTrendResearchPanel(c)}<details class="research-fold"><summary>▥ 均線強弱、六條均線與趨勢結構</summary>${maPanel(c)}${sixMaPanel(c)}${trendModePanel(c)}</details>
  <details class="research-fold"><summary>▥ 突破紅綠K、量價與續強證據</summary>${breakoutTrackPanel(c)}${liquidityPanel(c)}${continuationPanel(c)}${confirmedStrengthPanel(c)}${phasePanel(c)}</details>
  <details class="research-fold"><summary>▥ 完整價位計畫與法人風險</summary>${deskPlanHTML(c)}${ChaopanIntel.chipPanel(state.marketIntel,c,deskEvidence(c))}</details>
@@ -1935,7 +1942,6 @@ function renderDetail(){const c=state.detail;if(!c)return;const starred=state.wa
   wireValuationScenario(c);
   wireIntradayPanel(c);
   if($('#intradayJump'))$('#intradayJump').onclick=jumpToIntraday;
-  $('#detailPrev').onclick=()=>nextDetail(-1);$('#detailNext').onclick=()=>nextDetail(1);
   $$('.range-btn').forEach(b=>b.onclick=()=>{state.chartDays=b.dataset.days==='120'?120:Number(b.dataset.days);renderDetail()});
   const zoom=(dir)=>{const total=(c.bars||[]).length;state.chartDays=Math.min(Math.max(12,total),Math.max(12,Math.min(total,Math.round(state.chartDays*(dir==='in'?.76:1.32)))));renderDetail()};
   $$('.zoom-btn').forEach(b=>b.onclick=()=>zoom(b.dataset.zoom));
