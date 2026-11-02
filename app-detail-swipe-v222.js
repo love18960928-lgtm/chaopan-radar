@@ -807,7 +807,10 @@ function sectorDirectory(){
  const qualifiedRows=stage=>STRICT_BREAKOUT_STAGES.has(stage)
   ?candidatesForStage(stage).filter(c=>strictBreakoutDecision(c,stage).eligible).map(c=>({row:c,stage,sector:c.sector||'產業待核對',compactStatus:'已認證｜'+strictBreakoutDecision(c,stage).reason}))
   :radar.watch.filter(o=>o.stage===stage&&strictBreakoutDecision(o.row,stage).eligible);
- const activeStages=ordered.filter(stage=>qualifiedRows(stage).length||candidatesForStage(stage).length||radar.watch.some(o=>o.stage===stage));
+ // Keep certified nonempty groups visible. Pending is not zero: it remains
+ // visible for data-quality review. Empty groups fold into the idle section.
+ const stagePending=stage=>STRICT_BREAKOUT_STAGES.has(stage)&&candidatesForStage(stage).some(c=>strictBreakoutDecision(c,stage).pending);
+ const activeStages=ordered.filter(stage=>qualifiedRows(stage).length>0||stagePending(stage));
  const inactiveStages=ordered.filter(stage=>!activeStages.includes(stage));
  const stageBlock=stage=>{
   const arr=qualifiedRows(stage),strict=STRICT_BREAKOUT_STAGES.has(stage);
