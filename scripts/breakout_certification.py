@@ -14,6 +14,8 @@ def finite(value):
 
 def certify_row(row):
     """Mutates an existing universe row. Never manufactures a breakout event."""
+    if not isinstance(row, dict):
+        return row
     for key in ('breakoutEvent','continuationEligible','breakoutQuality','breakoutQualityReasons',
                 'abovePrevHigh','breakoutVolumeRatio20','breakoutCloseLocation','breakoutUpperWickRatio'):
         row.pop(key, None)
@@ -23,7 +25,9 @@ def certify_row(row):
     phase = seq.get('phase')
     if phase not in ('first', 'second', 'third', 'fourth', 'fourth_plus'):
         return row
-    bars = row.get('bars') or []
+    bars = row.get('bars')
+    if not isinstance(bars, (list, tuple)):
+        return row
     level = finite(seq.get('level'))
     if level is None or level <= 0 or not isinstance(bars, (list, tuple)) or not bars:
         return row
@@ -95,6 +99,11 @@ def certify_row(row):
 
 
 def certify_universe(universe):
-    for row in universe.get('rows', []):
+    if not isinstance(universe, dict):
+        return universe
+    rows = universe.get('rows')
+    if not isinstance(rows, list):
+        return universe
+    for row in rows:
         certify_row(row)
     return universe

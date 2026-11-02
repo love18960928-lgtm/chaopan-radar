@@ -1,5 +1,5 @@
 import unittest
-from breakout_certification import certify_row
+from breakout_certification import certify_row, certify_universe
 
 
 def row(close=110, high=111, low=100, volume=200, phase='first', prevhigh=105):
@@ -109,3 +109,20 @@ class TestCertification(unittest.TestCase):
         r=row(phase='ready');certify_row(r);self.assertNotIn('breakoutEvent',r)
 
 if __name__=='__main__':unittest.main()
+
+class TestMalformedUniverse(unittest.TestCase):
+    def test_non_mapping_row_does_not_crash_batch(self):
+        good = row()
+        universe = {'rows': [None, 'bad', [], good]}
+        certify_universe(universe)
+        self.assertTrue(good['continuationEligible'])
+
+    def test_non_list_rows_do_not_crash(self):
+        for rows in (None, 'bad', {}, 123):
+            self.assertEqual(certify_universe({'rows': rows}), {'rows': rows})
+
+    def test_bad_bars_truthiness_does_not_crash(self):
+        r = row()
+        r['bars'] = {'broken': 'data'}
+        certify_row(r)
+        self.assertNotIn('continuationEligible', r)
