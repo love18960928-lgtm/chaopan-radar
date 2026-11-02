@@ -713,7 +713,8 @@ function strictBreakoutDecision(c,stage){
  const level=Number(c.breakoutEvent?.level),close=Number(c.close);
  if(!c.breakoutEvent||!Number.isFinite(level)||level<=0)return pending('缺少有效突破事件頸線');
  if(!Number.isFinite(close)||close<=0)return pending('收盤價格待核對');
- if(close<level)return fail('收盤跌破突破頸線');
+ if(stage==='first'&&close<=level)return fail('首次突破未收盤站上頸線');
+ if(stage!=='first'&&close<level)return fail('收盤跌破突破頸線');
  if(c.starPhase==='invalid'||c.breakoutQuality==='invalid')return fail('突破事件已失效');
  if(c.fallingLimitRisk===true)return fail('疑似跌停／接近跌停');
  if(c.continuationEligible===false)return fail('量價續攻條件未通過');
@@ -802,7 +803,18 @@ function sectorDirectory(){
  // event without current EOD certification must not silently become "0 stocks".
  const candidatesForStage=stage=>{
   const all=[...(rawStageRows[stage]||[]),...radar.watch.filter(o=>o.stage===stage).map(o=>o.row)];
-  return all.filter((c,i)=>c?.code&&all.findIndex(x=>x?.code===c.code)===i);
+  // Prefer the most complete certified record when the same stock appears in both sources.
+  // Do not let an older raw candidate shadow a newer EOD certification.
+  const byCode=new Map();
+  for(const c of all){
+   if(!c?.code)continue;
+   const prior=byCode.get(c.code);
+   const quality=x=>(x?.continuationEligible===true||x?.continuationEligible===false?4:0)+
+    (['strong','watch','weak','invalid'].includes(x?.breakoutQuality)?2:0)+
+    (x?.breakoutEvent?.level>0?1:0);
+   if(!prior||quality(c)>quality(prior))byCode.set(c.code,c);
+  }
+  return [...byCode.values()];
  };
  const qualifiedRows=stage=>STRICT_BREAKOUT_STAGES.has(stage)
   ?candidatesForStage(stage).filter(c=>strictBreakoutDecision(c,stage).eligible).map(c=>({row:c,stage,sector:c.sector||'產業待核對',compactStatus:'已認證｜'+strictBreakoutDecision(c,stage).reason}))
