@@ -38,7 +38,11 @@ jobs:
           BACKFILL: ${{ github.event.inputs.backfill_days || '0' }}
           BACKFILL_OFFSET: ${{ github.event.inputs.backfill_offset_days || '0' }}
         run: |
-          python scripts/collector.py --backfill "$BACKFILL" --backfill-offset "$BACKFILL_OFFSET" --delay 1.1
+          if [ "$BACKFILL_OFFSET" != "0" ]; then
+            echo "::error::目前 collector.py 不支援 backfill_offset_days；請先使用 0，勿靜默忽略回補日期偏移"
+            exit 1
+          fi
+          python scripts/collector.py --backfill "$BACKFILL" --delay 1.1
           python -m unittest discover -s scripts -p 'test_*.py' -v
       - name: Collect verified supplemental official EOD data
         # Optional feed may be missing: do not break existing OHLCV data.
