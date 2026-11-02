@@ -1526,9 +1526,22 @@ function structureInsight(c){
 }
 function indicatorSnapshot(c){
  // Indicators are descriptive only: do not silently turn missing history into buy signals.
- const bars=(Array.isArray(c.bars)?c.bars:[]).filter(x=>Array.isArray(x)&&x.length>=6&&[2,3,4,5].every(j=>numeric(x[j])!==null)&&Number(x[3])<=Math.min(Number(x[2]),Number(x[4]))&&Number(x[2])>=Math.max(Number(x[3]),Number(x[4]))&&Number(x[5])>=0);
  const blank={rsi:null,macd:null,macdSignal:null,obvDelta:null,k:null,d:null,j:null,bollUpper:null,bollMid:null,bollLower:null,pdi:null,mdi:null,adx:null,volumeRatio:null,candle:null};
+ // Reject a broken series as a whole. Filtering out bad bars silently shifts
+ // indicator windows and can turn stale candles into a false latest signal.
+ const bars=Array.isArray(c?.bars)?c.bars:[];
  if(bars.length<35)return blank;
+ let previousDate='';
+ for(const bar of bars){
+  if(!Array.isArray(bar)||bar.length<6)return blank;
+  const [date,open,high,low,close,volume]=bar;
+  if(typeof date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(date))return blank;
+  const stamp=Date.parse(date+'T00:00:00Z');
+  if(!Number.isFinite(stamp)||new Date(stamp).toISOString().slice(0,10)!==date||date<=previousDate)return blank;
+  previousDate=date;
+  const o=numeric(open),h=numeric(high),l=numeric(low),c0=numeric(close),v=numeric(volume);
+  if([o,h,l,c0,v].some(x=>x===null)||l<=0||h<l||o<l||o>h||c0<l||c0>h||v<0)return blank;
+ }
  const hi=bars.map(x=>Number(x[2])),lo=bars.map(x=>Number(x[3])),cl=bars.map(x=>Number(x[4])),vol=bars.map(x=>Number(x[5]));
  const n=cl.length,mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
  const ema=(arr,period)=>{const alpha=2/(period+1);let v=arr[0];return arr.map(x=>(v=alpha*x+(1-alpha)*v))};
@@ -1544,7 +1557,8 @@ function indicatorSnapshot(c){
  // Wilder-smoothed 14-period directional movement and true range.
  const dmPlus=[],dmMinus=[],trs=[];
  for(let i=1;i<n;i++){const up=hi[i]-hi[i-1],down=lo[i-1]-lo[i];dmPlus.push(up>down&&up>0?up:0);dmMinus.push(down>up&&down>0?down:0);trs.push(Math.max(hi[i]-lo[i],Math.abs(hi[i]-cl[i-1]),Math.abs(lo[i]-cl[i-1])))}
- if(trs.length>=28){plus=dmPlus.slice(0,14).reduce((a,b)=>a+b,0);minus=dmMinus.slice(0,14).reduce((a,b)=>a+b,0);tr=trs.slice(0,14).reduce((a,b)=>a+b,0);
+ if(trs.length>=27){plus=dmPlus.slice(0,14).reduce((a,b)=>a+b,0);minus=dmMinus.slice(0,14).reduce((a,b)=>a+b,0);tr=trs.slice(0,14).reduce((a,b)=>a+b,0);
+ {const p=tr?100*plus/tr:0,m=tr?100*minus/tr:0;dxValues.push(p+m?100*Math.abs(p-m)/(p+m):0)}
  for(let i=14;i<trs.length;i++){plus=plus-plus/14+dmPlus[i];minus=minus-minus/14+dmMinus[i];tr=tr-tr/14+trs[i];const p=tr?100*plus/tr:0,m=tr?100*minus/tr:0;dxValues.push(p+m?100*Math.abs(p-m)/(p+m):0)}
  if(dxValues.length>=14){adx=mean(dxValues.slice(0,14));for(let i=14;i<dxValues.length;i++)adx=(adx*13+dxValues[i])/14}}
  const vavg=mean(vol.slice(-21,-1));const range=hi[n-1]-lo[n-1];
