@@ -24,8 +24,24 @@ const memoByRow=fn=>{const cache=new WeakMap();return row=>{if(!row||typeof row!
 function movingMean(values,n){return values.length>=n?values.slice(-n).reduce((a,b)=>a+b,0)/n:null}
 const techMetrics=memoByRow(techMetricsCore);
 function techMetricsCore(c){
- const bars=(c.bars||[]).filter(b=>Number.isFinite(+b[4])&&Number.isFinite(+b[5]));
- const cls=bars.map(b=>+b[4]), lots=bars.map(b=>+b[5]);
+ // Share the same strict daily-bar validation as indicatorSnapshot: never
+ // compress the timeline by silently removing a corrupt trading day.
+ const bars=Array.isArray(c?.bars)?c.bars:[];
+ const empty={ret20:null,ret60:null,ma5:null,ma10:null,ma20:null,ma60:null,avg20:null,rsi14:null};
+ if(!bars.length)return empty;
+ let previousDate='';
+ for(const b of bars){
+  if(!Array.isArray(b)||b.length<6)return empty;
+  const [date,open,high,low,close,volume]=b;
+  if(typeof date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(date))return empty;
+  const stamp=Date.parse(date+'T00:00:00Z');
+  if(!Number.isFinite(stamp)||new Date(stamp).toISOString().slice(0,10)!==date||date<=previousDate)return empty;
+  previousDate=date;
+  const o=numeric(open),h=numeric(high),l=numeric(low),cl=numeric(close),v=numeric(volume);
+  if([o,h,l,cl,v].some(x=>x===null)||l<=0||h<l||o<l||o>h||cl<l||cl>h||v<0)return empty;
+ }
+ if(typeof c.date==='string'&&c.date&&bars.at(-1)[0]!==c.date)return empty;
+ const cls=bars.map(b=>Number(b[4])), lots=bars.map(b=>Number(b[5]));
  const ret=n=>cls.length>n&&cls.at(-n-1)>0?100*(cls.at(-1)/cls.at(-n-1)-1):null;
  const sma=n=>movingMean(cls,n);
  const avg20=lots.length>20?movingMean(lots.slice(0,-1),20):null;
@@ -1543,7 +1559,7 @@ function indicatorSnapshot(c){
   if([o,h,l,c0,v].some(x=>x===null)||l<=0||h<l||o<l||o>h||c0<l||c0>h||v<0)return blank;
  }
  // Do not label indicators as current when the stock snapshot and last candle disagree.
- if(typeof c.date==='string' && /^\d{4}-\d{2}-\d{2}$/.test(c.date) && bars[bars.length-1][0]!==c.date)return blank;
+ if(typeof c.date==='string' && c.date && bars[bars.length-1][0]!==c.date)return blank;
  const hi=bars.map(x=>Number(x[2])),lo=bars.map(x=>Number(x[3])),cl=bars.map(x=>Number(x[4])),vol=bars.map(x=>Number(x[5]));
  const n=cl.length,mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
  const ema=(arr,period)=>{const alpha=2/(period+1);let v=arr[0];return arr.map(x=>(v=alpha*x+(1-alpha)*v))};
