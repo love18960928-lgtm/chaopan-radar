@@ -31,7 +31,7 @@ function techMetricsCore(c){
  const avg20=lots.length>20?movingMean(lots.slice(0,-1),20):null;
  const recent=cls.slice(-15),changes=recent.slice(1).map((v,i)=>v-recent[i]);
  const ups=changes.reduce((a,n)=>a+Math.max(0,n),0),downs=changes.reduce((a,n)=>a+Math.max(0,-n),0);
- const rsi=changes.length>=14?(downs===0?100:100-100/(1+ups/downs)):null;
+ const rsi=changes.length>=14?(downs===0?(ups===0?50:100):100-100/(1+ups/downs)):null;
  return {ret20:ret(20),ret60:ret(60),ma5:sma(5),ma10:sma(10),ma20:sma(20),ma60:sma(60),avg20, rsi14:rsi};
 }
 // V3.0 daily closing-price averages and locked original breakout reference.
@@ -1542,6 +1542,8 @@ function indicatorSnapshot(c){
   const o=numeric(open),h=numeric(high),l=numeric(low),c0=numeric(close),v=numeric(volume);
   if([o,h,l,c0,v].some(x=>x===null)||l<=0||h<l||o<l||o>h||c0<l||c0>h||v<0)return blank;
  }
+ // Do not label indicators as current when the stock snapshot and last candle disagree.
+ if(typeof c.date==='string' && /^\d{4}-\d{2}-\d{2}$/.test(c.date) && bars[bars.length-1][0]!==c.date)return blank;
  const hi=bars.map(x=>Number(x[2])),lo=bars.map(x=>Number(x[3])),cl=bars.map(x=>Number(x[4])),vol=bars.map(x=>Number(x[5]));
  const n=cl.length,mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
  const ema=(arr,period)=>{const alpha=2/(period+1);let v=arr[0];return arr.map(x=>(v=alpha*x+(1-alpha)*v))};
@@ -1562,7 +1564,7 @@ function indicatorSnapshot(c){
  for(let i=14;i<trs.length;i++){plus=plus-plus/14+dmPlus[i];minus=minus-minus/14+dmMinus[i];tr=tr-tr/14+trs[i];const p=tr?100*plus/tr:0,m=tr?100*minus/tr:0;dxValues.push(p+m?100*Math.abs(p-m)/(p+m):0)}
  if(dxValues.length>=14){adx=mean(dxValues.slice(0,14));for(let i=14;i<dxValues.length;i++)adx=(adx*13+dxValues[i])/14}}
  const vavg=mean(vol.slice(-21,-1));const range=hi[n-1]-lo[n-1];
- return {rsi,macd:macdLine.at(-1),macdSignal:signal.at(-1),obvDelta:obvHist.at(-1)-obvHist.at(-6),k,d,j:3*k-2*d,bollUpper:mid+2*sd,bollMid:mid,bollLower:mid-2*sd,pdi:tr?100*plus/tr:null,mdi:tr?100*minus/tr:null,adx,volumeRatio:vavg>0?vol.at(-1)/vavg:null,candle:range>0?(cl.at(-1)-lo.at(-1))/range:null};
+ return {rsi,macd:macdLine.at(-1),macdSignal:signal.at(-1),obvDelta:obvHist.at(-1)-obvHist.at(-6),k,d,j:3*k-2*d,bollUpper:mid+2*sd,bollMid:mid,bollLower:mid-2*sd,pdi:tr?100*plus/tr:null,mdi:tr?100*minus/tr:null,adx,volumeRatio:vavg>0?vol.at(-1)/vavg:null,candle:range>0&&vol.at(-1)>0?(cl.at(-1)-lo.at(-1))/range:null};
 }
 
 function summaryPanel(c){
