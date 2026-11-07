@@ -159,7 +159,7 @@ function renderInstitutionalDetail(){
  const card=unifiedCardShell({key:'institution|'+r.id,rankText:'三大法人排行',stage,
   code:r.code,name:r.name,industry:`${r.market} · ${r.assetType}`,
   closeText:fmtValue(close),changeText:dated?'官方盤後收盤':'收盤待核對',changeClass:'',summary:overview,levels,evidence,
-  actions:`<button type="button" data-etf-chart-open="true" ${official?'':'disabled'}>📈 K線圖解</button><button type="button" disabled title="尚未有經核對的ETF盤中價量計畫">✎ 盤中價量試算待開放</button>`});
+  actions:`<button type="button" data-etf-chart-open="true" ${official?'':'disabled'}>查看走勢圖</button>`});
  const chart=official?makeChart(bars,null,state.chartDays,[],[],null):
   `<div class="battle-chart-empty">${history?.latestDate?'歷史K線最近日期 '+esc(history.latestDate)+'，與法人交易日 '+esc(asOf)+' 不一致。':'尚未取得此ETF的逐日開高低收資料。'}<br>不能使用別檔股票或舊日期資料冒充ETF線圖。</div>`;
  $('#modalContent').innerHTML=`<h2 id="modalTitle" class="card-dialog-title">法人排行｜證券作戰卡</h2>${card}
@@ -608,15 +608,15 @@ function financeCardPreview(c){
 }
 
 function unifiedCardShell({key,rankText,stage,code,name,industry,closeText,changeText,changeClass,summary,levels,evidence,finance,actions}){
- const kinds=finance?['summary','levels','evidence','finance']:['summary','levels','evidence'];
+ const kinds=['summary','levels','evidence'];
  const active=kinds.includes(sectorCardTabs.get(key))?sectorCardTabs.get(key):'summary';
  const tab=(id,label)=>`<button type="button" role="tab" data-card-tab="${id}" aria-selected="${active===id}" class="${active===id?'active':''}">${label}</button>`;
  const panel=(id,content)=>`<div role="tabpanel" data-card-panel="${id}" ${active===id?'':'hidden'}>${content}</div>`;
  return `<article class="sector-battle-card sector-r9 unified-battle-card" data-card-key="${esc(key)}">
   <div class="sector-card-eyebrow"><b>${esc(rankText)}</b><span>${esc(stage)}</span></div>
   <div class="sector-card-identity"><div><strong>${esc(code)} ${esc(name)}</strong><div class="sector-card-meta">${esc(industry)}</div></div><div class="sector-card-quote"><b>${esc(closeText)}</b><small class="${esc(changeClass||'')}">${esc(changeText||'—')}</small></div></div>
-  <div class="sector-r9-tabs" role="tablist" aria-label="${esc(code)}作戰資訊分頁">${tab('summary','速覽')}${tab('levels','買賣價位')}${tab('evidence','技術證據')}${finance?tab('finance','公司研究'):''}</div>
-  ${panel('summary',summary)}${panel('levels',levels)}${panel('evidence',evidence)}${finance?panel('finance',finance):''}
+  <div class="sector-r9-tabs" role="tablist" aria-label="${esc(code)}作戰資訊分頁">${tab('summary','速覽')}${tab('levels','買賣價位')}${tab('evidence','技術證據')}</div>
+  ${panel('summary',summary)}${panel('levels',levels)}${panel('evidence',evidence)}
   <div class="sector-card-actions">${actions}</div>
  </article>`;
 }
@@ -628,7 +628,7 @@ function unifiedCardEvents(e){
   card.querySelectorAll('[data-card-panel]').forEach(x=>x.hidden=x.dataset.cardPanel!==selected);return;
  }
  const stock=e.target.closest('[data-card-detail]');if(stock){showDetails(stock.dataset.cardDetail);return;}
- const intraday=e.target.closest('[data-card-intraday]');if(intraday){showDetails(intraday.dataset.cardIntraday,true);return;}
+
  const chart=e.target.closest('[data-etf-chart-open]');if(chart){const target=$('#etfChartSvg');if(target)target.scrollIntoView({block:'nearest',behavior:'smooth'});return;}
 }
 function sectorBattleCard(c,options={}){
@@ -658,7 +658,7 @@ function sectorBattleCard(c,options={}){
  <div class="sector-mini-stats"><span>觀察關卡 <b>${levelOk?n(g.breakoutLevel):'待核對'}</b></span><span>MA5 <b>${levelOk?n(g.ma5):'待核對'}</b></span><span>MA10 <b>${levelOk?n(g.ma10):'待核對'}</b></span></div>
  <div class="sector-six-dots"><span>六均線</span>${six}</div>
  <div class="r28-ma-audit ${sixAudit?.confirmed?'confirmed':sixAudit?.status==='below'?'rejected':'pending'}"><b>${esc(sixAudit?.label||'六線待核對')}</b>｜${esc(sixAudit?.reason||'六線資料尚未核對')}</div>
- <div class="sector-phase-note">${esc(ma510)} · ${esc(c.date||'資料日待核對')}盤後</div>${marginBrief}${financeQuickCard(c)}`;
+ <div class="sector-phase-note">${esc(ma510)} · ${esc(c.date||'資料日待核對')}盤後</div>${marginBrief}${financeQuickCard(c)}${options.source==='lookup-detail'?`<details class="finance-full-details"><summary>展開年度EPS與估值詳細資料</summary>${financialPanel(c)}</details>`:''}`;
  const levelVals=[
   ['突破觀察',g.breakoutLevel],['回測觀察',g.pullbackZone?.[0]],['MA5減碼警戒',g.ma5],['MA10防守',g.ma10],['歷史支撐',g.support],['移動停利',g.trailingStop]
  ];
@@ -676,8 +676,8 @@ function sectorBattleCard(c,options={}){
  <div class="sector-card-lights">${light}</div>
  <div class="sector-card-tags"><span class="sector-card-tag ok">${esc(ma510)}</span><span class="sector-card-tag muted">${trackLine}</span></div>
  <div class="sector-ma-row">${[5,10,20,60,120,240].map(d=>`<span class="sector-ma ${numeric(ma.values?.[d])===null?'missing':ma.close>=ma.values[d]?'above':'below'}">MA${d} ${n(ma.values[d])}</span>`).join('')}</div>
- <small>排名為研究排序，不是勝率；缺資料不補零。點「K線圖解」查看歷史證據。</small>`;
- const actions=`<button type="button" class="sector-open-detail" data-card-detail="${esc(key)}">📈 K線圖解</button><button type="button" class="sector-open-intraday" data-card-intraday="${esc(key)}">✎ 盤中價量試算</button>`;
+ <small>排名為研究排序，不是勝率；缺資料不補零。完整走勢請使用個股的「走勢圖」分頁。</small>`;
+ const actions=options.source==='lookup-detail'?'':`<button type="button" class="sector-open-detail" data-card-detail="${esc(key)}">查看完整作戰字卡</button>`;
  return unifiedCardShell({key:cardKey,rankText,stage:stage+(breakoutStar(c)?" ｜ "+breakoutStar(c).mark:"")+(c.breakoutQuality==='weak'?" 🔴轉弱":c.breakoutQuality==='watch'?" 🟡觀察":c.breakoutQuality==='strong'?" 🟢續強":""),code:c.code,name:c.name,
   industry:c.industry||c.fundamentals?.industry||c.market||'產業待核對',
   closeText:n(c.close),changeText:pct(c.changePct),changeClass:numeric(c.changePct)>0?'rising':numeric(c.changePct)<0?'falling':'',
@@ -1024,18 +1024,11 @@ function arrangeR41Detail(c){
  }
  // r44.15: all lookup and ranked stocks share the exact same four-tab battle card.
  // Retain the former detail research under an optional fold; chart and gates stay intact.
+ card.querySelectorAll('.fin-r13-details').forEach(el=>el.remove());
  const originalDetailMarkup=card.innerHTML;
  card.innerHTML=sectorBattleCard(c,{source:'lookup-detail',rankText:'超盤手｜個股完整分析'})
    +'<details class="lookup-extra-research"><summary>展開原始技術研究與六價位細節</summary>'
    +originalDetailMarkup+'</details>';
- // A missing finance snapshot must not remove the Company Research tab.
- const unified=card.querySelector('.unified-battle-card');
- if(unified&&!unified.querySelector('[data-card-tab="finance"]')){
-   const tabs=unified.querySelector('.sector-r9-tabs');
-   if(tabs)tabs.insertAdjacentHTML('beforeend','<button type="button" role="tab" data-card-tab="finance" aria-selected="false">公司研究</button>');
-   const actions=unified.querySelector('.sector-card-actions');
-   if(actions)actions.insertAdjacentHTML('beforebegin','<div role="tabpanel" data-card-panel="finance" hidden><p>目前尚無足夠的同日可驗證財務資料，請以官方公告為準。</p></div>');
- }
  const sameDay=Array.isArray(c.bars)&&c.bars.length>0&&c.bars.at(-1)?.[0]===c.date&&c.date===state.payload?.asOf;
  const lastSupport=sameDay?supportLines(c):[], defens=sameDay?c.structureV23?.mainDefense:null;
  const amount=(v,dir='down')=>{
@@ -2214,7 +2207,7 @@ function setupDetailSwipe(){
  },{passive:true});
  sheet.addEventListener('touchcancel',()=>{start=null;},{passive:true});
 }
-function openSettings(opts={}){const isReady=state.mode==='live';$('#modalContent').innerHTML=`<div class="eyebrow">APP STATUS / SETTINGS</div><h2 id="modalTitle">資料與安裝設定</h2><div class="settings-card"><strong>目前：${modeName()}</strong><p>最近盤後日期：${esc(state.payload?.asOf||'尚無')}<br>掃描歷史完整股票：${integer(state.payload?.eligibleCount||0)} 檔<br>已記錄股票：${integer(state.payload?.stockCount||0)} 檔</p></div><div class="settings-card"><strong>如何使用免費版？</strong><p>把本程式上傳 GitHub 公開 Repository，啟用 Actions，先手動執行「初次回補約220天」，設定 Pages 從 main /root 發布，再以 Android Chrome 的「新增至主畫面」安裝。GitHub Actions 依排程在13:30、14:30、18:30、23:00以及隔日06:00、08:30嘗試核對盤後資料（實際排程可能延遲），若交易所阻擋雲端 IP，需改用在台灣網路執行的收集主機。</p></div><div class="settings-card"><strong>即時版升級狀態</strong><p>目前沒有盤中報價或推播。未來串接授權即時行情、雲端首次突破判斷及 Firebase 推播後升級；不會使用盤後資料假裝盤中訊號。</p></div><div class="settings-card"><strong>網站隱私與密碼：目前仍是公開網站</strong><p>GitHub Pages 的 JavaScript 密碼視窗不能真正保護行情或阻止已取得網址的人查看檔案，亦不能安全撤銷別人的存取權。若需要可取消授權的真正私密網站，應遷移到有伺服端登入控管的部署方式（例如 Cloudflare Pages + Access），並關閉舊公開 Pages、保護行情資料來源。不要在此公開程式中設定真實密碼。</p></div><div class="action-row"><button id="reloadData" class="primary-action">重新檢查盤後資料</button>${isReady?'':'<button id="demoModeBtn" class="secondary-action">開啟示範畫面</button>'}</div>`;$('#modalContent').insertAdjacentHTML('beforeend',`<details id="r41AdvancedSettings" class="r41-advanced-settings" ${opts.advanced?'open':''}><summary>進階功能｜技術研究與原始法人資料</summary>${r41AdvancedSettingsMarkup()}</details>`);const recent=allRows().find(x=>x.code===state.r41Advanced?.code&&x.date===state.r41Advanced?.date);if(recent){wireValuationScenario(recent);wireIntradayPanel(recent)};if($('#r41AdvancedSettings #intradayJump'))$('#r41AdvancedSettings #intradayJump').onclick=jumpToIntraday;$('#reloadData').onclick=()=>{hideDetails();loadData()};if($('#demoModeBtn'))$('#demoModeBtn').onclick=()=>{hideDetails();demoMode()};$('#modalOverlay').hidden=false;document.body.style.overflow='hidden'}
+function openSettings(opts={}){const isReady=state.mode==='live';$('#modalContent').innerHTML=`<div class="eyebrow">APP STATUS / SETTINGS</div><h2 id="modalTitle">資料與安裝設定</h2><div class="settings-card"><strong>目前：${modeName()}</strong><p>最近盤後日期：${esc(state.payload?.asOf||'尚無')}<br>掃描歷史完整股票：${integer(state.payload?.eligibleCount||0)} 檔<br>已記錄股票：${integer(state.payload?.stockCount||0)} 檔</p></div><div class="settings-card"><strong>如何使用免費版？</strong><p>把本程式上傳 GitHub 公開 Repository，啟用 Actions，先手動執行「初次回補約220天」，設定 Pages 從 main /root 發布，再以 Android Chrome 的「新增至主畫面」安裝。GitHub Actions 依排程在13:30、14:30、18:30、23:00以及隔日06:00、08:30嘗試核對盤後資料（實際排程可能延遲），若交易所阻擋雲端 IP，需改用在台灣網路執行的收集主機。</p></div><div class="settings-card"><strong>即時版升級狀態</strong><p>目前沒有盤中報價或推播。未來串接授權即時行情、雲端首次突破判斷及 Firebase 推播後升級；不會使用盤後資料假裝盤中訊號。</p></div><div class="settings-card"><strong>網站隱私與密碼：目前仍是公開網站</strong><p>GitHub Pages 的 JavaScript 密碼視窗不能真正保護行情或阻止已取得網址的人查看檔案，亦不能安全撤銷別人的存取權。若需要可取消授權的真正私密網站，應遷移到有伺服端登入控管的部署方式（例如 Cloudflare Pages + Access），並關閉舊公開 Pages、保護行情資料來源。不要在此公開程式中設定真實密碼。</p></div><div class="action-row"><button id="reloadData" class="primary-action">重新檢查盤後資料</button>${isReady?'':'<button id="demoModeBtn" class="secondary-action">開啟示範畫面</button>'}</div>`;$('#modalContent').insertAdjacentHTML('beforeend',`<details id="r41AdvancedSettings" class="r41-advanced-settings" ${opts.advanced?'open':''}><summary>進階功能｜技術研究與原始法人資料</summary>${r41AdvancedSettingsMarkup()}</details>`);const recent=allRows().find(x=>x.code===state.r41Advanced?.code&&x.date===state.r41Advanced?.date);if(recent){wireValuationScenario(recent);wireIntradayPanel(recent)};$('#reloadData').onclick=()=>{hideDetails();loadData()};if($('#demoModeBtn'))$('#demoModeBtn').onclick=()=>{hideDetails();demoMode()};$('#modalOverlay').hidden=false;document.body.style.overflow='hidden'}
 function navTo(page){$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(page==='list'){setTab('all');(document.querySelector('#quickStockSearch')||document.querySelector('.content-area')).scrollIntoView({behavior:'smooth'})}else if(page==='star'){state.tab='star';const adv=$('.advanced-radar');if(adv)adv.open=true;$$('.tab').forEach(x=>x.classList.remove('active'));renderList();$('.content-area').scrollIntoView({behavior:'smooth'})}else if(page==='guide')$('#institutionalBoard').scrollIntoView({behavior:'smooth'});else openSettings()}
 // r44.7 independent lookup: browsing stocks is NOT the same as being auto-qualified.
 // Date lock and market+code keys prevent stale and cross-listing mixups.
