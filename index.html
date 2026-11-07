@@ -186,6 +186,21 @@ html.chaopan-chart-expanded .modal-overlay{z-index:99990!important}
 .chaopan-landscape-chart .fib-toolbar,.chaopan-landscape-chart>.fib-toggle,.chaopan-landscape-chart>.range-status,.chaopan-landscape-chart>.chart-window-notice,.chaopan-landscape-chart>.chart-zoom-hint,.chaopan-landscape-chart>.chart-legend{display:none!important}
 .chaopan-landscape-chart #chartSvg{grid-row:2!important;display:block!important;width:100%!important;height:100%!important;min-height:0!important;min-width:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
 .chaopan-landscape-chart #chartSvg svg{display:block!important;width:100%!important;height:100%!important;max-height:none!important;max-width:none!important}
+
+/* Forward estimates: three-year, stock-agnostic scenario cards */
+.forward-panel{border:1px solid #426276;border-radius:12px;padding:12px;margin:12px 0;background:rgba(31,58,75,.24)}
+.forward-source{font-size:12px;color:#b7cad5;line-height:1.6;margin:8px 0}
+.forward-source a{color:#8dd9ee;text-decoration:underline}
+.forward-pe-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:9px 0}
+.forward-pe-row label,.forward-year-row label{font-size:12px;color:#bdd1de}
+.forward-pe-row input,.forward-year-row input{display:block;box-sizing:border-box;width:100%;min-width:0;padding:7px 5px;font-size:15px;color:#fff;background:#172e40;border:1px solid #537186;border-radius:5px;margin-top:3px}
+.forward-year-row{padding:10px 0;border-top:1px solid #3a5567;display:grid;gap:8px;grid-template-columns:55px minmax(95px,1fr);align-items:center}
+.forward-year-row>b{font-size:17px;color:#eaf6ff}
+.forward-results{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;font-size:12px;color:#e1e8ee}
+.forward-results span{padding:8px 4px;border-radius:6px;background:#203c50;text-align:center;min-width:0}
+.forward-results small{display:block;font-size:10px;color:#a7c4d4;margin-bottom:3px}
+.forward-results strong{font-size:15px;color:#fff;overflow-wrap:anywhere}
+.forward-disclaimer{display:block;color:#b7c4ce;font-size:11px;line-height:1.6;margin-top:10px}
 </style>
 </head>
 <body>
@@ -280,5 +295,5 @@ html.chaopan-chart-expanded .modal-overlay{z-index:99990!important}
 <script src="tomorrow-radar-v110.js?v=20261020-r42-liquidity-risk" defer></script>
 <script src="investor-desk-v100.js?v=20261020-r44-5-investor" defer></script>
 <script src="market-regime-v100.js?v=20261020-r44-4-market-compare" defer></script>
-<script src="app-detail-swipe-v222.js?v=r45-landscape-fix-20261107c" defer></script>
+<script src="app-detail-swipe-v222.js?v=r46-forward-20261107" defer></script>
 </body></html>

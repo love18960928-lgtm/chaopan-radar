@@ -1650,6 +1650,39 @@ function cyclePanel(c){
  ${risks}${journal}<small>無逐筆分點、法人持倉、券商實際成本、國際指數即時價格；量價變化不得稱為主力建倉／出貨已證實。條件與閾值未經績效校準。</small>
  </section>`;
 }
+// Published FactSet snapshots; manually curated and explicitly dated, NOT live feeds.
+// Never fabricate a consensus estimate for an unlisted stock.
+const forwardConsensusSnapshots=Object.freeze({
+ '2330':{date:'2026-10-15',source:'FactSet／鉅亨網',url:'https://gfe-news2.prod.cnyes.cool/news/id/6631541',eps:[109.21,145.69,185.61],target:3220},
+ '2449':{date:'2026-11-06',source:'FactSet／鉅亨網',url:'https://m.cnyes.com/news/id/6649397',eps:[8.12,13.66,18.26],target:330},
+ '3189':{date:'2026-11-02',source:'FactSet／豐雲學堂',url:'https://www.sinotrade.com.tw/richclub/news/6ae8662c36ff4992b1fd3fad',eps:[12.77,33.24,56.7],target:1365},
+ '2368':{date:'2026-09-14',source:'FactSet／鉅亨網',url:'https://anuenews.cnyes.com/news/id/6606173',eps:[41.57,69.1,95.07],target:1620},
+ '2454':{date:'2026-05-08',source:'FactSet／鉅亨網（舊資料，請更新）',url:'https://gfemobile.cnyes.com/news/id/6448335',eps:[66.01,113,179.63],target:3370}
+});
+function forwardValuationMarkup(c){
+ const code=String(c.code||'').replace(/\D/g,'');
+ const snap=forwardConsensusSnapshots[code];
+ const yr=[2026,2027,2028];
+ const rows=yr.map((y,i)=>`<div class="forward-year-row"><b>${y}年</b><label>預估EPS（元）<input class="forward-eps" data-year="${y}" type="number" inputmode="decimal" min="0" max="1000" step="0.01" value="${snap?snap.eps[i]:''}" placeholder="未取得，請輸入" /></label><div class="forward-results" data-result="${y}">待輸入EPS</div></div>`).join('');
+ const source=snap?`<div class="forward-source">資料：${esc(snap.source)}｜${esc(snap.date)}｜<a href="${snap.url}" target="_blank" rel="noopener noreferrer">檢視來源</a>${snap.target?`｜報導所列法人目標價 ${price(snap.target)} 元（與年度試算不同）`:''}</div>`:'<div class="forward-source">此股票尚未匯入可核對的法人年度EPS；可自行輸入預估值試算，不能視為法人共識。</div>';
+ return `<section class="forward-panel"><div class="fin-subhead">2026／2027／2028 年度預估價格 <small>所有個股皆可試算</small></div>${source}<div class="forward-pe-row"><label>保守PE<input class="forward-pe" type="number" value="20" min="1" max="150" step="1"></label><label>基準PE<input class="forward-pe" type="number" value="25" min="1" max="150" step="1"></label><label>樂觀PE<input class="forward-pe" type="number" value="30" min="1" max="150" step="1"></label></div>${rows}<small class="forward-disclaimer">年度預估價＝當年EPS × 假設本益比。20／25／30倍僅為可調整的初始情境，不適合所有產業；虧損公司、金融股等須使用其他估值方法。輸入數字不會自動取得法人資料，也不是買賣訊號。法人共識與目標價可能過時。</small></section>`;
+}
+function wireForwardValuation(c){
+ const root=document.querySelector('.forward-panel');if(!root)return;
+ const pe=[...root.querySelectorAll('.forward-pe')],eps=[...root.querySelectorAll('.forward-eps')];
+ const update=()=>{
+  const p=pe.map(e=>e.value.trim()===''?NaN:Number(e.value));
+  const valid=p.every(v=>Number.isFinite(v)&&v>=1&&v<=150)&&p[0]<=p[1]&&p[1]<=p[2];
+  eps.forEach(el=>{
+   const target=root.querySelector(`[data-result="${el.dataset.year}"]`);
+   const v=el.value.trim()===''?NaN:Number(el.value);
+   if(!valid){target.textContent='請確認PE為1～150倍且保守≤基準≤樂觀';return;}
+   if(!Number.isFinite(v)||v<=0||v>1000){target.textContent='缺少有效EPS，不提供預估價';return;}
+   target.innerHTML=p.map((multiple,i)=>`<span><small>${['保守','基準','樂觀'][i]} ${multiple}倍</small><strong>${price(v*multiple)}元</strong></span>`).join('');
+  });
+ };
+ [...pe,...eps].forEach(el=>el.addEventListener('input',update));update();
+}
 function financialPanel(c){
  const fin=c.fundamentals||{},i=c.investment||{};
  const num=numeric;
@@ -1671,6 +1704,7 @@ function financialPanel(c){
   <div class="fin-subhead">獲利與估值 <small>${esc(fin.epsPeriod||'最新可用季報待核對')}</small></div>
   <div class="fin-metrics">${item(fin.eps,'累計EPS（年初起）')}${item(fin.grossMargin,'毛利率','pct')}${item(fin.pe,'官方本益比')}${item(fin.pb,'淨值比')}</div>
   ${verifiedValuation(c)?`<div class="model-target-prices"><div class="model-target-heading">已驗證歷史本益比估值（非券商喊價）</div><div class="model-target-columns">${verifiedValuation(c).targets.map((p,i)=>`<span><small>${['便宜','合理','昂貴'][i]}</small><b>${price(p)}元</b></span>`).join('')}</div><small>估算近四季 EPS ${price(verifiedValuation(c).eps)} 元；與財報和歷史PE樣本核對通過。</small></div>`:'<p class="fin-r13-warning">缺少可核對的近四季EPS或歷史PE，暫不顯示模型目標價。單季EPS不可當全年EPS。</p>'}
+  ${forwardValuationMarkup(c)}
   <div class="fin-r13-estimator">
    <strong>估值情境試算｜預估全年 EPS × 假設本益比</strong>
    <div class="fin-r13-fields"><label>假設未來12個月EPS（元）<input id="valuationAnnualEPS" type="number" inputmode="decimal" min="0.01" max="500" step="0.01" placeholder="自行填入，非單季EPS" /></label>
@@ -2004,6 +2038,7 @@ function renderDetail(){const c=state.detail;if(!c)return;const starred=state.wa
   arrangeR41Detail(c);
   if(globalThis.ChaopanChartExpanded) globalThis.ChaopanApplyExpandedChart?.();
   wireValuationScenario(c);
+  wireForwardValuation(c);
   wireIntradayPanel(c);
   if($('#intradayJump'))$('#intradayJump').onclick=jumpToIntraday;
   $$('.range-btn').forEach(b=>b.onclick=()=>{state.chartDays=b.dataset.days==='120'?120:Number(b.dataset.days);renderDetail()});
