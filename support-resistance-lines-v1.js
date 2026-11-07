@@ -1,7 +1,7 @@
 /* Support/resistance research overlay. Confirm pivots only after 2 subsequent bars. */
 (function(root){'use strict';
 function analyze(bars,asOf){
- const empty={status:'insufficient',supports:[],resistances:[],events:[],reason:'有效日K不足'};
+ const empty={status:'insufficient',supports:[],resistances:[],events:[],bearish:[],reason:'有效日K不足'};
  if(!Array.isArray(bars)||bars.length<25)return empty;
  let prev='',a=[];
  for(const b of bars){if(!Array.isArray(b)||b.length<6)return {...empty,reason:'K線欄位不足'};
@@ -28,17 +28,43 @@ function analyze(bars,asOf){
    if(violates)continue;
    const now=a0.price+slope*(a.length-1-a0.index),before=a0.price+slope*(a.length-2-a0.index);
    if(now<=0||before<=0)continue;
-   results.push({type,from:a0,to:b,slope,now,before,confirmedAt:a[b.confirmed].date});
+   // Only assess a line after its second pivot has been confirmed (no look-ahead).
+    const levels=a.map((_,i)=>a0.price+slope*(i-a0.index));
+    const after=a.slice(b.confirmed+1);
+    const broken=after.some((bar,k)=>{const idx=b.confirmed+1+k;return type==='support'?bar.close<levels[idx]:bar.close>levels[idx];});
+    const lastClose=a.at(-1).close;
+    const state=type==='support'?(lastClose<now?'broken':broken?'reclaimed':'active'):(lastClose>now?'broken':broken?'reclaimed':'active');
+    results.push({type,from:a0,to:b,slope,now,before,confirmedAt:a[b.confirmed].date,state,everBroken:broken});
    if(results.length===2)break;
   }return results;
  }
  const supports=lines(lows,'support'),resistances=lines(highs,'resistance');
  const last=a.at(-1),prior=a.at(-2),events=[];
  for(const l of [...supports,...resistances]){
-  if(l.type==='support'&&prior.close>=l.before&&last.close<l.now)events.push({kind:'support-break',date:last.date,level:l.now});
-  if(l.type==='resistance'&&prior.close<=l.before&&last.close>l.now)events.push({kind:'resistance-break',date:last.date,level:l.now});
+  if(l.type==='support'&&l.confirmedAt<last.date&&prior.close>=l.before&&last.close<l.now)events.push({kind:'support-break',date:last.date,level:l.now});
+  if(l.type==='resistance'&&l.confirmedAt<last.date&&prior.close<=l.before&&last.close>l.now)events.push({kind:'resistance-break',date:last.date,level:l.now});
  }
- return {status:'ok',supports,resistances,events,asOf:prev,pivotCount:{low:lows.length,high:highs.length}};
+ // Bearish continuation is based on the latest confirmed support line only.
+  // This is a risk flag, not proof of short selling or a trading instruction.
+  const bearish=[];
+  for(const l of supports){
+    const start=a.findIndex(b=>b.date===l.confirmedAt)+1;
+    if(start<1)continue;
+    let stage=0,firstBreak=-1,latestBreak=-1;
+    for(let i=start;i<a.length;i++){
+      const level=l.from.price+l.slope*(i-l.from.index);
+      const previous=l.from.price+l.slope*(i-1-l.from.index);
+      if(a[i].close>=level){stage=0;firstBreak=-1;latestBreak=-1;continue;}
+      if(stage===0&&a[i-1].close>=previous){stage=1;firstBreak=i;latestBreak=i;continue;}
+      if(stage===1&&i>firstBreak){stage=2;latestBreak=i;continue;}
+      if(stage===2&&i>latestBreak&&a[i].close<a[i-1].close){stage=3;latestBreak=i;}
+    }
+    if(stage){
+      const avg20=a.slice(Math.max(0,a.length-21),-1).reduce((n,b)=>n+b.volume,0)/Math.min(20,a.length-1);
+      bearish.push({stage,level:l.now,firstBreakDate:a[firstBreak].date,volumeConfirmed:avg20>0&&last.volume>=avg20*1.5,confirmedAt:l.confirmedAt});
+    }
+  }
+  return {status:'ok',supports,resistances,events,bearish,asOf:prev,pivotCount:{low:lows.length,high:highs.length}};
 }
 root.ChaopanTrendLines={analyze};
 })(typeof globalThis!=='undefined'?globalThis:this);
