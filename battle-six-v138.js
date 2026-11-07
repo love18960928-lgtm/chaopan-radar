@@ -40,7 +40,11 @@
   if(!verifiedStocks)r.reason.push('非一般上市／上櫃股票，交易升降單位不使用本模型');
   if(x.adjusted!==true)r.reason.push('未證明已正確處理除權息／分割，不能認證下單價');
   const neck=num(x.neck),breakout=num(x.breakout),sup=num(x.support),ma5=num(x.ma5),ma10=num(x.ma10),atr=num(x.atr),recentHigh=num(x.recentHigh);
-  const buyRaw=positive(breakout)?breakout:positive(neck)?neck*1.002:null;
+  // Historical breakout levels are not automatically actionable next-session entries.
+  const candidate=positive(breakout)?breakout:positive(neck)?neck*1.002:null;
+  const remote=positive(candidate)&&candidate>close*1.15;
+  const buyRaw=remote?null:candidate;
+  if(remote)r.reason.push(`歷史突破參考 ${fmt(candidate)} 元距收盤 ${((candidate/close-1)*100).toFixed(1)}%，超過15%觀察門檻；不列為近期首次買點`);
   const buy=verifiedStocks&&positive(buyRaw)?snap(buyRaw,'up'):null;
   const exit=verifiedStocks&&positive(sup)?snap(sup,'down'):null;
   if(!positive(neck)||!positive(buy)||buy<neck){r.reason.push('缺少原頸線和有效突破價，無法判定首次買點');}
@@ -91,7 +95,7 @@
     {label:'轉弱路徑',tone:'down',condition:`跌破結構參考 ${fmt(r.levels.exit)} 元且無法收復，或高檔放量長上影後再次轉弱`,invalid:'重新站回關鍵壓力並確認量價改善'}
   ];
   // If levels are absent, do not pretend to have exact future triggers.
-  if(r.levels.buy===null)r.paths[0].condition='有效頸線與突破價未確認：僅追蹤價格結構，不設虛構突破觸發價';
+  if(r.levels.buy===null)r.paths[0].condition=remote?'歷史突破價離現價過遠；等待重新形成近期盤整、頸線及量價確認，不追舊突破價':'有效頸線與突破價未確認：僅追蹤價格結構，不設虛構突破觸發價';
   if(r.levels.exit===null)r.paths[2].condition='有效結構出場價待核對：暫不給固定停損價；持股風險須另設可核對的防守線';
   return r;
  }
@@ -99,7 +103,7 @@
  function render(r,opts={}){
   if(!r)return '<p>資料尚未載入</p>';
   const fields=[['首次買點','buy','下一交易日條件價，非成交價'],['再突破加碼','add','下一交易日須持股有浮盈'],['第一階段獲利（2R）','profit1','非預測目標'],['第二階段獲利（3R）','profit2','非預測目標'],['減碼價','trim','均線／量價確認'],['結構出場價','exit','先定風險線']];
-  const cell=([lab,k,note])=>`<div class="six-cell"><small>${lab}</small><b>${r.levels[k]===null?'待核對':fmt(r.levels[k])+' 元'}</b><em>${note}</em></div>`;
+  const cell=([lab,k,note])=>`<div class="six-cell"><small>${lab}</small><b>${r.levels[k]===null?(k==='buy'&&r.reason.some(s=>s.includes('超過15%觀察門檻'))?'暫不進場':'待核對'):fmt(r.levels[k])+' 元'}</b><em>${note}</em></div>`;
   const reasons=r.reason.slice(0,4).map(x=>`<li>${esc(x)}</li>`).join('');
   const section=`<section class="six-battle" aria-label="六價位作戰計畫"><div class="six-heading"><b>六大操作價位</b><small>基準日 ${esc(r.date)} 收盤｜下個交易日執行條件</small></div><div class="six-status">${esc(r.quoteStatus)} · ${esc(r.status)} · ${r.verified?'基準日技術訊號已驗證，下一交易日仍須再查價量':'資料及交易條件未全部認證；所有數字只能作隔日觀察，不能直接委託'}</div><div class="six-grid">${fields.map(cell).join('')}</div><p class="six-vol">${esc(r.volume.condition)}：${r.volume.dailyThreshold===null?'待核對':fmt(r.volume.dailyThreshold)+' 張'}（${esc(r.date)} 收盤時計算）</p>${reasons?`<details><summary>價位尚待驗證的原因</summary><ul>${reasons}</ul></details>`:''}</section>`;
   if(opts.compact)return section;

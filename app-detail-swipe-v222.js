@@ -588,10 +588,12 @@ function financeQuickCard(c){
  }
  if(info.eps)bits.push(`<span><small>累計EPS ${esc(info.eps.period)}</small><b>${price(info.eps.amount)} 元</b></span>`);
  if(info.pe)bits.push(`<span><small>官方本益比 ${esc(info.pe.date)}</small><b>${price(info.pe.value)} 倍</b></span>`);
+ const valuationGap=m&&numeric(c.close)>0?m.targets[1]/numeric(c.close):null;
+ const valuationWarn=valuationGap!==null&&(valuationGap<.65||valuationGap>1.5)?`<p class="fin-r13-warning">⚠ 模型基準價與市價差距 ${Math.abs((valuationGap-1)*100).toFixed(1)}%；歷史PE估值可能不適用目前市場環境，請核對EPS期別、PE樣本與價格調整，不能直接當作買賣價。</p>`:'';
  const bands=m?`<div class="finance-glance-band" aria-label="歷史本益比模型估值三區間">
    ${['便宜','合理','昂貴'].map((label,i)=>`<span class="${i===1?'fair':''}"><small>${label}情境</small><strong>${price(m.targets[i])} 元</strong></span>`).join('')}
   </div><div class="finance-glance-caveat">模型合理價 ${price(m.targets[1])} 元｜近四季EPS ${price(m.eps)} × 歷史PE中位數；不是券商目標價</div>`:'';
- return `<section class="finance-glance" aria-label="已核對公司營收與估值"><div class="finance-glance-title">公司研究 · 已取得資料 <small>${esc(c.date)} 盤後</small></div>${bits.length?`<div class="finance-glance-facts">${bits.join('')}</div>`:''}${bands}</section>`;
+ return `<section class="finance-glance" aria-label="已核對公司營收與估值"><div class="finance-glance-title">公司研究 · 已取得資料 <small>${esc(c.date)} 盤後</small></div>${bits.length?`<div class="finance-glance-facts">${bits.join('')}</div>`:''}${bands}${valuationWarn}</section>`;
 }
 function valuationBadge(c){
  const m=verifiedValuation(c);
