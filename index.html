@@ -162,6 +162,30 @@ html.chaopan-chart-expanded .modal-overlay{z-index:99990!important}
   transform-origin:top left!important;transform:rotate(90deg)!important;
  }
 }
+
+/* Landscape usability: compact toolbar and larger readable chart */
+.chaopan-landscape-chart{gap:2px!important;padding:4px 8px!important;overflow:hidden!important}
+.chaopan-landscape-chart .chart-top{flex:0 0 auto!important;gap:5px!important;flex-wrap:nowrap!important;min-height:0!important}
+.chaopan-landscape-chart .chart-top strong{font-size:14px!important;white-space:nowrap}
+.chaopan-landscape-chart .chart-range{flex-wrap:nowrap!important;gap:3px!important}
+.chaopan-landscape-chart .chart-range button,.chaopan-landscape-chart .chaopan-expand{padding:4px 7px!important;font-size:12px!important;min-height:30px!important}
+.chaopan-landscape-chart .fib-toolbar{display:contents!important}
+.chaopan-landscape-chart .fib-toggle{width:auto!important;min-width:0!important;padding:4px 8px!important;margin:0!important;min-height:30px!important;font-size:12px!important;flex:0 0 auto!important}
+.chaopan-landscape-chart .range-status{display:none!important}
+.chaopan-landscape-chart #chartSvg{width:100%!important;flex:1 1 0!important;min-height:0!important;margin:0!important;padding:0!important}
+.chaopan-landscape-chart #chartSvg svg{width:100%!important;height:100%!important;display:block!important}
+.range-status{display:block;font-size:12px;color:#9cc7d7;padding:3px 0 5px}
+
+/* v3: actual compact toolbar and full-viewport chart; no extra rows */
+.chart-area.chaopan-landscape-chart{display:grid!important;grid-template-rows:42px minmax(0,1fr)!important;grid-template-columns:minmax(0,1fr)!important;gap:2px!important;padding:5px 9px!important;overflow:hidden!important}
+.chaopan-landscape-chart .chart-top{grid-row:1!important;display:flex!important;flex-flow:row nowrap!important;align-items:center!important;justify-content:flex-start!important;gap:7px!important;min-width:0!important;margin:0!important;padding:0!important}
+.chaopan-landscape-chart .chart-top strong{font-size:clamp(12px,1.7vw,19px)!important;white-space:nowrap!important;flex:0 1 auto!important}
+.chaopan-landscape-chart .chart-range{display:flex!important;flex-wrap:nowrap!important;gap:4px!important;margin-left:auto!important;align-items:center!important}
+.chaopan-landscape-chart .chart-top .fib-toggle{width:auto!important;min-width:0!important;flex:0 0 auto!important;margin:0!important;padding:5px 9px!important;min-height:31px!important;font-size:clamp(11px,1.4vw,15px)!important}
+.chaopan-landscape-chart .chaopan-expand{margin-left:0!important;order:10!important}
+.chaopan-landscape-chart .fib-toolbar,.chaopan-landscape-chart>.fib-toggle,.chaopan-landscape-chart>.range-status,.chaopan-landscape-chart>.chart-window-notice,.chaopan-landscape-chart>.chart-zoom-hint,.chaopan-landscape-chart>.chart-legend{display:none!important}
+.chaopan-landscape-chart #chartSvg{grid-row:2!important;display:block!important;width:100%!important;height:100%!important;min-height:0!important;min-width:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
+.chaopan-landscape-chart #chartSvg svg{display:block!important;width:100%!important;height:100%!important;max-height:none!important;max-width:none!important}
 </style>
 </head>
 <body>
@@ -256,5 +280,5 @@ html.chaopan-chart-expanded .modal-overlay{z-index:99990!important}
 <script src="tomorrow-radar-v110.js?v=20261020-r42-liquidity-risk" defer></script>
 <script src="investor-desk-v100.js?v=20261020-r44-5-investor" defer></script>
 <script src="market-regime-v100.js?v=20261020-r44-4-market-compare" defer></script>
-<script src="app-detail-swipe-v222.js?v=landscape-range-20261107" defer></script>
+<script src="app-detail-swipe-v222.js?v=landscape-fix-20261107c" defer></script>
 </body></html>
