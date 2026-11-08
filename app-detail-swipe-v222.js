@@ -632,31 +632,42 @@ function unifiedCardEvents(e){
  const chart=e.target.closest('[data-etf-chart-open]');if(chart){const target=$('#etfChartSvg');if(target)target.scrollIntoView({block:'nearest',behavior:'smooth'});return;}
 }
 // r47: one consolidated, evidence-based selection audit. Unknown is not pass.
-function r47SelectionAudit(c){
- const valid=numeric(c.close)!==null&&numeric(c.close)>0&&c.date===state.payload?.asOf&&Array.isArray(c.bars)&&c.bars.length>=20;
- const close=numeric(c.close),neck=latestNeck(c),supports=supportLines(c);
- const ma=ChaopanExtrasV311.averages(c),ma20=numeric(ma.values?.[20]);
- const volumeRatio=numeric(c.volumeRatio);
+// r48: shared evidence audit for stock cards. Missing data never counts as a pass.
+function r48SelectionState(c){
+ const close=numeric(c.close),bars=Array.isArray(c.bars)?c.bars:[];
+ const latest=bars.length?bars[bars.length-1]:null;
+ const latestDate=Array.isArray(latest)?latest[0]:(latest?.date??latest?.Date);
+ const valid=close!==null&&close>0&&bars.length>=20&&c.date===state.payload?.asOf&&latestDate===c.date;
+ const neck=latestNeck(c),ma=globalThis.ChaopanExtrasV311?.averages?.(c);
+ const ma20=numeric(ma?.values?.[20]),vr=numeric(c.volumeRatio);
  const aboveMA=valid&&ma20!==null?close>=ma20:null;
  const aboveNeck=valid&&neck!==null&&neck>0?close>neck:null;
- const volReady=valid&&volumeRatio!==null?volumeRatio>=1.3:null;
- const broken=valid&&supports.length>0?supports.some(v=>v.confirmedBreak===true):null;
- const breakoutInvalid=c.starPhase==='invalid'||c.breakoutQuality==='invalid';
- const risk=breakoutInvalid||c.fallingLimitRisk===true||c.riskLevel==='high';
- const trend=aboveMA===true&&aboveNeck===true;
- const qualified=valid&&trend&&volReady===true&&!risk&&c.breakoutQuality==='strong';
- const pending=!valid||aboveMA===null||aboveNeck===null||volReady===null;
- const status=qualified?'符合突破觀察':risk?'風險排除':pending?'資料待核對':'等待確認';
- const symbol=v=>v===true?'✓':v===false?'×':'?';
- const rows=[['站上 MA20',aboveMA],['站上近期頸線',aboveNeck],['量比達 1.3 倍',volReady],['突破品質強勢',c.breakoutQuality==='strong'?true:['weak','invalid','watch'].includes(c.breakoutQuality)?false:null],['未觸發重大風險',risk?false:valid?true:null]];
- const up=valid&&neck!==null&&neck>0&&close<neck?(neck/close-1)*100:null;
- const volTarget=volumeRatio!==null&&numeric(c.lots)!==null&&volumeRatio>0?Math.ceil(numeric(c.lots)/volumeRatio*1.3):null;
- return `<section class="r47-audit" aria-label="選股資格與近期戰況"><div class="r47-head"><strong>近期戰況・選股條件</strong><span class="r47-status ${qualified?'pass':risk?'fail':'wait'}">${status}</span></div>
- <p class="r47-summary">${!valid?'歷史K線不足或資料日期不一致，暫不判定選股資格。':risk?'已有重大風險訊號，暫不列為突破候選。':qualified?'均線、頸線與量能達到初步觀察條件；仍須追蹤是否守穩。':close<neck?'股價尚未收復近期頸線，優先觀察反彈壓力與量價改善。':'部分突破條件尚未齊備，等待量價及結構確認。'}</p>
- <div class="r47-checks">${rows.map(([label,value])=>`<div><span class="r47-symbol ${value===true?'ok':value===false?'bad':'unknown'}">${symbol(value)}</span>${label}<small>${value===true?'通過':value===false?'未通過':'待核對'}</small></div>`).join('')}</div>
- <div class="r47-levels"><div><small>近期壓力</small><b>${valid&&neck>0?price(neck):'待核對'}</b><small>${up!==null?'尚需上漲 '+up.toFixed(2)+'%':'尚無可用漲幅'}</small></div><div><small>第一支撐</small><b>${valid&&supports[0]?price(supports[0].lower):'待核對'}</b><small>非停損保證</small></div><div><small>參考量能</small><b>${valid&&volTarget!==null?integer(volTarget)+' 張':'待核對'}</b><small>均量×1.3，非突破保證</small></div></div>
- <small class="r47-disclaimer">突破策略與回測支撐低接分開判斷；此處僅顯示突破資格。成交量門檻為待回測參數，無資料不視為通過。</small></section>`;
+ const volReady=valid&&vr!==null&&vr>=0?vr>=1.3:null;
+ // supportLines() deliberately removes broken levels; audit the original evidence.
+ const raw=[...(c.supportEvidence?.levels||[]),...(c.structureV23?.recentSupports||[]),...(c.structureV23?.supports||[])];
+ const broken=raw.some(v=>v?.confirmedBreak===true||v?.historicBreak===true);
+ const invalid=c.starPhase==='invalid'||c.breakoutQuality==='invalid';
+ const risk=invalid||broken||c.fallingLimitRisk===true||c.riskLevel==='high';
+ const quality=c.breakoutQuality==='strong'?true:['weak','invalid','watch'].includes(c.breakoutQuality)?false:null;
+ const pending=!valid||aboveMA===null||aboveNeck===null||volReady===null||quality===null;
+ const qualified=!pending&&!risk&&aboveMA===true&&aboveNeck===true&&volReady===true&&quality===true;
+ const status=risk?'風險排除':pending?'資料待核對':qualified?'符合突破觀察':'等待確認';
+ const lots=numeric(c.lots),target=valid&&lots!==null&&lots>=0&&vr!==null&&vr>0?Math.ceil(lots/vr*1.3):null;
+ return {valid,close,neck,aboveMA,aboveNeck,volReady,quality,broken,risk,pending,qualified,status,target};
 }
+function r47SelectionAudit(c){
+ const a=r48SelectionState(c),supports=supportLines(c);
+ const rows=[['站上 MA20',a.aboveMA],['站上近期頸線',a.aboveNeck],['量比達 1.3 倍',a.volReady],['突破品質強勢',a.quality],['重要支撐未確認失守',a.broken?false:a.valid?true:null]];
+ const up=a.valid&&a.neck!==null&&a.neck>0&&a.close<a.neck?(a.neck/a.close-1)*100:null;
+ const symbol=v=>v===true?'✓':v===false?'×':'?';
+ const reason=!a.valid?'K線不足、最後一根K線日期或盤後資料日期不一致，暫不判定。':a.risk?'已有支撐失守、突破失效或其他高風險訊號，排除突破候選。':a.qualified?'趨勢、頸線、量能及突破品質符合初步觀察條件，仍需後續守穩。':a.pending?'必要資料不足，不能視為符合進場觀察。':a.aboveNeck===false?'尚未站上近期頸線，先觀察反彈壓力。':'突破條件未全部通過，持續觀察。';
+ return `<section class="r47-audit" aria-label="選股資格與近期戰況"><div class="r47-head"><strong>近期戰況・選股條件</strong><span class="r47-status ${a.qualified?'pass':a.risk?'fail':'wait'}">${a.status}</span></div>
+ <p class="r47-summary">${reason}</p>
+ <div class="r47-checks">${rows.map(([label,value])=>`<div><span class="r47-symbol ${value===true?'ok':value===false?'bad':'unknown'}">${symbol(value)}</span>${label}<small>${value===true?'通過':value===false?'未通過':'待核對'}</small></div>`).join('')}</div>
+ <div class="r47-levels"><div><small>近期壓力</small><b>${a.valid&&a.neck>0?price(a.neck):'待核對'}</b><small>${up!==null?'尚需上漲 '+up.toFixed(2)+'%':'尚無可用漲幅'}</small></div><div><small>第一支撐</small><b>${a.valid&&supports[0]?price(supports[0].lower):'待核對'}</b><small>失守須重新檢查</small></div><div><small>參考量能</small><b>${a.target!==null?integer(a.target)+' 張':'待核對'}</b><small>均量×1.3，非突破保證</small></div></div>
+ <small class="r47-disclaimer">突破追價與支撐低接是不同策略；低接未完成驗證時不標示合格。量能1.3倍為待回測參數。</small></section>`;
+}
+
 function sectorBattleCard(c,options={}){
  const p=deskEvidence(c),g=ChaopanGuidance.evaluate(c,p,supportLines(c));
  const seq=breakoutReadout(c),track=ChaopanExtrasV311.breakoutTracks(c);
@@ -2058,7 +2069,7 @@ function renderDetail(){const c=state.detail;if(!c)return;const starred=state.wa
   if(globalThis.ChaopanChartExpanded) globalThis.ChaopanApplyExpandedChart?.();
   wireValuationScenario(c);
   wireForwardValuation(c);
-  wireIntradayPanel(c);
+  // 盤中價量試算已停用，避免舊功能重新掛載。
 
   $$('.range-btn').forEach(b=>b.onclick=()=>{state.chartDays=b.dataset.days==='120'?120:Number(b.dataset.days);renderDetail()});
   const zoom=(dir)=>{const total=(c.bars||[]).length;state.chartDays=Math.min(Math.max(12,total),Math.max(12,Math.min(total,Math.round(state.chartDays*(dir==='in'?.76:1.32)))));renderDetail()};
