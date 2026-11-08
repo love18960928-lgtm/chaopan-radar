@@ -645,19 +645,27 @@ function r48SelectionState(c){
  const volReady=valid&&vr!==null&&vr>=0?vr>=1.3:null;
  // supportLines() deliberately removes broken levels; audit the original evidence.
  const raw=[...(c.supportEvidence?.levels||[]),...(c.structureV23?.recentSupports||[]),...(c.structureV23?.supports||[])];
- const broken=raw.some(v=>v?.confirmedBreak===true||v?.historicBreak===true);
+ // Historical break records are not proof of a currently broken support.
+ // Only confirmed breaks at a valid level still above the latest close count as active.
+ const activeBreak=raw.some(v=>{
+   const lo=numeric(v?.lower),hi=numeric(v?.upper);
+   return v?.confirmedBreak===true&&lo!==null&&hi!==null&&lo>0&&hi>=lo&&close!==null&&close<lo;
+ });
+ const supports=valid?supportLines(c):[];
+ const supportSafe=valid?(activeBreak?false:supports.length?true:null):null;
+ const broken=activeBreak;
  const invalid=c.starPhase==='invalid'||c.breakoutQuality==='invalid';
- const risk=invalid||broken||c.fallingLimitRisk===true||c.riskLevel==='high';
+ const risk=invalid||activeBreak||c.fallingLimitRisk===true||c.riskLevel==='high';
  const quality=c.breakoutQuality==='strong'?true:['weak','invalid','watch'].includes(c.breakoutQuality)?false:null;
- const pending=!valid||aboveMA===null||aboveNeck===null||volReady===null||quality===null;
+ const pending=!valid||aboveMA===null||aboveNeck===null||volReady===null||quality===null||supportSafe===null;
  const qualified=!pending&&!risk&&aboveMA===true&&aboveNeck===true&&volReady===true&&quality===true;
  const status=risk?'風險排除':pending?'資料待核對':qualified?'符合突破觀察':'等待確認';
  const lots=numeric(c.lots),target=valid&&lots!==null&&lots>=0&&vr!==null&&vr>0?Math.ceil(lots/vr*1.3):null;
- return {valid,close,neck,aboveMA,aboveNeck,volReady,quality,broken,risk,pending,qualified,status,target};
+ return {valid,close,neck,aboveMA,aboveNeck,volReady,quality,broken,supportSafe,risk,pending,qualified,status,target};
 }
 function r47SelectionAudit(c){
  const a=r48SelectionState(c),supports=supportLines(c);
- const rows=[['站上 MA20',a.aboveMA],['站上近期頸線',a.aboveNeck],['量比達 1.3 倍',a.volReady],['突破品質強勢',a.quality],['重要支撐未確認失守',a.broken?false:a.valid?true:null]];
+ const rows=[['站上 MA20',a.aboveMA],['站上近期頸線',a.aboveNeck],['量比達 1.3 倍',a.volReady],['突破品質強勢',a.quality],['重要支撐未確認失守',a.supportSafe]];
  const up=a.valid&&a.neck!==null&&a.neck>0&&a.close<a.neck?(a.neck/a.close-1)*100:null;
  const symbol=v=>v===true?'✓':v===false?'×':'?';
  const reason=!a.valid?'K線不足、最後一根K線日期或盤後資料日期不一致，暫不判定。':a.risk?'已有支撐失守、突破失效或其他高風險訊號，排除突破候選。':a.qualified?'趨勢、頸線、量能及突破品質符合初步觀察條件，仍需後續守穩。':a.pending?'必要資料不足，不能視為符合進場觀察。':a.aboveNeck===false?'尚未站上近期頸線，先觀察反彈壓力。':'突破條件未全部通過，持續觀察。';
