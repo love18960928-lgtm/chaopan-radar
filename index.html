@@ -218,21 +218,21 @@ html.chaopan-chart-expanded .modal-overlay{z-index:99990!important}
 .forward-results strong{font-size:15px;color:#fff;overflow-wrap:anywhere}
 .forward-disclaimer{display:block;color:#b7c4ce;font-size:11px;line-height:1.6;margin-top:10px}
 </style>
-</head>
+<style id="r50-home-clean">.hero [hidden],.branddesc[hidden],.r44-version-status[hidden],.sessionline [hidden]{display:none!important}.hero h1{line-height:1.2;letter-spacing:.02em}.hero .sessionline{margin-top:14px}.hero .r447-lookup{margin-top:16px}</style></head>
 <body>
 <div class="app-shell">
 <header class="topbar">
   <div class="brandmark"><span class="logo-pulse">◉</span></div>
-  <div class="brandtext"><div class="brandname">超盤手 <span>RADAR</span> <b aria-label="超盤手 RADAR r50 選股資格防呆測試版" style="display:inline-block;vertical-align:middle;font-size:12px;line-height:1.3;letter-spacing:0;color:#a6f3df;background:#204c46;border:1px solid #3b9c8c;border-radius:8px;padding:3px 7px;margin-left:5px">r50（選股資格防呆）</b></div><div class="branddesc">全市場自動評估・明日強勢候選・相對大盤強弱 <span class="tinysep">/</span> 盤後選股與風險驗證</div></div>
+  <div class="brandtext"><div class="brandname">超盤手 <span>RADAR</span> <b aria-label="超盤手 RADAR r50 選股資格防呆測試版" style="display:inline-block;vertical-align:middle;font-size:12px;line-height:1.3;letter-spacing:0;color:#a6f3df;background:#204c46;border:1px solid #3b9c8c;border-radius:8px;padding:3px 7px;margin-left:5px">r50 · 首頁精簡</b></div><div class="branddesc" hidden>全市場自動評估・明日強勢候選・相對大盤強弱 / 盤後選股與風險驗證</div></div>
   <button id="refreshBtn" class="icon-button" aria-label="重新載入資料" title="重新載入資料"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 1 0-2.7 6M20 4v7h-7"/></svg></button>
 </header>
 <main>
   <section class="hero">
     <div class="hero-top"><span class="section-eyebrow"><span class="dot"></span> TAIWAN MARKET SCANNER</span><span class="session-badge">盤後版 · 非即時</span></div>
-    <h1><span>先找明日可能發動。</span><br>不要等今天漲完才追。</h1>
-    <p>收盤後優先找頸線前蓄勢、短均線回測與低追價風險的候選股；事件題材只當研究線索，不直接當買點。分數是觀察品質，不是隔日上漲機率。</p>
-    <div class="sessionline"><div><span class="muted">個股資料日</span> <strong id="marketDate">—</strong></div><div class="line-divider"></div><div><span class="muted">資料狀態</span> <strong id="dataStatus">正在讀取已保存快照</strong></div></div>
-    <div class="r44-version-status" id="r44VersionStatus" aria-label="程式版本與資料日期">程式：r50（版本同步／選股資格防呆測試版）｜部署 commit：待核對｜行情：依下方實際來源日期</div>
+    <h1>明日強勢候選</h1>
+    
+    <div class="sessionline"><div><span class="muted">個股資料日</span> <strong id="marketDate">—</strong></div><div class="line-divider" hidden></div><div class="compact-data-status" hidden><span class="muted">資料狀態</span> <strong id="dataStatus">正在讀取已保存快照</strong></div></div>
+    <div class="r44-version-status" id="r44VersionStatus" hidden aria-label="程式版本與資料日期">程式：r50（版本同步／選股資格防呆測試版）｜部署 commit：待核對｜行情：依下方實際來源日期</div>
     <!-- r44.4: remove the unverified index traffic-light cards; market closes remain in the official overview. -->
     <section class="r447-lookup" aria-label="全市場股票直接查詢">
       <label for="quickStockSearch">查詢所有股票（不限自動入選）</label>
