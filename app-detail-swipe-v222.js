@@ -631,6 +631,32 @@ function unifiedCardEvents(e){
 
  const chart=e.target.closest('[data-etf-chart-open]');if(chart){const target=$('#etfChartSvg');if(target)target.scrollIntoView({block:'nearest',behavior:'smooth'});return;}
 }
+// r47: one consolidated, evidence-based selection audit. Unknown is not pass.
+function r47SelectionAudit(c){
+ const valid=numeric(c.close)!==null&&numeric(c.close)>0&&c.date===state.payload?.asOf&&Array.isArray(c.bars)&&c.bars.length>=20;
+ const close=numeric(c.close),neck=latestNeck(c),supports=supportLines(c);
+ const ma=ChaopanExtrasV311.averages(c),ma20=numeric(ma.values?.[20]);
+ const volumeRatio=numeric(c.volumeRatio);
+ const aboveMA=valid&&ma20!==null?close>=ma20:null;
+ const aboveNeck=valid&&neck!==null&&neck>0?close>neck:null;
+ const volReady=valid&&volumeRatio!==null?volumeRatio>=1.3:null;
+ const broken=valid&&supports.length>0?supports.some(v=>v.confirmedBreak===true):null;
+ const breakoutInvalid=c.starPhase==='invalid'||c.breakoutQuality==='invalid';
+ const risk=breakoutInvalid||c.fallingLimitRisk===true||c.riskLevel==='high';
+ const trend=aboveMA===true&&aboveNeck===true;
+ const qualified=valid&&trend&&volReady===true&&!risk&&c.breakoutQuality==='strong';
+ const pending=!valid||aboveMA===null||aboveNeck===null||volReady===null;
+ const status=qualified?'符合突破觀察':risk?'風險排除':pending?'資料待核對':'等待確認';
+ const symbol=v=>v===true?'✓':v===false?'×':'?';
+ const rows=[['站上 MA20',aboveMA],['站上近期頸線',aboveNeck],['量比達 1.3 倍',volReady],['突破品質強勢',c.breakoutQuality==='strong'?true:['weak','invalid','watch'].includes(c.breakoutQuality)?false:null],['未觸發重大風險',risk?false:valid?true:null]];
+ const up=valid&&neck!==null&&neck>0&&close<neck?(neck/close-1)*100:null;
+ const volTarget=volumeRatio!==null&&numeric(c.lots)!==null&&volumeRatio>0?Math.ceil(numeric(c.lots)/volumeRatio*1.3):null;
+ return `<section class="r47-audit" aria-label="選股資格與近期戰況"><div class="r47-head"><strong>近期戰況・選股條件</strong><span class="r47-status ${qualified?'pass':risk?'fail':'wait'}">${status}</span></div>
+ <p class="r47-summary">${!valid?'歷史K線不足或資料日期不一致，暫不判定選股資格。':risk?'已有重大風險訊號，暫不列為突破候選。':qualified?'均線、頸線與量能達到初步觀察條件；仍須追蹤是否守穩。':close<neck?'股價尚未收復近期頸線，優先觀察反彈壓力與量價改善。':'部分突破條件尚未齊備，等待量價及結構確認。'}</p>
+ <div class="r47-checks">${rows.map(([label,value])=>`<div><span class="r47-symbol ${value===true?'ok':value===false?'bad':'unknown'}">${symbol(value)}</span>${label}<small>${value===true?'通過':value===false?'未通過':'待核對'}</small></div>`).join('')}</div>
+ <div class="r47-levels"><div><small>近期壓力</small><b>${valid&&neck>0?price(neck):'待核對'}</b><small>${up!==null?'尚需上漲 '+up.toFixed(2)+'%':'尚無可用漲幅'}</small></div><div><small>第一支撐</small><b>${valid&&supports[0]?price(supports[0].lower):'待核對'}</b><small>非停損保證</small></div><div><small>參考量能</small><b>${valid&&volTarget!==null?integer(volTarget)+' 張':'待核對'}</b><small>均量×1.3，非突破保證</small></div></div>
+ <small class="r47-disclaimer">突破策略與回測支撐低接分開判斷；此處僅顯示突破資格。成交量門檻為待回測參數，無資料不視為通過。</small></section>`;
+}
 function sectorBattleCard(c,options={}){
  const p=deskEvidence(c),g=ChaopanGuidance.evaluate(c,p,supportLines(c));
  const seq=breakoutReadout(c),track=ChaopanExtrasV311.breakoutTracks(c);
@@ -1005,7 +1031,7 @@ function arrangeR41Detail(c){
    element.setAttribute('role','tabpanel');element.id='r41-page-'+name;
  }
  const annotated=root.querySelector('.guidance-panel .battle-chart-wrap');
- if(annotated)gates.append(annotated); // Preserve original full-resolution, annotated chart.
+ if(annotated)annotated.remove(); // Avoid duplicate mini K-line: the full chart remains in 走勢圖.
  const original=[...root.children];
  const afterChart=original.indexOf(chart);let advanced=[];
  for(let i=0;i<original.length;i++){
@@ -1014,7 +1040,7 @@ function arrangeR41Detail(c){
   if(el.classList.contains('priority-levels')){gates.append(el);continue;}
   const heading=el.querySelector?.(':scope > summary')?.textContent||'';
   if(/歷史頸線、突破驗證與原始統計/.test(heading)){
-    gates.append(el);el.open=true;continue;
+    gates.append(el);el.open=false;continue;
   }
   if(i<afterChart||el.classList.contains('detail-actions')){
     card.append(el);continue;
@@ -1026,7 +1052,7 @@ function arrangeR41Detail(c){
  // Retain the former detail research under an optional fold; chart and gates stay intact.
  card.querySelectorAll('.fin-r13-details').forEach(el=>el.remove());
  const originalDetailMarkup=card.innerHTML;
- card.innerHTML=sectorBattleCard(c,{source:'lookup-detail',rankText:'超盤手｜個股完整分析'})
+ card.innerHTML=r47SelectionAudit(c)+sectorBattleCard(c,{source:'lookup-detail',rankText:'超盤手｜個股完整分析'})
    +'<details class="lookup-extra-research"><summary>展開原始技術研究與六價位細節</summary>'
    +originalDetailMarkup+'</details>';
  const sameDay=Array.isArray(c.bars)&&c.bars.length>0&&c.bars.at(-1)?.[0]===c.date&&c.date===state.payload?.asOf;
@@ -1045,7 +1071,7 @@ function arrangeR41Detail(c){
  </div><p>上方價位以同筆盤後資料判讀；頸線向上、支撐向下取股票合法升降單位（僅保守參考），欠缺有效結構即「待認證」。關卡圖不是預測走勢或下單指令。</p>`;
  gates.prepend(gateIntro);
  if(!sameDay)gates.insertAdjacentHTML('beforeend','<p class="r41-missing-chart">行情日期或歷史 K 棒不一致：價位待認證，請先更新盤後資料。</p>');
- if(!annotated)gates.insertAdjacentHTML('beforeend','<p class="r41-missing-chart">關卡圖解待認證：尚無同日有效歷史 K 線，不能繪製虛構圖形。</p>');
+ 
  state.r41Advanced={code:c.code,date:c.date,html:advanced.join('')};
  const tabs=document.createElement('nav');tabs.className='r41-detail-tabs';tabs.setAttribute('aria-label','個股三個獨立頁面');tabs.setAttribute('role','tablist');
  tabs.innerHTML=[['card','作戰字卡'],['chart','走勢圖'],['gates','關卡圖解']].map(([id,label])=>`<button type="button" role="tab" aria-controls="r41-page-${id}" data-r41-tab="${id}">${label}</button>`).join('');
@@ -2026,7 +2052,7 @@ function renderDetail(){const c=state.detail;if(!c)return;const starred=state.wa
  ${mainTrendResearchPanel(c)}<details class="research-fold"><summary>▥ 均線強弱、六條均線與趨勢結構</summary>${maPanel(c)}${sixMaPanel(c)}${trendModePanel(c)}</details>
  <details class="research-fold"><summary>▥ 突破紅綠K、量價與續強證據</summary>${breakoutTrackPanel(c)}${liquidityPanel(c)}${continuationPanel(c)}${confirmedStrengthPanel(c)}${phasePanel(c)}</details>
  <details class="research-fold"><summary>▥ 完整價位計畫與法人風險</summary>${deskPlanHTML(c)}${ChaopanIntel.chipPanel(state.marketIntel,c,deskEvidence(c))}</details>
- <details class="research-fold"><summary>▥ 歷史頸線、突破驗證與原始統計</summary><div class="tagrow">${(c.tags||[]).map(t=>`<span class="signal-tag ${t}">${esc(TAGS[t]||t)}</span>`).join('')}${c.priceConfirmed?'<span class="signal-tag confirmed">價格收盤確認</span>':c.confirmed?'<span class="signal-tag confirmed">最大量確認</span>':''}</div><div class="detail-grid"><div class="detail-metric"><div class="small">近期主要突破頸線</div><strong>${price(latestNeck(c))} 元</strong><div class="small">${esc(c.structureV23?.necklineDate||c.neckDate||'尚無壓力點')}${c.priceConfirmed&&c.neck!==latestNeck(c)?'／突破當日參考 '+price(c.neck):''}</div></div><div class="detail-metric"><div class="small">距離近期頸線</div><strong>${pct(latestNeck(c)>0?100*(Number(c.close)/latestNeck(c)-1):null)}</strong><div class="small">正值代表已突破</div></div><div class="detail-metric"><div class="small">當日成交量</div><strong>${integer(c.lots)} 張</strong><div class="small">前10日均量 ${Number(c.volumeRatio).toFixed(2)} 倍</div></div><div class="detail-metric"><div class="small">近20日漲停估算</div><strong>${integer(c.limit20)} 次</strong><div class="small">含今天，依收盤價近似判定</div></div><div class="detail-metric"><div class="small">前120日最大量</div><strong>${integer(c.oldMaxLots)} 張</strong><div class="small">${esc(c.oldMaxDate||'—')}</div></div><div class="detail-metric"><div class="small">突破確認</div><strong>${c.priceConfirmed?'價格已突破':c.confirmed?'成交量創新高（非首破）':'尚未確認首破'}</strong><div class="small">低量一字漲停也可價格確認；大量另計</div></div></div>${summaryPanel(c)}</details>
+ <details class="research-fold"><summary>▥ 歷史頸線、突破驗證與原始統計</summary><div class="tagrow">${(c.tags||[]).map(t=>`<span class="signal-tag ${t}">${esc(TAGS[t]||t)}</span>`).join('')}${c.priceConfirmed?'<span class="signal-tag confirmed">價格收盤確認</span>':c.confirmed?'<span class="signal-tag confirmed">最大量確認</span>':''}</div><div class="detail-grid"><div class="detail-metric"><div class="small">近期主要突破頸線</div><strong>${price(latestNeck(c))} 元</strong><div class="small">${esc(c.structureV23?.necklineDate||c.neckDate||'尚無壓力點')}${c.priceConfirmed&&c.neck!==latestNeck(c)?'／突破當日參考 '+price(c.neck):''}</div></div><div class="detail-metric"><div class="small">距離突破所需漲幅</div><strong>${latestNeck(c)>0&&numeric(c.close)>0?(Number(c.close)<latestNeck(c)?'+'+(100*(latestNeck(c)/Number(c.close)-1)).toFixed(2)+'%':'已站上／需確認'):'待核對'}</strong><div class="small">以現價為分母；非突破保證</div></div><div class="detail-metric"><div class="small">當日成交量</div><strong>${integer(c.lots)} 張</strong><div class="small">前10日均量 ${Number(c.volumeRatio).toFixed(2)} 倍</div></div><div class="detail-metric"><div class="small">近20日漲停估算</div><strong>${integer(c.limit20)} 次</strong><div class="small">含今天，依收盤價近似判定</div></div><div class="detail-metric"><div class="small">前120日最大量</div><strong>${integer(c.oldMaxLots)} 張</strong><div class="small">${esc(c.oldMaxDate||'—')}</div></div><div class="detail-metric"><div class="small">突破確認</div><strong>${c.priceConfirmed?'價格已突破':c.confirmed?'成交量創新高（非首破）':'尚未確認首破'}</strong><div class="small">低量一字漲停也可價格確認；大量另計</div></div></div></details>
  <details class="research-fold"><summary>▥ 起漲循環與階段證據</summary>${cyclePanel(c)}</details><details class="intel-deep"><summary>進階研究：技術與風險細節</summary>${technicalVisual(c)}${riskPanel(c)}</details><details class="fin-notes secondary-details"><summary>大量K突破與其他技術細節</summary>${launchSummary(c)}${traderPanel(c)}</details><div class="detail-note">${c.tags?.includes('volume')?'✓ 今日成交量大於前120個交易日最大量，且收盤高於舊最大量K最高價。':''} ${c.tags?.includes('first')?'✓ 今日收盤首次突破仍有效的大量K高點。':''} ${c.overextended?'⚠ 收盤距頸線已逾8%，應留意追高風險。':''}<br>盤後訊號僅供觀察，不代表次日買點；除權息可能導致假突破。</div><div class="detail-actions"><button class="primary-action" id="starButton">${starred?'★ 移出自選':'☆ 加入自選'}</button><button class="secondary-action" id="shareButton">分享股票資訊</button></div>`;
   arrangeR41Detail(c);
   if(globalThis.ChaopanChartExpanded) globalThis.ChaopanApplyExpandedChart?.();
