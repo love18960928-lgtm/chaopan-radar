@@ -2425,6 +2425,27 @@ globalThis.ChaopanApplyExpandedChart=function(){
  }else{
    toggles.forEach(t=>{const parent=t.dataset.originalParent==='fib-toolbar'?area.querySelector('.fib-toolbar'):area;if(parent)parent.insertBefore(t,parent===area?area.querySelector('.range-status'):null);});
  }
+ // r53: concise, read-only distance panel in landscape view.
+ // Use the same verified support and neckline selectors as the battle card.
+ let distancePanel=area.querySelector('.r53-chart-distances');
+ if(!distancePanel){
+   distancePanel=document.createElement('div');
+   distancePanel.className='r53-chart-distances';
+   distancePanel.setAttribute('aria-label','現價與關鍵價位距離');
+   area.appendChild(distancePanel);
+ }
+ const stock=state.detail;
+ if(stock){
+   const close=numeric(stock.close),neck=latestNeck(stock),supports=supportLines(stock);
+   const defense=numeric(stock.structureV23?.mainDefense?.keyPrice??stock.structureV23?.mainDefense?.lower);
+   const distance=v=>{
+     if(close===null||close<=0||v===null||v<=0)return '待核對';
+     const p=(v/close-1)*100;
+     return `${p>0?'+':''}${p.toFixed(2)}%`;
+   };
+   const level=(name,v)=>`<span>${esc(name)} <b>${esc(distance(v))}</b></span>`;
+   distancePanel.innerHTML=`<strong>${esc(stock.code)} ${esc(stock.name)}｜收盤 ${price(close)}</strong><div>${level('頸線',neck)}${level('第一支撐',numeric(supports[0]?.lower))}${level('第二支撐',numeric(supports[1]?.lower))}${level('最後防守',defense)}</div>`;
+ }else{distancePanel.textContent='';}
  const chartSvg=area.querySelector('#chartSvg svg');
  if(chartSvg){if(expanded)chartSvg.setAttribute('preserveAspectRatio','none');else chartSvg.removeAttribute('preserveAspectRatio');}
  const btn=area.querySelector('.chaopan-expand');
