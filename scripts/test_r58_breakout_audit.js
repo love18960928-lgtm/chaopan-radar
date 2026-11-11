@@ -1,0 +1,16 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const s=fs.readFileSync(require('path').join(__dirname,'..','app-detail-swipe-v222.js'),'utf8');
+const f=s.slice(s.indexOf('function detectConsolidation(all){'),s.indexOf('function detectPriceGaps(all){'));
+const audit=s.slice(s.indexOf('function auditConsolidationBreakout(c){'),s.indexOf('function detectPriceGaps(all){'));
+const ctx={};vm.createContext(ctx);vm.runInContext(f+audit,ctx);
+const bar=(i,h,l,c,v=1000)=>['day'+i,c,h,l,c,v];
+const base=Array.from({length:29},(_,i)=>bar(i,i%6===0?106:103,i%6===3?94:97,100+(i%3-1)));
+const up=[...base,bar(29,114,108,112,2000)];
+let x=ctx.auditConsolidationBreakout({bars:up});assert.equal(x.status,'pending');assert(x.text.includes('不產生星號'));
+x=ctx.auditConsolidationBreakout({bars:up,breakoutEvent:{level:120},starPhase:'first',breakoutQuality:'strong'});assert.equal(x.status,'conflict');
+x=ctx.auditConsolidationBreakout({bars:up,breakoutEvent:{level:106},starPhase:'first',breakoutQuality:'strong'});assert.equal(x.status,'aligned');
+x=ctx.auditConsolidationBreakout({bars:up,breakoutEvent:{level:106},starPhase:'first',breakoutQuality:'weak'});assert.equal(x.status,'conflict');
+x=ctx.auditConsolidationBreakout({bars:up.map((b,i)=>i===14?[...b.slice(0,5),null]:b),breakoutEvent:{level:106},starPhase:'first',breakoutQuality:'strong'});assert.equal(x.status,'pending');
+x=ctx.auditConsolidationBreakout({bars:[...base,bar(29,92,86,88)]});assert.equal(x.status,'down');
+assert.equal(ctx.auditConsolidationBreakout({bars:[]}).status,'none');
+console.log('r58: 7 audit assertions passed');
