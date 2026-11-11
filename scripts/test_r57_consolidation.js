@@ -1,0 +1,18 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const source=fs.readFileSync(require('path').join(__dirname,'..','app-detail-swipe-v222.js'),'utf8');
+const fn=source.slice(source.indexOf('function detectConsolidation(all){'),source.indexOf('function detectPriceGaps(all){'));
+const ctx={};vm.createContext(ctx);vm.runInContext(fn,ctx);
+const bar=(i,h,l,c)=>['day'+i,c,h,l,c,1000];
+const base=Array.from({length:29},(_,i)=>bar(i,i%6===0?106:103,i%6===3?94:97,100+(i%3-1)));
+const check=(bars,states,label)=>{const result=ctx.detectConsolidation(bars);assert(result,label+' should have range');assert(states.includes(result.state),label+': '+result.state);return result};
+check([...base,bar(29,103,97,100)],['inside'],'flat');
+assert.equal(ctx.detectConsolidation(Array.from({length:30},(_,i)=>bar(i,100+i*2,95+i*2,98+i*2))),null,'trend');
+const up=[...base,bar(29,114,108,112)];check(up,['up'],'breakout');
+const touch=[...up,bar(30,110,106,107)];check(touch,['retest_pending'],'touch is not confirmed');
+const confirmed=[...touch,bar(31,115,108,113)];check(confirmed,['retest'],'confirmed price retest');
+check([...confirmed,bar(32,118,110,116)],['continuation'],'retest must not persist');
+const fail=[...up,bar(30,106,96,97)];assert(!['up','retest','continuation'].includes(ctx.detectConsolidation(fail)?.state),'failed cannot remain bullish');
+check([...base,bar(29,92,86,88)],['down'],'breakdown');
+assert.equal(ctx.detectConsolidation([]),null,'empty');
+const original=check(up,['up'],'fixed base');const next=check(touch,['retest_pending'],'fixed base later');assert.equal(original.upper,next.upper);
+console.log('r57: 10 consolidation assertions passed');
