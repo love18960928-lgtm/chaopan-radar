@@ -68,6 +68,7 @@ def structure_evidence(bars):
         # Weighted toward the highest high in a clustered resistance band.
         reference=max(group,key=lambda a:(a['volumeLots'],a['index']))
         level=max(x['price'] for x in group)
+        price_anchor=max((x for x in group if x['price']==level),key=lambda x:x['index'])
         formed=max(x['index'] for x in group)
         # Did price ever close through this resistance after it was formed?
         cross=[j for j in range(formed+1,len(b)) if b[j-1][4]<=level and b[j][4]>level]
@@ -88,7 +89,9 @@ def structure_evidence(bars):
         elif curr>=level:status='已突破／觀察回測' if not support_hold else '回測成立／可觀察支撐'
         elif cross and curr>=level-tolerance:status='頸線附近回測／尚未重新站穩'
         else:status='頸線下方／觀察壓力'
-        necks.append({'price':_p(level),'date':reference['date'],'volumeLots':reference['volumeLots'],
+        necks.append({'price':_p(level),'date':price_anchor['date'],
+                      'priceAnchorDate':price_anchor['date'], 'representativeDate':reference['date'],
+                      'volumeLots':price_anchor['volumeLots'], 'representativeVolumeLots':reference['volumeLots'],
                       'sourceCount':len(group),'status':status,'todayCross':crosses_today,
                       'promotedSupport':support_hold,'retestCount':len(retests)})
         if support_hold:

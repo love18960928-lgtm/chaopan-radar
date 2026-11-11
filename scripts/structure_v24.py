@@ -13,7 +13,7 @@ def unified_structure(bars):
     historical = structure_evidence(b)
     result = {**historical, 'rules': 'recent-structure-v2.4',
               'primaryNeckline': None, 'primaryNecklineDate': None,
-              'primaryNecklineStatus': '資料不足', 'nextResistance': None,
+              'primaryNecklineStatus': '資料不足', 'primaryNecklineEvidence': None, 'nextResistance': None,
               'recentSupports': historical.get('supports', []),
               'primarySupport': None, 'secondarySupport': None,
               'unifiedStage': '資料不足', 'unifiedScore': None,
@@ -60,8 +60,15 @@ def unified_structure(bars):
         # Resistance is the highest high in a significant band; displaying a
         # precise anchor of a weak daily bar would overstate precision.
         price=max(x['price'] for x in group)
-        zones.append({'price':round(price,3),'date':best['date'],
-                      'source':best['source'],'strength':round(max(x['weight'] for x in group)+.35*(len(group)-1),2),
+        # r54: the displayed price must trace to the SAME bar as its price date.
+        # Keep the weighted representative as a separate field for auditability.
+        price_anchor=max((x for x in group if x['price']==price),key=lambda x:x['index'])
+        zones.append({'price':round(price,3),'date':price_anchor['date'],
+                      'priceAnchorDate':price_anchor['date'], 'priceAnchorSource':price_anchor['source'],
+                      'representativeDate':best['date'],'representativeSource':best['source'],
+                      'sourceCount':len(group),'zoneLow':round(min(x['price'] for x in group),3),
+                      'zoneHigh':round(price,3),'source':price_anchor['source'],
+                      'strength':round(max(x['weight'] for x in group)+.35*(len(group)-1),2),
                       'recent':any(x['index']>=n-91 for x in group),'formedIndex':max(x['index'] for x in group)})
     recent=[x for x in zones if x['recent'] and x['strength']>=2.4]
     # A recently crossed pressure level belongs to the breakout stage even
@@ -74,7 +81,7 @@ def unified_structure(bars):
         # Do not mislabel a historical support as the *overhead* neckline.
         main=None
     if main:
-        result['primaryNeckline']=main['price'];result['primaryNecklineDate']=main['date']
+        result['primaryNeckline']=main['price'];result['primaryNecklineDate']=main['date'];result['primaryNecklineEvidence']=dict(main)
         result['primaryNecklineStatus']='今日首次突破' if main in crosses else '近期上方待突破／回測壓力'
     next_upper=sorted((x for x in recent if x is not main and x['price']>curr*.998),key=lambda x:x['price'])
     if next_upper:result['nextResistance']=next_upper[0]
