@@ -99,7 +99,7 @@ def scan_stock(stock, detect_follow=True, include_all=False):
     if not anchor:
         # B and legacy near signal: closest unbroken upper resistance.
         ceilings=[a for a in anchors if a['high']>=close]
-        anchor=max(ceilings,key=lambda a:(a['vol'],a['high'])) if ceilings else None
+        anchor=min(ceilings,key=lambda a:(a['high']-close,-a['vol'])) if ceilings else None
     neck=anchor['high'] if anchor else None
     dist=round(100*(close/neck-1),2) if neck else None
     first=bool(anchor and anchor in crossings)

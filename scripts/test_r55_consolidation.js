@@ -1,0 +1,12 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const source=fs.readFileSync(require('path').join(__dirname,'..','app-detail-swipe-v222.js'),'utf8');
+const fn=source.slice(source.indexOf('function detectConsolidation(all){'),source.indexOf('function detectPriceGaps(all){'));
+const ctx={};vm.createContext(ctx);vm.runInContext(fn,ctx);
+const bar=(i,high,low,close)=>['2026-01-'+String(i+1).padStart(2,'0'),close,high,low,close,1000];
+const flat=Array.from({length:30},(_,i)=>bar(i,i%6===0?106:103,i%6===3?94:97,100+(i%3-1)));
+assert(ctx.detectConsolidation(flat),'flat range should be found');
+assert.equal(ctx.detectConsolidation(Array.from({length:30},(_,i)=>bar(i,100+i*2,95+i*2,98+i*2))),null,'trending prices are not consolidation');
+assert.equal(ctx.detectConsolidation(flat.map((b,i)=>i===29?[b[0],b[1],114,b[3],112,b[5]]:b)).state,'up');
+assert.equal(ctx.detectConsolidation(flat.map((b,i)=>i===29?[b[0],b[1],b[2],86,88,b[5]]:b)).state,'down');
+assert.equal(ctx.detectConsolidation([]),null);
+console.log('r55 consolidation regression: 5 passed');
