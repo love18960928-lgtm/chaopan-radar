@@ -1,0 +1,14 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const source=fs.readFileSync(require('path').join(__dirname,'..','app-detail-swipe-v222.js'),'utf8');
+const fn=source.slice(source.indexOf('function detectConsolidation(all){'),source.indexOf('function detectPriceGaps(all){'));
+const ctx={};vm.createContext(ctx);vm.runInContext(fn,ctx);
+const bar=(i,h,l,c)=>['2026-01-'+String(i+1).padStart(2,'0'),c,h,l,c,1000];
+const base=Array.from({length:29},(_,i)=>bar(i,i%6===0?106:103,i%6===3?94:97,100+(i%3-1)));
+assert(ctx.detectConsolidation([...base,bar(29,105,95,100)]),'flat');
+assert.equal(ctx.detectConsolidation(Array.from({length:30},(_,i)=>bar(i,100+i*2,95+i*2,98+i*2))),null,'trend');
+const up=[...base,bar(29,110,105,109)];assert.equal(ctx.detectConsolidation(up).state,'up');
+const retest=[...up,bar(30,110,105,108)];assert.equal(ctx.detectConsolidation(retest).state,'retest');
+const failed=[...up,bar(30,104,96,98)];assert.notEqual(ctx.detectConsolidation(failed)?.state,'up','failed breakout must not remain up');
+assert.equal(ctx.detectConsolidation([...base,bar(29,95,91,92)]).state,'down');
+assert.equal(ctx.detectConsolidation([]),null);
+console.log('r56 consolidation: 7 tests passed');
