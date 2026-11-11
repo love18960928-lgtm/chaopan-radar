@@ -1591,8 +1591,14 @@ function supportLines(c){
 }
 function structureInsight(c){
  const close=numeric(c.close),neck=latestNeck(c),bands=supportLines(c),risk=c.riskLevel;
- const broken=(c.supportEvidence?.levels||[]).filter(v=>v.oneDayBreak||v.confirmedBreak);
- const latestBroken=broken.some(v=>v.confirmedBreak);
+ // Match the detail-card risk rule: an old break is not automatically a current break.
+ // A confirmed break counts only while the latest close remains below its zone.
+ const rawBreaks=[...(c.supportEvidence?.levels||[]),...(c.structureV23?.recentSupports||[]),...(c.structureV23?.supports||[])];
+ const broken=rawBreaks.filter(v=>{
+   const lo=numeric(v?.lower),hi=numeric(v?.upper);
+   return close!==null&&lo!==null&&hi!==null&&lo>0&&hi>=lo&&close<lo&&(v?.oneDayBreak===true||v?.confirmedBreak===true);
+ });
+ const latestBroken=broken.some(v=>v?.confirmedBreak===true);
  const first=bands[0],second=bands[1],defense=c.structureV23?.mainDefense||null;
  let status=c.unifiedStage||'資料不足',tone='neutral';
  if(close!==null){
@@ -1608,7 +1614,7 @@ function structureInsight(c){
  const reasons=[];
  if(first)reasons.push(`下方最近有效支撐 ${price(first.lower)}～${price(first.upper)} 元`);
  if(neck!==null)reasons.push(`大量K頸線 ${price(neck)} 元`);
- if(broken.length)reasons.push('有歷史支撐出現近期收盤破位訊號');
+ if(broken.length)reasons.push('目前收盤仍低於曾標示破位的支撐區間；須核對該關卡有效性');
  const levelText=first?`收盤跌破 ${price(first.lower)} 元應重新檢查支撐；連續跌破風險加重`:'尚無可確認的鄰近有效支撐，不可憑均線假設安全';
  return {status,tone,first,second,defense,bands,neck,close,levelText,reasons,latestBroken};
 }
@@ -2207,7 +2213,7 @@ function makeChart(bars,neck,days,supports=[],necklines=[],mainDefense=null,asOf
   // Range detection uses only bars strictly preceding the last close; no future leak.
   // A range must be tight, repeatedly tested, and lack a directional drift.
   const range=detectConsolidation(all);
-  if(range){
+  if(range && (range.state==='inside' || Number(range.age)<=5)){
     const visibleStart=all.length-data.length;
     const from=Math.max(range.start,visibleStart),to=Math.min(range.end,all.length-1);
     if(from<=to&&range.upper>=lo&&range.lower<=hi){
@@ -2256,17 +2262,21 @@ function makeChart(bars,neck,days,supports=[],necklines=[],mainDefense=null,asOf
   const visibleStart=all.length-data.length;
   const latestClose=Number(all[all.length-1][4]);
   const visibleGaps=detectPriceGaps(all).filter(g=>g.filledAt<0&&g.index>=visibleStart&&g.lower<hi&&g.upper>lo)
-    .sort((a,b)=>Math.abs((a.lower+a.upper)/2-latestClose)-Math.abs((b.lower+b.upper)/2-latestClose)).slice(0,3)
+    .sort((a,b)=>Math.abs((a.lower+a.upper)/2-latestClose)-Math.abs((b.lower+b.upper)/2-latestClose)).slice(0,2)
     .sort((a,b)=>a.index-b.index);
   if(visibleGaps.length){
     svg+=`<g class="chaopan-gap-layer" aria-label="未完全回補的跳空缺口">`;
     for(const g of visibleGaps){
       const y1=py(Math.min(hi,g.upper)),y2=py(Math.max(lo,g.lower));
       const x=P+(g.index-visibleStart)*step;
-      const color=g.dir==='down'?'#ff777f':'#3dd9ba';
+      // Neutral filled gap band, deliberately distinct from the outlined consolidation box.
+      // Gap direction is conveyed by its arrow, not the fill color.
       const right=P+plotW;
-      svg+=`<rect x="${x.toFixed(1)}" y="${y1.toFixed(1)}" width="${Math.max(1,right-x).toFixed(1)}" height="${Math.max(1,y2-y1).toFixed(1)}" fill="${color}" fill-opacity=".13" stroke="${color}" stroke-opacity=".85" stroke-width="1"/>`;
-      svg+=`<text x="${(right-4).toFixed(1)}" y="${Math.max(top+12,y1-3).toFixed(1)}" text-anchor="end" font-size="11" fill="${color}">${g.dir==='down'?'↓':'↑'}缺口 ${price(g.lower)}～${price(g.upper)}${g.partial?' 部分回補':''}</text>`;
+      const bandY=Math.max(top,y1),bandH=Math.max(1,y2-bandY);
+      svg+=`<rect x="${x.toFixed(1)}" y="${bandY.toFixed(1)}" width="${Math.max(1,right-x).toFixed(1)}" height="${bandH.toFixed(1)}" fill="#8c98a6" fill-opacity=".32" stroke="none"/>`;
+      const label=`${g.dir==='down'?'↓':'↑'}缺口 ${price(g.lower)}～${price(g.upper)}${g.partial?' 部分回補':''}`;
+      const labelY=Math.max(top+12,Math.min(top+kHeight-5,y1-5));
+      svg+=`<text x="${(right-4).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="end" font-size="11" fill="#dce4ec" paint-order="stroke" stroke="#0d1a29" stroke-width="2">${esc(label)}</text>`;
     }
     svg+='</g>';
   }
