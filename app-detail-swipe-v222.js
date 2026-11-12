@@ -1224,9 +1224,12 @@ function arrangeR41Detail(c){
  card.querySelectorAll('.fin-r13-details').forEach(el=>el.remove());
  card.querySelectorAll('.r75-next-session-plan').forEach(el=>el.remove());
  const originalDetailMarkup=card.innerHTML;
- card.innerHTML=nextSessionDefenseCard(c)+r47SelectionAudit(c)+sectorBattleCard(c,{source:'lookup-detail',rankText:'超盤手｜個股完整分析'})
-   +'<details class="lookup-extra-research"><summary>展開原始技術研究與六價位細節</summary>'
-   +originalDetailMarkup+'</details>';
+ // r79: single visible decision card; preserve existing audit/research calculations on demand.
+ card.innerHTML=nextSessionDefenseCard(c)
+   +'<details class="r79-advanced-fold" style="margin:14px 0;clear:both;position:relative"><summary style="cursor:pointer;padding:12px 14px;border:1px solid #385a6c;border-radius:12px;color:#b6cdd6">展開詳細技術資料（資格檢查／六價位／原始研究）</summary>'
+   +'<div style="padding-top:12px">'+r47SelectionAudit(c)
+   +sectorBattleCard(c,{source:'lookup-detail',rankText:'超盤手｜個股完整分析'})
+   +'<details class="lookup-extra-research"><summary>展開原始技術研究</summary>'+originalDetailMarkup+'</details></div></details>';
  const sameDay=Array.isArray(c.bars)&&c.bars.length>0&&c.bars.at(-1)?.[0]===c.date&&c.date===state.payload?.asOf;
  const lastSupport=sameDay?supportLines(c):[], defens=sameDay?c.structureV23?.mainDefense:null;
  const amount=(v,dir='down')=>{
@@ -1247,6 +1250,8 @@ function arrangeR41Detail(c){
  state.r41Advanced={code:c.code,date:c.date,html:advanced.join('')};
  const tabs=document.createElement('nav');tabs.className='r41-detail-tabs';tabs.setAttribute('aria-label','個股三個獨立頁面');tabs.setAttribute('role','tablist');
  tabs.innerHTML=[['card','作戰字卡'],['chart','走勢圖'],['gates','關卡圖解']].map(([id,label])=>`<button type="button" role="tab" aria-controls="r41-page-${id}" data-r41-tab="${id}">${label}</button>`).join('');
+ // r79: avoid the sticky tabs covering content while scrolling on mobile.
+ tabs.style.position='relative';tabs.style.top='auto';tabs.style.zIndex='1';
  root.append(tabs,card,graph,gates);
  function setPage(name){
   if(!sections[name])return;state.r41Page=name;
