@@ -222,6 +222,16 @@ def cycle_judgement(b, structure=None, market_breadth=None):
             '趨勢明顯' if adx is not None and adx>=25 else '過渡／方向待確認')
     if market_breadth is not None and market_breadth<40:regime+='；市場廣度偏弱'
     event=_events_from_levels(b,base)
+    # Preserve the ORIGINAL dated breakout episode when today's recalculated
+    # resistance zones move or disappear. Use only earlier prefixes (no future
+    # candles) and never re-label a recross as a new first breakout.
+    if event is None or (event and event['idx'] >= len(b)-2):
+        for lag in range(1, min(5, len(b)-61)+1):
+            prefix=b[:-lag]
+            prior=_events_from_levels(prefix, unified_structure(prefix))
+            if prior and prior['idx'] >= len(prefix)-5 and .94*prior['level'] <= b[-1][4] <= 1.18*prior['level'] and (event is None or (prior['idx'] < event['idx'] and abs(prior['level']/event['level']-1)<.025)):
+                event=prior
+                break
     reasons=[];risk=[];cycle=None;quality='尚未突破';stage=base['unifiedStage'];profit_review='尚未形成可檢查的持有獲利事件'
     score=float(base.get('unifiedScore') or 0)
     no_anchor=False
@@ -288,9 +298,20 @@ def cycle_judgement(b, structure=None, market_breadth=None):
         # Prevent a RECROSS through a level already crossed in older history
         # from being celebrated as a first breakout solely by v2.4 priceBreakout.
         if base.get('priceBreakout'):
+            # A current crossing may be a reclaim of yesterday's *known*
+            # failed cycle. Only consult the previous prefix (no future bars).
+            prior=cycle_judgement(b[:-1]) if len(b)>61 else None
+            old_cycle=(prior or {}).get('cycle')
+            old_level=(old_cycle or {}).get('level')
             r['priceBreakout']=False
-            stage='突破歷史待核對／不認定第一根'
-            score=min(score,48);no_anchor=True
+            if old_level and b[-2][4]<old_level<=close and '突破失敗' in prior.get('unifiedStage',''):
+                stage='跌破後重新站回／待確認'
+            elif old_level and close>=old_level*1.005 and '重新站回' in prior.get('unifiedStage',''):
+                stage='重新站回後確認觀察'
+            else:
+                stage='突破歷史待核對／不認定第一根'
+                no_anchor=True
+            score=min(score,48)
         elif base.get('primaryNeckline') and close<base['primaryNeckline']:
             dist=(base['primaryNeckline']/close-1)*100
             if dist<=3:
@@ -298,6 +319,14 @@ def cycle_judgement(b, structure=None, market_breadth=None):
             elif dist<=10:
                 stage='準備區／等待價量改善' if close>=avg_cl10 else '壓力下盤整／暫不追'
             else:stage='區間整理／等待'
+    # A new close above the same old level after a documented reclaim is
+    # confirmation of that reclaim, not a brand-new first breakout candle.
+    if event and stage=='近期首次突破／待驗證' and len(b)>61:
+        prior=cycle_judgement(b[:-1])
+        prior_level=(prior.get('cycle') or {}).get('level')
+        if prior_level and '重新站回' in prior.get('unifiedStage','') and close>=prior_level*1.005:
+            stage='重新站回後確認觀察'
+            r['priceBreakout']=False
     # Risk overrides optimistic stage: crossing a resistance cannot erase a
     # simultaneously confirmed break in support or strong downside distribution.
     broken=base.get('brokenSupport') or []
