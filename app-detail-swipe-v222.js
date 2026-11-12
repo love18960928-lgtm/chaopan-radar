@@ -1038,27 +1038,37 @@ function r38PlanCard(c,g,compact=false){
 }
 // r65: end-of-day defensive watch. All observations use completed daily bars only.
 function defensiveEarlyWarning(c){
+ // r69: no future bars. Each stage is computed using data available at that close.
  const bars=c?.bars;
  if(!Array.isArray(bars)||bars.length<26)return {stage:'unknown',text:'防守預警：歷史K線不足（至少26根）'};
  const a=bars.slice(-26);
  if(a.some(b=>!Array.isArray(b)||b.length<6||[b[2],b[3],b[4],b[5]].some(v=>v==null||v===''||!Number.isFinite(Number(v))||Number(v)<=0)))return {stage:'unknown',text:'防守預警：K線或成交量缺漏，待核對'};
  const cls=a.map(b=>Number(b[4])),hi=a.map(b=>Number(b[2])),vol=a.map(b=>Number(b[5]));
- const mean=(v)=>v.reduce((x,y)=>x+y,0)/v.length;
+ const mean=v=>v.reduce((x,y)=>x+y,0)/v.length;
  const ma=(end,n)=>mean(cls.slice(end-n,end));
- const end=cls.length,last=cls[end-1],prior=cls[end-2];
- const m5=ma(end,5),m5prev=ma(end-1,5),m5prev2=ma(end-2,5),m10=ma(end,10),m20=ma(end,20);
- const previousAdvance=cls[end-6]>cls[end-16]*1.025 || ma(end-5,5)>ma(end-15,5)*1.02;
- const slopeSlow=m5>m5prev&&m5-m5prev<m5prev-m5prev2;
- const stalledHigh=Math.max(...hi.slice(-3))<=Math.max(...hi.slice(-10,-3))*1.005;
- const weakClose=last<m5&&prior>=m5prev;
- const continuedWeak=last<m5&&prior< m5prev && last<m10 && last<=prior;
- const priorVolume=mean(vol.slice(-21,-1));
- const volumeDivergence=last>=prior&&vol[end-1]<priorVolume*.8;
- const signals=[slopeSlow,stalledHigh,volumeDivergence].filter(Boolean).length;
- const asOf=String(c.date||a[end-1][0]||'最近收盤');
- if(continuedWeak&&previousAdvance)return {stage:'second',text:`${asOf} 收盤｜轉弱持續（第二根觀察）：仍在MA5下且跌破MA10；下一交易日評估減碼風險，非即時賣出指令`};
- if(weakClose&&previousAdvance)return {stage:'first',text:`${asOf} 收盤｜第一根轉弱：收盤跌破MA5；下一交易日優先檢查防守，不保證成交價格`};
- if(previousAdvance&&last>=m5&&last>=m20&&signals>=2)return {stage:'zero',text:`${asOf} 收盤｜第0根防守前兆（${signals}/3）：動能減緩／高點停滯／量價背離；下一交易日留意減碼風險，尚未確認轉弱`};
+ const evaluate=end=>{
+  const last=cls[end-1],prior=cls[end-2],m5=ma(end,5),m5prev=ma(end-1,5),m5prev2=ma(end-2,5),m10=ma(end,10),m20=ma(end,20);
+  const advance=cls[end-6]>cls[end-16]*1.025 || ma(end-5,5)>ma(end-15,5)*1.02;
+  const slopeSlow=m5>m5prev && m5-m5prev<m5prev-m5prev2;
+  const stalledHigh=Math.max(...hi.slice(end-3,end))<=Math.max(...hi.slice(end-10,end-3))*1.005;
+  const volumeDivergence=last>=prior && vol[end-1]<mean(vol.slice(end-21,end-1))*.8;
+  const signals=[slopeSlow,stalledHigh,volumeDivergence].filter(Boolean).length;
+  const weak=last<m5 && prior>=m5prev;
+  const below5=last<m5;
+  const zero=advance && last>=m5 && last>=m20 && signals>=2;
+  return {advance,zero,weak,below5,below10:last<m10,down: last<=prior,signals};
+ };
+ const today=evaluate(cls.length),yesterday=evaluate(cls.length-1);
+ const asOf=String(a[a.length-1][0]||c.date||'最近收盤');
+ // Second candle must FOLLOW a first weak close; consecutive weakness alone is not enough.
+ if(yesterday.weak && today.below5 && today.below10 && today.down && (yesterday.advance||today.advance))
+  return {stage:'second',text:`${asOf} 收盤｜第二根轉弱確認：前日跌破MA5、今日仍低於MA5與MA10；下一交易日評估防守，非即時賣出指令`};
+ if(today.weak && today.advance)
+  return {stage:'first',text:`${asOf} 收盤｜第一根轉弱：收盤跌破MA5；下一交易日評估減碼風險，不保證成交價格`};
+ if(today.zero)
+  return {stage:'zero',text:`${asOf} 收盤｜第0根防守前兆（${today.signals}/3）：動能／高點／量價出現警訊；下一交易日優先觀察，尚未確認轉弱`};
+ if(today.below5 && yesterday.below5)
+  return {stage:'watch',text:`${asOf} 收盤｜持續弱於MA5，但不符合連續第一、第二根定義；檢查MA10與盤整下緣，不冒稱第二根`};
  return {stage:'normal',text:`${asOf} 收盤｜未達第0根或轉弱條件；持續觀察MA5、MA10與盤整下緣`};
 }
 function guidanceCard(c){
