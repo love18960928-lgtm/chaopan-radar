@@ -1093,13 +1093,27 @@ function nextSessionDefense(c){
  const avg20=avg(vol.slice(-21,-1));
  const recentLow=Math.min(...low.slice(-5));
  const defenseSignal=defensiveEarlyWarning({bars:a,date});
+ // r77: every completed daily candle gets a rolling short-swing plan, independent of stage-zero.
+ const tick=close<10?.01:close<50?.05:close<100?.1:close<500?.5:close<1000?1:5;
+ const floorTick=v=>Math.floor((v+1e-8)/tick)*tick;
+ const ceilTick=v=>Math.ceil((v-1e-8)/tick)*tick;
+ const priorHigh=Math.max(...high.slice(-6,-1));
+ const priorLow=Math.min(...low.slice(-4,-1));
+ const prevClose=cls.at(-2);
+ const last3Low=Math.min(...low.slice(-3));
+ const atrParts=a.slice(-15).map((b,i,arr)=>i===0?null:Math.max(Number(b[2])-Number(b[3]),Math.abs(Number(b[2])-Number(arr[i-1][4])),Math.abs(Number(b[3])-Number(arr[i-1][4])))).filter(Number.isFinite);
+ const atr=atrParts.length?avg(atrParts):null;
+ const continuation=ceilTick(Math.max(priorHigh,ma5Trigger));
+ const earlyWatch=floorTick(Math.max(Math.min(ma5Trigger,close),Math.min(priorLow,close)));
+ const hardDefense=floorTick(Math.min(last3Low,Math.max(0,close-(atr||0)*1.5)));
+ const dailyPlan={continuation,earlyWatch,hardDefense,priorHigh,atr};
  const format=v=>v===null?'—':price(v);
  const below=values=>[...new Set(values.filter(v=>Number.isFinite(v)&&v>0&&v<close*.999).map(v=>Math.round(v*10000)/10000))].sort((x,y)=>y-x);
  if(defenseSignal.stage==='zero'){
   const levels=below([ma5Trigger,recentLow,ma10Trigger,Math.min(...low.slice(-10))]);
   const early=levels[0]??null;
   const defensive=levels.find(v=>early!==null&&v<early*.997)??null;
-  return {status:'ok',mode:'defense',asOf:date,close,early,defensive,ma5Trigger,ma10Trigger,recentLow,avg20,text:`${date} 第0根成立｜隔日預警 ${format(early)}；防守 ${format(defensive)}；跌破配合量價才評估提前減碼`};
+  return {status:'ok',mode:'defense',asOf:date,close,dailyPlan,early,defensive,ma5Trigger,ma10Trigger,recentLow,avg20,text:`${date} 第0根成立｜隔日預警 ${format(early)}；防守 ${format(defensive)}；跌破配合量價才評估提前減碼`};
  }
  // Bullish support bounce: prior pullback, a tested recent low, two rising closes,
  // improving short-term trend, and close sufficiently near support. No lookahead.
@@ -1114,9 +1128,9 @@ function nextSessionDefense(c){
   const breakout=Math.max(...high.slice(-6,-1)); // known prior highs, excludes current bar
   const failure=below([Math.min(...low.slice(-3)),support])[0]??null;
   const resistance=overheadResistance({...c,bars:a,close,date}).levels[0]??null;
-  return {status:'ok',mode:'bounce',asOf:date,close,support,breakout:breakout>close?breakout:null,failure,avg20,resistance:resistance?.price??null,text:`${date} 支撐反彈候選｜前高突破 ${format(breakout>close?breakout:null)}；反彈失敗觀察 ${format(failure)}；需量價確認`};
+  return {status:'ok',mode:'bounce',asOf:date,close,dailyPlan,support,breakout:breakout>close?breakout:null,failure,avg20,resistance:resistance?.price??null,text:`${date} 支撐反彈候選｜前高突破 ${format(breakout>close?breakout:null)}；反彈失敗觀察 ${format(failure)}；需量價確認`};
  }
- return {status:'none',mode:'neutral',asOf:date,text:`${date} 收盤｜未符合第0根防守或支撐起漲條件；不提供交易觸發價`};
+ return {status:'ok',mode:'daily',asOf:date,close,dailyPlan,text:`${date} 收盤｜未符合第0根防守或支撐起漲條件；不提供交易觸發價`};
 }
 function nextSessionDefenseCard(c){
  const r=nextSessionDefense(c),d=defensiveEarlyWarning(c),res=overheadResistance(c);
@@ -1130,10 +1144,16 @@ function nextSessionDefenseCard(c){
  }else if(r.mode==='bounce'){
   headline='支撐反彈候選｜隔日攻擊';
   plan=`<div class="r75-levels" style="display:flex;gap:10px;flex-wrap:wrap"><span>反彈突破確認 <b>${show(r.breakout)}</b></span><span>反彈失敗 <b>${show(r.failure)}</b></span></div>`;
+ }else if(r.mode==='daily'){
+  headline='每日短波段追蹤';
  }else if(r.status!=='ok'&&r.status!=='none'){
   headline='資料待核對';plan=`<p>${esc(r.text)}</p>`;
  }
- // A neutral day does not create a trading trigger or masquerade as a defensive zero.
+ // Daily rolling levels are observations, not guaranteed fills or automatic orders.
+ if(r.dailyPlan){
+  const v=r.dailyPlan;
+  plan+=`<div class="r77-daily-levels" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><div>續攻觀察 <b>${show(v.continuation)}</b></div><div>轉弱警戒 <b>${show(v.earlyWatch)}</b></div><div>波段防守 <b>${show(v.hardDefense)}</b></div><div>昨日高點 <b>${show(v.priorHigh)}</b></div></div><small>每日收盤重算；警戒與防守價為日K估計，不代表盤中已觸發。若價位與收盤接近或市場跳空，須自行判斷。</small>`;
+ }
  const status=d.stage==='normal'?'未觸發第0根或轉弱訊號':d.text;
  return `<details class="research-fold r75-next-session-plan" open style="position:relative;clear:both;margin:12px 0;max-width:100%"><summary>▥ 隔日攻防計畫｜${esc(headline)}</summary><div class="r75-plan-body" style="display:grid;gap:8px;padding:10px 0;position:static"><div>資料日期：${esc(r.asOf||c.date||'盤後')}</div>${plan}${top}<small>${esc(status)}</small><small>僅以當日收盤以前的日K估算；壓力不是實際掛賣張數。隔日盤中不自動判斷，觸價與量能須自行核對；不保證成交。</small></div></details>`;
 }
