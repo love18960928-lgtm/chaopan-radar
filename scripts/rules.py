@@ -99,11 +99,7 @@ def scan_stock(stock, detect_follow=True, include_all=False):
     if not anchor:
         # B and legacy near signal: closest unbroken upper resistance.
         ceilings=[a for a in anchors if a['high']>=close]
-        # Prefer a dominant historical supply anchor when it is still within
-        # the actionable overhead band; a minor nearby K must not mask it.
-        # If all candidates are distant, retain the nearest reference.
-        actionable=[a for a in ceilings if a['high'] <= close*1.10]
-        anchor=max(actionable,key=lambda a:(a['vol'], -a['high'])) if actionable else (min(ceilings,key=lambda a:(a['high']-close,-a['vol'])) if ceilings else None)
+        anchor=max(ceilings,key=lambda a:(a['vol'], -(a['high']-close))) if ceilings else None
     neck=anchor['high'] if anchor else None
     dist=round(100*(close/neck-1),2) if neck else None
     first=bool(anchor and anchor in crossings)
