@@ -1205,13 +1205,16 @@ function r80Decision(c){
  return {ok:true,status,tone,explain,close,date:r.asOf,pressure:snap(pressure,'up'),breakout:resistance,watch,exit,atr,failed,pullback,stage:d.stage,stageText:d.text,rejection:r.dailyPlan.rejection,highVolume:r.dailyPlan.highVolume,high,priorResistance};
 }
 function nextSessionDefenseCard(c){
- const v=r80Decision(c),show=x=>x===null||x===undefined?'待計算':price(x);
- if(!v.ok)return `<section class="r80-decision-card" style="border:1px solid #385a6c;border-radius:14px;padding:14px;margin:12px 0"><b>隔日攻防決策｜資料待核對</b><p>${esc(v.reason)}</p></section>`;
- const colors={success:'#53d6a1',warning:'#f6bd61',danger:'#ff8585'};
- const badgeColor=colors[v.tone]||colors.warning;
- const cell=(name,value,detail,color)=>`<div style="border:1px solid #385a6c;border-radius:10px;padding:12px;min-width:0"><small style="color:#a8bfcb">${name}</small><div style="font-weight:750;font-size:1.3em;color:${color||'#dceaf0'}">${show(value)}</div><small style="color:#a8bfcb">${detail}</small></div>`;
- const details=`<details style="margin-top:10px"><summary style="cursor:pointer">展開判斷依據與限制</summary><div style="padding:10px 2px;display:grid;gap:5px"><div>前5日已知高點：${show(v.priorResistance)}；當日最高：${show(v.high)}</div><div>最高價距收盤回落：${(v.pullback*100).toFixed(2)}%；突破失敗：${v.failed?'是':'否'}</div><div>ATR：約${show(v.atr)}；第0根：${v.stage==='zero'?'成立':v.stage==='normal'?'未觸發':esc(v.stage)}</div><div>衝高回落獨立警示：${v.rejection?'觸發':'未觸發'}；量能放大：${v.highVolume?'是':'否'}</div><small>只使用已完成日K。盤中高低點的先後順序無法確認；價位是隔日條件參考，非自動委託或保證成交。無持股成本時不顯示個人獲利率。</small></div></details>`;
- return `<section class="r80-decision-card" style="position:relative;clear:both;margin:12px 0;border:1px solid #385a6c;border-radius:14px;padding:14px;max-width:100%;box-sizing:border-box;display:grid;gap:10px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><strong>隔日攻防決策</strong><strong style="border:1px solid ${badgeColor};border-radius:18px;padding:4px 10px;color:${badgeColor}">${esc(v.status)}</strong></div><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div>盤後日期：${esc(v.date)}<br>收盤 <b style="font-size:1.35em">${show(v.close)}</b></div><div style="max-width:66%;font-size:.92em">${esc(v.explain)}</div></div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">${cell('突破續攻',v.breakout,'收盤站穩才確認','#53d6a1')}${cell('壓力減碼區',v.pressure,'反彈遇壓才評估','#f6bd61')}${cell('轉弱減碼價',v.watch,'跌破近期低點觀察','#f6bd61')}${cell('出場防守價',v.exit,'已確認波段／ATR','#ff8585')}</div><div style="display:flex;gap:12px;flex-wrap:wrap;font-size:.9em"><span>第0根：<b>${v.stage==='zero'?'已觸發':'未觸發／其他階段'}</b></span><span>衝高回落：<b style="color:${v.rejection?'#ff8585':'inherit'}">${v.rejection?'已觸發':'未觸發'}</b></span></div>${details}</section>`;
+ // r81 reset: no transaction prices, next-day attack/defense plan, or recent-status audit.
+ // Keep a small EOD observation summary; no intraday execution inference.
+ const v=r80Decision(c);
+ if(!v.ok)return `<section class="r81-observation" style="border:1px solid #385a6c;border-radius:14px;padding:14px;margin:12px 0"><strong>盤後趨勢觀察</strong><p>${esc(v.reason)}</p></section>`;
+ const rejection=!!v.rejection;
+ const risk=v.stage==='zero'||v.stage==='first'||v.stage==='second';
+ const stateText=rejection?'衝高回落警戒':risk?'防守訊號觀察':v.close>v.priorResistance?'收盤突破觀察':'趨勢待確認';
+ const tone=rejection||risk?'#f6bd61':'#53d6a1';
+ const reason=rejection?'當日高點回落幅度較大，請觀察後續是否形成較低高點與較低低點。':risk?'已出現防守前兆，應與波段高低點及成交量交叉驗證。':v.close>v.priorResistance?'收盤高於先前已知高點，後續仍需確認量價與支撐。':'目前沒有足夠條件確認突破或轉弱，繼續觀察日K結構。';
+ return `<section class="r81-observation" style="position:relative;clear:both;margin:12px 0;border:1px solid #385a6c;border-radius:14px;padding:14px;display:grid;gap:12px;max-width:100%;box-sizing:border-box"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><strong>盤後趨勢觀察</strong><span style="border:1px solid ${tone};color:${tone};padding:4px 10px;border-radius:18px">${stateText}</span></div><div>資料日：${esc(v.date)}　收盤：<b style="font-size:1.25em">${price(v.close)}</b></div><div style="line-height:1.65">${reason}</div><div style="font-size:.9em;color:#a8bfcb">第0根：${risk?'已出現防守訊號':'未觸發'}　｜　衝高回落：${rejection?'已觸發':'未觸發'}</div><small style="color:#a8bfcb">此卡僅顯示盤後走勢觀察；買賣價位與隔日攻防已暫時移除，待重新設計與回測。日K無法確認盤中高低點先後順序。</small></section>`;
 }
 
 function defenseHistory(bars, maxBars=60){
@@ -1233,8 +1236,8 @@ function defenseHistoryText(c){
  return `歷史防守（最近60根）：${last.map(e=>`${e.date} ${label[e.stage]}`).join('｜')}`;
 }
 function guidanceCard(c){
- // r76: legacy six-price and mini-chart cards intentionally hidden; computations remain available.
- return nextSessionDefenseCard(c);
+ // r81: detail tab builds the single observation card; no duplicate initial markup.
+ return '';
 }
 /* r41 CANDIDATE: Detail-only presentation split. Existing scanner, battle card,
  * chart renderer, sector rankings and trading calculations remain unchanged. */
@@ -1270,12 +1273,10 @@ function arrangeR41Detail(c){
  card.querySelectorAll('.fin-r13-details').forEach(el=>el.remove());
  card.querySelectorAll('.r75-next-session-plan').forEach(el=>el.remove());
  const originalDetailMarkup=card.innerHTML;
- // r79: single visible decision card; preserve existing audit/research calculations on demand.
- card.innerHTML=nextSessionDefenseCard(c)
-   +'<details class="r79-advanced-fold" style="margin:14px 0;clear:both;position:relative"><summary style="cursor:pointer;padding:12px 14px;border:1px solid #385a6c;border-radius:12px;color:#b6cdd6">展開詳細技術資料（資格檢查／六價位／原始研究）</summary>'
-   +'<div style="padding-top:12px">'+r47SelectionAudit(c)
-   +sectorBattleCard(c,{source:'lookup-detail',rankText:'超盤手｜個股完整分析'})
-   +'<details class="lookup-extra-research"><summary>展開原始技術研究</summary>'+originalDetailMarkup+'</details></div></details>';
+ // r81: remove duplicate recent-status, six-price and legacy decision cards from stock detail.
+ // Original analysis stays out of the visible stock detail; chart and neckline diagram remain.
+ card.innerHTML=nextSessionDefenseCard(c);
+
  const sameDay=Array.isArray(c.bars)&&c.bars.length>0&&c.bars.at(-1)?.[0]===c.date&&c.date===state.payload?.asOf;
  const lastSupport=sameDay?supportLines(c):[], defens=sameDay?c.structureV23?.mainDefense:null;
  const amount=(v,dir='down')=>{
@@ -1316,7 +1317,7 @@ function arrangeR41Detail(c){
 }
 function r41AdvancedSettingsMarkup(){
  const a=state.r41Advanced;
- if(!a)return '<p>先從自動名單或自選追蹤開啟一檔個股，就能在此檢視該檔的原始研究及盤中手動工具。</p>';
+ if(!a)return '<p>先開啟個股，即可檢視盤後研究資料。</p>';
  if(a.date!==state.payload?.asOf)return '<p>盤後交易日已變更。原研究內容不再沿用，請重新開啟個股取得同日分析。</p>';
  if(state.payload?.asOf&&a.date!==state.payload.asOf)return '<p>最新盤後快照已更新，進階功能使用的個股資料日期不一致。請重新開啟該檔個股，避免將舊價當作今日計畫。</p>';
  return `<p>最近開啟：${esc(a.code)}｜${esc(a.date)} 盤後資料。只使用該筆資料，並非即時報價。</p><div class="r41-advanced-content">${a.html}</div>`;
