@@ -77,7 +77,7 @@ function marketPanel(intel,asOf){
  <div class="intel-flow-head"><strong>外資臺股期貨 TX 未平倉</strong><span>${foreignTx?esc(asOf)+'｜口':'尚未核對'}</span></div><div class="intel-flow-grid"><div class="intel-flow"><span>多單</span><b>${foreignTx?fm(foreignTx.longLots,0):'待資料'}</b></div><div class="intel-flow"><span>空單</span><b>${foreignTx?fm(foreignTx.shortLots,0):'待資料'}</b></div><div class="intel-flow"><span>淨部位</span><b class="${tone(foreignTx?.netLots)}">${foreignTx?signed(foreignTx.netLots):'待資料'}</b></div></div>
  <div class="intel-flow-head"><strong>融資水位（上市已取得個股小計）</strong><span>${marginTotal!==null?esc(asOf)+'｜'+covered+'筆':'同日資料未核對'}</span></div>
  <div class="intel-flow-grid"><div class="intel-flow"><span>融資餘額小計</span><b>${marginTotal!==null?fm(marginTotal,0)+' 張':'待資料'}</b></div><div class="intel-flow"><span>較前日增減</span><b class="${tone(marginDelta)}">${marginDelta!==null?signed(marginDelta)+' 張':'待資料'}</b></div><div class="intel-flow"><span>上櫃融資個股小計</span><b>${otcMarginSubtotal!==null?fm(otcMarginSubtotal,0)+' 張（'+otcMargins.length+'檔）':'待資料（'+sourceMessage('tpex_margin')+'）'}</b></div></div>
- <div class="intel-vix-note">恐慌指數｜美國 VIX <b>${vix('usVix')}</b>｜台灣 VIX <b>${vix('twVix')}</b>（<a href="https://www.taifex.com.tw/cht/7/vixDaily3MNew" target="_blank" rel="noopener noreferrer">期交所查詢</a>）</div>`;
+ `;
 }
 function marginLight(intel,row){if(!safeMarket(intel,row?.date))return null;
  const x=intel.margin?.[row.market+'-'+row.code];return x?.date===row.date?x:null;}
