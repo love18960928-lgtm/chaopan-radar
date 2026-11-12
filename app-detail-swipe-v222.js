@@ -1097,16 +1097,26 @@ function nextSessionDefense(c){
  const tick=close<10?.01:close<50?.05:close<100?.1:close<500?.5:close<1000?1:5;
  const floorTick=v=>Math.floor((v+1e-8)/tick)*tick;
  const ceilTick=v=>Math.ceil((v-1e-8)/tick)*tick;
- const priorHigh=Math.max(...high.slice(-6,-1));
+ const priorHigh=high.at(-2); // previous trading session high, not five-day high
+ const fiveDayHigh=Math.max(...high.slice(-6,-1));
  const priorLow=Math.min(...low.slice(-4,-1));
  const prevClose=cls.at(-2);
  const last3Low=Math.min(...low.slice(-3));
  const atrParts=a.slice(-15).map((b,i,arr)=>i===0?null:Math.max(Number(b[2])-Number(b[3]),Math.abs(Number(b[2])-Number(arr[i-1][4])),Math.abs(Number(b[3])-Number(arr[i-1][4])))).filter(Number.isFinite);
  const atr=atrParts.length?avg(atrParts):null;
- const continuation=ceilTick(Math.max(priorHigh,ma5Trigger));
+ const continuation=ceilTick(Math.max(fiveDayHigh,ma5Trigger));
  const earlyWatch=floorTick(Math.max(Math.min(ma5Trigger,close),Math.min(priorLow,close)));
- const hardDefense=floorTick(Math.min(last3Low,Math.max(0,close-(atr||0)*1.5)));
- const dailyPlan={continuation,earlyWatch,hardDefense,priorHigh,atr};
+ // Short-swing defense: the prior completed candle's low is a nearby reference;
+ // the broader structural low is separate and must not masquerade as a trailing stop.
+ const priorDayLow=low.at(-2);
+ const shortDefense=floorTick(Math.min(priorDayLow,earlyWatch));
+ const structuralSupport=floorTick(Math.min(...low.slice(-10)));
+ const intradayRange=Math.max(0,Number(last[2])-Number(last[3]));
+ const upperWick=Math.max(0,Number(last[2])-Math.max(Number(last[1]),close));
+ const highToClosePct=Number(last[2])>0?(Number(last[2])-close)/Number(last[2]):0;
+ const rejection=intradayRange>0 && highToClosePct>=.045 && upperWick/intradayRange>=.3;
+ const highVolume=avg20>0&&vol.at(-1)>=avg20*1.3;
+ const dailyPlan={continuation,earlyWatch,hardDefense:shortDefense,structuralSupport,priorHigh,fiveDayHigh,sessionHigh:high.at(-1),atr,rejection,highVolume,highToClosePct};
  const format=v=>v===null?'—':price(v);
  const below=values=>[...new Set(values.filter(v=>Number.isFinite(v)&&v>0&&v<close*.999).map(v=>Math.round(v*10000)/10000))].sort((x,y)=>y-x);
  if(defenseSignal.stage==='zero'){
@@ -1145,14 +1155,14 @@ function nextSessionDefenseCard(c){
   headline='支撐反彈候選｜隔日攻擊';
   plan=`<div class="r75-levels" style="display:flex;gap:10px;flex-wrap:wrap"><span>反彈突破確認 <b>${show(r.breakout)}</b></span><span>反彈失敗 <b>${show(r.failure)}</b></span></div>`;
  }else if(r.mode==='daily'){
-  headline='每日短波段追蹤';
+  headline=r.dailyPlan?.rejection?'衝高回落警戒｜每日短波段':'每日短波段追蹤';
  }else if(r.status!=='ok'&&r.status!=='none'){
   headline='資料待核對';plan=`<p>${esc(r.text)}</p>`;
  }
  // Daily rolling levels are observations, not guaranteed fills or automatic orders.
  if(r.dailyPlan){
   const v=r.dailyPlan;
-  plan+=`<div class="r77-daily-levels" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><div>續攻觀察 <b>${show(v.continuation)}</b></div><div>轉弱警戒 <b>${show(v.earlyWatch)}</b></div><div>波段防守 <b>${show(v.hardDefense)}</b></div><div>昨日高點 <b>${show(v.priorHigh)}</b></div></div><small>每日收盤重算；警戒與防守價為日K估計，不代表盤中已觸發。若價位與收盤接近或市場跳空，須自行判斷。</small>`;
+  plan+=`<div class="r77-daily-levels" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><div>續攻觀察 <b>${show(v.continuation)}</b></div><div>轉弱警戒 <b>${show(v.earlyWatch)}</b></div><div>短線防守參考 <b>${show(v.hardDefense)}</b></div><div>前日最高價 <b>${show(v.priorHigh)}</b></div></div>${v.rejection?`<div style="color:#f6b85a">衝高回落警戒：當日最高 ${show(v.sessionHigh)}，距收盤回落 ${(v.highToClosePct*100).toFixed(1)}%；${v.highVolume?'量能同步放大':'量能未確認放大'}。此為獨立風險警示，不冒稱第0根。</div>`:''}<small>每日收盤重算；警戒與防守價為日K估計，不代表盤中已觸發。若價位與收盤接近或市場跳空，須自行判斷。</small>`;
  }
  const status=d.stage==='normal'?'未觸發第0根或轉弱訊號':d.text;
  return `<details class="research-fold r75-next-session-plan" open style="position:relative;clear:both;margin:12px 0;max-width:100%"><summary>▥ 隔日攻防計畫｜${esc(headline)}</summary><div class="r75-plan-body" style="display:grid;gap:8px;padding:10px 0;position:static"><div>資料日期：${esc(r.asOf||c.date||'盤後')}</div>${plan}${top}<small>${esc(status)}</small><small>僅以當日收盤以前的日K估算；壓力不是實際掛賣張數。隔日盤中不自動判斷，觸價與量能須自行核對；不保證成交。</small></div></details>`;
