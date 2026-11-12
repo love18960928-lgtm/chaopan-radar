@@ -1142,30 +1142,76 @@ function nextSessionDefense(c){
  }
  return {status:'ok',mode:'daily',asOf:date,close,dailyPlan,text:`${date} 收盤｜未符合第0根防守或支撐起漲條件；不提供交易觸發價`};
 }
+// r80: end-of-day decision engine. All next-session levels use only completed bars.
+// Never infer intraday event order from OHLC. Pivot confirmation needs two older bars.
+function r80Decision(c){
+ const r=nextSessionDefense(c);
+ if(r.status!=='ok'||!r.dailyPlan)return {ok:false,reason:r.text||'日K資料不足'};
+ const bars=c.bars, n=bars.length, last=bars[n-1];
+ const close=Number(last[4]), open=Number(last[1]), high=Number(last[2]), low=Number(last[3]);
+ const prev=bars.slice(0,-1), atr=r.dailyPlan.atr;
+ const highs=prev.map(x=>Number(x[2])), lows=prev.map(x=>Number(x[3]));
+ const tick=v=>v<10?.01:v<50?.05:v<100?.1:v<500?.5:v<1000?1:5;
+ const snap=(v,dir)=>{
+  if(!Number.isFinite(v)||v<=0)return null;
+  let x=v;
+  for(let i=0;i<4;i++){
+   const t=tick(x), y=(dir==='up'?Math.ceil((x-1e-9)/t):Math.floor((x+1e-9)/t))*t;
+   if(tick(y)===t)return Number(y.toFixed(2));
+   x=y;
+  }
+  return Number(x.toFixed(2));
+ };
+ // Confirmed historical pivots: the two bars to the right must already exist.
+ const pivots=(values)=>{
+  const out=[];
+  for(let i=2;i<values.length-2;i++){
+   if(values[i]<values[i-1]&&values[i]<values[i-2]&&values[i]<=values[i+1]&&values[i]<=values[i+2])out.push({i,v:values[i]});
+  }
+  return out;
+ };
+ const swingLows=pivots(lows), lastSwing=swingLows.at(-1)?.v??null;
+ const priorResistance=Math.max(...highs.slice(-5));
+ const resistance=snap(close>priorResistance?Math.max(...bars.slice(-5).map(x=>Number(x[2]))):priorResistance, 'up');
+ const highRef=Math.max(...bars.slice(-22).map(x=>Number(x[2])));
+ const rawTrail=atr>0?highRef-3*atr:null;
+ // Short swing low is distinct from the structural stop; do not force a stop above close.
+ const shortLow=Math.min(...lows.slice(-3));
+ const watch=snap(shortLow,'down');
+ const stopCandidates=[lastSwing,rawTrail].filter(v=>Number.isFinite(v)&&v>0&&v<close);
+ const exit=stopCandidates.length?snap(Math.max(...stopCandidates),'down'):null;
+ const pressure=priorResistance>close?priorResistance:null;
+ const failed=high>priorResistance&&close<priorResistance;
+ const range=Math.max(high-low,.000001);
+ const weakClose=(close-low)/range<.3;
+ const pullback=(high-close)/high;
+ const earlyRisk=failed&&(weakClose||pullback>=.025);
+ const breakShort=close<shortLow;
+ const breakSwing=lastSwing!==null&&close<lastSwing;
+ const atrBreak=rawTrail!==null&&close<rawTrail;
+ const d=defensiveEarlyWarning(c);
+ let status='續抱觀察',tone='success',explain='短線結構未出現確認減碼條件，持續追蹤並更新防守。';
+ if(breakSwing&&(atrBreak||d.stage==='first'||d.stage==='second')){
+  status='出場防守';tone='danger';explain='收盤跌破已確認波段低點，且其他防守訊號配合；評估剩餘部位風險。';
+ }else if(breakShort&&(earlyRisk||d.stage==='zero'||d.stage==='first'||d.stage==='second'||atrBreak)){
+  status='減碼確認';tone='danger';explain='收盤跌破前3日短線低點，且伴隨突破失敗、ATR或第0根等風險。';
+ }else if(earlyRisk||d.stage==='zero'||d.stage==='first'||d.stage==='second'){
+  status='減碼預警';tone='warning';explain='出現衝高回落／防守警訊，先規劃隔日減碼條件，不代表盤中已成交。';
+ }else if(close>priorResistance&&close>open){
+  status='突破續抱';tone='success';explain='收盤站上前5日已知高點；追蹤下一道壓力與防守價。';
+ }else if(atr>0&&close>Math.min(...lows.slice(-10))+2*atr){
+  status='獲利保護';tone='warning';explain='反彈已有幅度，未出現確認減碼訊號；持續提高風險意識。';
+ }
+ return {ok:true,status,tone,explain,close,date:r.asOf,pressure:snap(pressure,'up'),breakout:resistance,watch,exit,atr,failed,pullback,stage:d.stage,stageText:d.text,rejection:r.dailyPlan.rejection,highVolume:r.dailyPlan.highVolume,high,priorResistance};
+}
 function nextSessionDefenseCard(c){
- const r=nextSessionDefense(c),d=defensiveEarlyWarning(c),res=overheadResistance(c);
- const show=v=>v===null||v===undefined?'—':price(v);
- const resistance=res.levels?.slice(0,3)||[];
- const top=resistance.length?`<div class="r75-levels" style="display:flex;gap:10px;flex-wrap:wrap">${resistance.map((x,i)=>`<span>第${i+1}壓力 <b>${price(x.low)}${x.high>x.low*1.003?'～'+price(x.high):''}</b></span>`).join('')}</div>`:'';
- let headline='一般觀察',plan='';
- if(r.mode==='defense'){
-  headline='第0根成立｜隔日防守';
-  plan=`<div class="r75-levels" style="display:flex;gap:10px;flex-wrap:wrap"><span>轉弱觀察 <b>${show(r.early)}</b></span><span>防守失守 <b>${show(r.defensive)}</b></span></div>`;
- }else if(r.mode==='bounce'){
-  headline='支撐反彈候選｜隔日攻擊';
-  plan=`<div class="r75-levels" style="display:flex;gap:10px;flex-wrap:wrap"><span>反彈突破確認 <b>${show(r.breakout)}</b></span><span>反彈失敗 <b>${show(r.failure)}</b></span></div>`;
- }else if(r.mode==='daily'){
-  headline=r.dailyPlan?.rejection?'衝高回落警戒｜每日短波段':'每日短波段追蹤';
- }else if(r.status!=='ok'&&r.status!=='none'){
-  headline='資料待核對';plan=`<p>${esc(r.text)}</p>`;
- }
- // Daily rolling levels are observations, not guaranteed fills or automatic orders.
- if(r.dailyPlan){
-  const v=r.dailyPlan;
-  plan+=`<div class="r77-daily-levels" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><div>續攻觀察 <b>${show(v.continuation)}</b></div><div>轉弱警戒 <b>${show(v.earlyWatch)}</b></div><div>短線防守參考 <b>${show(v.hardDefense)}</b></div><div>前日最高價 <b>${show(v.priorHigh)}</b></div></div>${v.rejection?`<div style="color:#f6b85a">衝高回落警戒：當日最高 ${show(v.sessionHigh)}，距收盤回落 ${(v.highToClosePct*100).toFixed(1)}%；${v.highVolume?'量能同步放大':'量能未確認放大'}。此為獨立風險警示，不冒稱第0根。</div>`:''}<small>每日收盤重算；警戒與防守價為日K估計，不代表盤中已觸發。若價位與收盤接近或市場跳空，須自行判斷。</small>`;
- }
- const status=d.stage==='normal'?'未觸發第0根或轉弱訊號':d.text;
- return `<details class="research-fold r75-next-session-plan" open style="position:relative;clear:both;margin:12px 0;max-width:100%"><summary>▥ 隔日攻防計畫｜${esc(headline)}</summary><div class="r75-plan-body" style="display:grid;gap:8px;padding:10px 0;position:static"><div>資料日期：${esc(r.asOf||c.date||'盤後')}</div>${plan}${top}<small>${esc(status)}</small><small>僅以當日收盤以前的日K估算；壓力不是實際掛賣張數。隔日盤中不自動判斷，觸價與量能須自行核對；不保證成交。</small></div></details>`;
+ const v=r80Decision(c),show=x=>x===null||x===undefined?'待計算':price(x);
+ if(!v.ok)return `<section class="r80-decision-card" style="border:1px solid #385a6c;border-radius:14px;padding:14px;margin:12px 0"><b>隔日攻防決策｜資料待核對</b><p>${esc(v.reason)}</p></section>`;
+ const colors={success:'#53d6a1',warning:'#f6bd61',danger:'#ff8585'};
+ const badgeColor=colors[v.tone]||colors.warning;
+ const cell=(name,value,detail,color)=>`<div style="border:1px solid #385a6c;border-radius:10px;padding:12px;min-width:0"><small style="color:#a8bfcb">${name}</small><div style="font-weight:750;font-size:1.3em;color:${color||'#dceaf0'}">${show(value)}</div><small style="color:#a8bfcb">${detail}</small></div>`;
+ const details=`<details style="margin-top:10px"><summary style="cursor:pointer">展開判斷依據與限制</summary><div style="padding:10px 2px;display:grid;gap:5px"><div>前5日已知高點：${show(v.priorResistance)}；當日最高：${show(v.high)}</div><div>最高價距收盤回落：${(v.pullback*100).toFixed(2)}%；突破失敗：${v.failed?'是':'否'}</div><div>ATR：約${show(v.atr)}；第0根：${v.stage==='zero'?'成立':v.stage==='normal'?'未觸發':esc(v.stage)}</div><div>衝高回落獨立警示：${v.rejection?'觸發':'未觸發'}；量能放大：${v.highVolume?'是':'否'}</div><small>只使用已完成日K。盤中高低點的先後順序無法確認；價位是隔日條件參考，非自動委託或保證成交。無持股成本時不顯示個人獲利率。</small></div></details>`;
+ return `<section class="r80-decision-card" style="position:relative;clear:both;margin:12px 0;border:1px solid #385a6c;border-radius:14px;padding:14px;max-width:100%;box-sizing:border-box;display:grid;gap:10px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><strong>隔日攻防決策</strong><strong style="border:1px solid ${badgeColor};border-radius:18px;padding:4px 10px;color:${badgeColor}">${esc(v.status)}</strong></div><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div>盤後日期：${esc(v.date)}<br>收盤 <b style="font-size:1.35em">${show(v.close)}</b></div><div style="max-width:66%;font-size:.92em">${esc(v.explain)}</div></div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">${cell('突破續攻',v.breakout,'收盤站穩才確認','#53d6a1')}${cell('壓力減碼區',v.pressure,'反彈遇壓才評估','#f6bd61')}${cell('轉弱減碼價',v.watch,'跌破近期低點觀察','#f6bd61')}${cell('出場防守價',v.exit,'已確認波段／ATR','#ff8585')}</div><div style="display:flex;gap:12px;flex-wrap:wrap;font-size:.9em"><span>第0根：<b>${v.stage==='zero'?'已觸發':'未觸發／其他階段'}</b></span><span>衝高回落：<b style="color:${v.rejection?'#ff8585':'inherit'}">${v.rejection?'已觸發':'未觸發'}</b></span></div>${details}</section>`;
 }
 
 function defenseHistory(bars, maxBars=60){
