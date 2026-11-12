@@ -1073,34 +1073,57 @@ function defensiveEarlyWarning(c){
 }
 // r70: chronological, no-lookahead defense replay. A signal is evaluated only
 // on the candle's own historical prefix, never using future candles.
-// r72: next-session levels are frozen at the latest COMPLETED close.
-// Next MA5 crossover threshold: x < (sum(last 4 closes)+x)/5 => x < sum(last 4)/4.
+// r73: two-direction next-session plans. A defensive price is published ONLY
+// after a confirmed defensive zero; support-bounce candidates use a separate
+// bullish setup and are never mislabelled as a defensive zero.
 function nextSessionDefense(c){
  const bars=c?.bars;
- if(!Array.isArray(bars)||bars.length<26)return {status:'insufficient',text:'次日防守：至少需要26根完整日K'};
- const a=bars.slice(-26), valid=b=>Array.isArray(b)&&b.length>=6&&[b[2],b[3],b[4],b[5]].every(v=>v!==null&&v!==''&&Number.isFinite(Number(v))&&Number(v)>0)&&Number(b[2])>=Number(b[3])&&Number(b[4])<=Number(b[2])&&Number(b[4])>=Number(b[3]);
- if(!a.every(valid))return {status:'invalid',text:'次日防守：K線或成交量缺漏，暫停計算'};
- const close=Number(a.at(-1)[4]),date=String(a.at(-1)[0]),closes=a.map(b=>Number(b[4]));
- if(c?.date&&String(c.date).slice(0,10)!==date.slice(0,10))return {status:'stale',text:'次日防守：資料日期不一致，暫停計算'};
+ if(!Array.isArray(bars)||bars.length<26)return {status:'insufficient',text:'雙向預判：至少需要26根完整日K'};
+ const a=bars.slice(-Math.min(120,bars.length));
+ const valid=b=>Array.isArray(b)&&b.length>=6&&typeof b[0]==='string'&&[b[1],b[2],b[3],b[4],b[5]].every(v=>v!==null&&v!==''&&Number.isFinite(Number(v))&&Number(v)>0)&&Number(b[2])>=Math.max(Number(b[1]),Number(b[3]),Number(b[4]))&&Number(b[3])<=Math.min(Number(b[1]),Number(b[4]));
+ if(!a.every(valid)||a.some((b,i)=>i>0&&b[0]<=a[i-1][0]))return {status:'invalid',text:'雙向預判：K線順序或價量異常，暫停計算'};
+ const last=a.at(-1),date=last[0],close=Number(last[4]);
+ if(c?.date&&String(c.date).slice(0,10)!==date.slice(0,10))return {status:'stale',text:'雙向預判：資料日期不一致，暫停計算'};
+ if(c?.close!==undefined&&c.close!==null&&Math.abs(Number(c.close)-close)>Math.max(.02,close*.001))return {status:'stale',text:'雙向預判：收盤價不一致，暫停計算'};
  const avg=v=>v.reduce((x,y)=>x+y,0)/v.length;
- const ma5Trigger=avg(closes.slice(-4));
- const ma10Trigger=avg(closes.slice(-9));
- const recentLow=Math.min(...a.slice(-5).map(b=>Number(b[3])));
- const levels=[{value:ma5Trigger,source:'次日MA5收盤跌破門檻'},{value:recentLow,source:'最近5根最低價'}].filter(v=>v.value>0&&v.value<close);
- const early=levels.length?Math.max(...levels.map(v=>v.value)):null;
- const supportCandidates=[ma10Trigger,Math.min(...a.slice(-10).map(b=>Number(b[3])))].filter(v=>v>0&&v<close);
- const defensive=supportCandidates.length?Math.max(...supportCandidates):null;
- const orderedDefense=defensive!==null&&early!==null&&defensive>=early?null:defensive;
- const pct=v=>v===null?'—':`${((v/close-1)*100).toFixed(2)}%`;
- const fmt=v=>v===null?'—':v.toFixed(2);
- const text=`${date} 收盤預算｜次日預警 ${fmt(early)} (${pct(early)})；次日防守 ${fmt(orderedDefense)} (${pct(orderedDefense)})；MA5動態收盤門檻 ${fmt(ma5Trigger)}。盤中觸及僅為預警，須以次日收盤確認；不保證成交價`;
- return {status:'ok',asOf:date,close,early,defensive:orderedDefense,ma5Trigger,ma10Trigger,recentLow,text};
+ const cls=a.map(b=>Number(b[4])),high=a.map(b=>Number(b[2])),low=a.map(b=>Number(b[3])),vol=a.map(b=>Number(b[5]));
+ const ma5Trigger=avg(cls.slice(-4)),ma10Trigger=avg(cls.slice(-9));
+ const ma5=avg(cls.slice(-5)),ma5Prior=avg(cls.slice(-6,-1));
+ const avg20=avg(vol.slice(-21,-1));
+ const recentLow=Math.min(...low.slice(-5));
+ const defenseSignal=defensiveEarlyWarning({bars:a,date});
+ const format=v=>v===null?'—':price(v);
+ const below=values=>[...new Set(values.filter(v=>Number.isFinite(v)&&v>0&&v<close*.999).map(v=>Math.round(v*10000)/10000))].sort((x,y)=>y-x);
+ if(defenseSignal.stage==='zero'){
+  const levels=below([ma5Trigger,recentLow,ma10Trigger,Math.min(...low.slice(-10))]);
+  const early=levels[0]??null;
+  const defensive=levels.find(v=>early!==null&&v<early*.997)??null;
+  return {status:'ok',mode:'defense',asOf:date,close,early,defensive,ma5Trigger,ma10Trigger,recentLow,avg20,text:`${date} 第0根成立｜隔日預警 ${format(early)}；防守 ${format(defensive)}；跌破配合量價才評估提前減碼`};
+ }
+ // Bullish support bounce: prior pullback, a tested recent low, two rising closes,
+ // improving short-term trend, and close sufficiently near support. No lookahead.
+ const lookback=low.slice(-16,-2),priorPeak=Math.max(...high.slice(-25,-5));
+ const support=Math.min(...low.slice(-8));
+ const pullback=priorPeak>support*1.055;
+ const higherCloses=cls.at(-1)>cls.at(-2)&&cls.at(-2)>cls.at(-3);
+ const recovering=close>ma5&&ma5>=ma5Prior&&close>cls.at(-5);
+ const nearSupport=(close/support-1)<=.085;
+ const bounce=pullback&&higherCloses&&recovering&&nearSupport&&lookback.length>0;
+ if(bounce){
+  const breakout=Math.max(...high.slice(-6,-1)); // known prior highs, excludes current bar
+  const failure=below([Math.min(...low.slice(-3)),support])[0]??null;
+  const resistance=overheadResistance({...c,bars:a,close,date}).levels[0]??null;
+  return {status:'ok',mode:'bounce',asOf:date,close,support,breakout:breakout>close?breakout:null,failure,avg20,resistance:resistance?.price??null,text:`${date} 支撐反彈候選｜前高突破 ${format(breakout>close?breakout:null)}；反彈失敗觀察 ${format(failure)}；需量價確認`};
+ }
+ return {status:'none',mode:'neutral',asOf:date,text:`${date} 收盤｜未符合第0根防守或支撐起漲條件；不提供交易觸發價`};
 }
 function nextSessionDefenseCard(c){
  const r=nextSessionDefense(c);
+ if(r.mode==='neutral')return ''; // no daily fake signal
  if(r.status!=='ok')return `<div class="r72-defense-plan" role="status">${esc(r.text)}</div>`;
- const show=v=>v===null?'無有效下方價位':price(v);
- return `<div class="r72-defense-plan" role="status"><strong>第0根｜次日防守價位（${esc(r.asOf)} 收盤預算）</strong><div>預警價 <b>${show(r.early)}</b>　防守價 <b>${show(r.defensive)}</b>　MA5收盤門檻 <b>${price(r.ma5Trigger)}</b></div><small>次日盤中跌破為提前提醒；第一根須收盤確認。價位只依已完成K棒計算，未考慮跳空與即時委託量。</small></div>`;
+ const show=v=>v===null?'無有效價位':price(v);
+ if(r.mode==='defense')return `<div class="r72-defense-plan" role="status"><strong>第0根成立｜隔日提前防守（${esc(r.asOf)}）</strong><div>預警價 <b>${show(r.early)}</b>　提前減碼評估價 <b>${show(r.defensive)}</b></div><small>價格跌破只是預警；量能及收盤確認另行判斷。盤後資料不代表即時委託量。</small></div>`;
+ return `<div class="r72-defense-plan" role="status"><strong>支撐起漲候選｜隔日攻擊觀察（${esc(r.asOf)}）</strong><div>突破觀察價 <b>${show(r.breakout)}</b>　反彈失敗價 <b>${show(r.failure)}</b>　最近上方壓力 <b>${show(r.resistance)}</b></div><small>上漲須觀察收盤站穩與量能；跌破失敗價僅供風險評估。兩者均非保證成交的買賣指令。</small></div>`;
 }
 function defenseHistory(bars, maxBars=60){
  if(!Array.isArray(bars))return [];
