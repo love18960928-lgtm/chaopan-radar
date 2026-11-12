@@ -1,0 +1,14 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert'),path=require('path');
+const s=fs.readFileSync(path.join(__dirname,'..','app-detail-swipe-v222.js'),'utf8');
+const gate=s.slice(s.indexOf('const STRICT_BREAKOUT_STAGES='),s.indexOf('const OBS_STAGE='));
+const audit=s.slice(s.indexOf('function detectConsolidation(all){'),s.indexOf('function detectPriceGaps(all){'));
+const ctx={};vm.createContext(ctx);vm.runInContext(audit+gate,ctx);
+const base=Array.from({length:29},(_,i)=>['day'+i,100,i%6===0?106:103,i%6===3?94:97,100+(i%3-1),1000]);
+const bars=[...base,['day29',112,114,108,112,2000]];
+const stock={bars,breakoutEvent:{level:120},breakoutSequence:{phase:'first'},close:112,starPhase:'first',breakoutQuality:'strong',continuationEligible:true};
+let a=ctx.strictBreakoutDecision(stock,'first');assert.equal(a.eligible,false);assert(a.reason.includes('首次突破未收盤'));
+stock.close=122; a=ctx.strictBreakoutDecision(stock,'first');assert.equal(a.eligible,false);assert(a.reason.includes('盤整框與盤後突破事件衝突'));
+stock.breakoutEvent.level=106;a=ctx.strictBreakoutDecision(stock,'first');assert.equal(a.eligible,true);
+stock.bars=bars.map((b,i)=>i===5?[...b.slice(0,3),null,...b.slice(4)]:b);a=ctx.strictBreakoutDecision(stock,'first');assert.equal(a.pending,true);
+assert.equal(ctx.strictBreakoutDecision(stock,'hold').eligible,true);
+console.log('r59: 5 selection-gate assertions passed');
