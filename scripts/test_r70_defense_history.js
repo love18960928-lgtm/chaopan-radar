@@ -1,0 +1,17 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const source=fs.readFileSync(require('path').join(__dirname,'../app-detail-swipe-v222.js'),'utf8');
+const part=source.slice(source.indexOf('function defensiveEarlyWarning(c){'),source.indexOf('function guidanceCard(c){'));
+const ctx={};vm.createContext(ctx);vm.runInContext(part,ctx);
+const bars=Array.from({length:85},(_,i)=>{const p=100+i*.3;return [new Date(Date.UTC(2026,0,i+1)).toISOString().slice(0,10),p,p+1,p-1,p,1000]});
+assert.deepStrictEqual(Array.from(ctx.defenseHistory([],60)),[]);
+assert.strictEqual(ctx.defenseHistoryText({bars:[]}).includes('不足26根'),true);
+assert.strictEqual(ctx.defenseHistoryText({bars}).includes('最近60根'),true);
+const base=ctx.defenseHistory(bars,60);
+const extra=[...bars,['2026-04-01',110,111,109,110,1000]];
+const later=ctx.defenseHistory(extra,61).filter(e=>e.index<85);
+assert.deepStrictEqual(JSON.parse(JSON.stringify(base)),JSON.parse(JSON.stringify(later)));
+const invalid=bars.map(b=>[...b]);invalid[84][5]=null;
+assert.strictEqual(ctx.defensiveEarlyWarning({bars:invalid}).stage,'unknown');
+assert.strictEqual(ctx.defenseHistory(invalid,60).some(e=>e.index===84),false);
+assert.strictEqual(ctx.defenseHistory(bars,60).every(e=>e.index>=25&&e.index<85),true);
+console.log('r70 historical defense tests: 7 passed');
