@@ -906,7 +906,7 @@ function sectorDirectory(){
   const rawMarkup=rawOnly.length?`<div class="r44-raw-stage-visible"><p class="r23-note">其他觀察股｜點選股票可展開分析（非認證買點）</p>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,compactStatus:'觀察｜'+strictBreakoutDecision(c,stage).reason,reason:strictBreakoutDecision(c,stage).reason})))}</div>`:'';
   return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${displayCount}</span><span class="sector-arrow">⌄</span></summary>${auditNote}${r26GroupMarkup('stage-'+stage,arr)}${rawMarkup}</details>`;
  };
- out.innerHTML=`<p class="r23-note">歷史突破第一～四根、均線、回測及頸線觀察邏輯保留在這裡。這是<strong>研究資料庫</strong>，不是今天漲幅排行榜，也不代表明天會漲；MA240 歷史不足仍標待認證。</p>`+
+ out.innerHTML=
  activeStages.map(stageBlock).join('')+
  `<details class="r27-idle"><summary>其他無訊號階段（${inactiveStages.length} 類）</summary>${inactiveStages.map(stageBlock).join('')}</details>`;
 }

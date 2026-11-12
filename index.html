@@ -243,7 +243,7 @@ html.chaopan-chart-expanded .modal-overlay{z-index:99990!important}
     <h1>明日強勢候選</h1>
     
     <div class="sessionline"><div><span class="muted">個股資料日</span> <strong id="marketDate">—</strong></div><div class="line-divider" hidden></div><div class="compact-data-status" hidden><span class="muted">資料狀態</span> <strong id="dataStatus">正在讀取已保存快照</strong></div></div>
-    <div class="r44-version-status" id="r44VersionStatus" hidden aria-label="程式版本與資料日期">程式：r60（突破衝突防呆版）｜部署 commit：待核對｜行情：依下方實際來源日期</div>
+    <div class="r44-version-status" id="r44VersionStatus" hidden aria-label="程式版本與資料日期">程式：r61（精簡說明版）｜部署 commit：待核對｜行情：依下方實際來源日期</div>
     <!-- r44.4: remove the unverified index traffic-light cards; market closes remain in the official overview. -->
     <section class="r447-lookup" aria-label="全市場股票直接查詢">
       <label for="quickStockSearch">查詢所有股票（不限自動入選）</label>
@@ -271,12 +271,12 @@ html.chaopan-chart-expanded .modal-overlay{z-index:99990!important}
   </section>
   <section class="content-area" id="relativeStrengthSection" aria-label="強於大盤股票雷達">
     <details id="relativeStrengthDisclosure"><summary style="cursor:pointer;font-size:19px;font-weight:750;padding:12px 0">強於大盤｜盤後相對強勢股（點擊展開／收合）</summary>
-    <p class="r23-caption">同日比較個股與上市加權／上櫃櫃買指數的單日報酬差；這不是20日相對強弱，也不代表隔日會上漲。完整歷史指數未提供前不冒稱20／60日領先。</p>
+    
     <div id="relativeStrengthList" aria-live="polite"><div class="desk-loading">等待同日行情與指數核對…</div></div>
     </details>
   </section>
   <section class="content-area">
-    <div class="section-header"><div><div class="eyebrow">FULL MARKET RADAR</div><h2>原始技術階段｜頸線／第一至四根／均線回測</h2></div><div class="coverage" id="coverageText">—</div></div>
+    <div class="section-header"><div><h2>原始技術階段｜頸線／第一至四根／均線回測</h2></div><div class="coverage" id="coverageText">—</div></div>
     <div class="sector-directory" id="sectorDirectory" aria-label="原始技術階段觀察"><div class="desk-loading">正在檢查原始突破階段與風險…</div></div>
     <details class="advanced-radar" hidden aria-hidden="true" style="display:none!important"><summary>完整市場篩選與技術名單（已移除首頁顯示）</summary>
     <input id="searchBox" type="hidden" value="" aria-hidden="true">
@@ -301,7 +301,7 @@ html.chaopan-chart-expanded .modal-overlay{z-index:99990!important}
     <div class="inst-column"><h3>賣超前20檔</h3><div id="institutionalSells" class="inst-list">資料讀取中…</div></div></div>
     <p id="instFoot" class="inst-foot">法人資料須與個股交易日一致；缺資料不以0張或猜測代替。</p>
   </section>
-  <footer>超盤手 · 大量K雷達 <span>r55 測試版 · 盤後資料 · 非即時</span><div>資料來源：臺灣證券交易所、櫃買中心公開盤後行情</div></footer>
+  <footer>超盤手 · 大量K雷達 <span>r61 · 盤後資料 · 非即時</span><div>資料來源：臺灣證券交易所、櫃買中心公開盤後行情</div></footer>
 </main>
 <nav class="bottom-nav" aria-label="頁面導覽"><button class="nav-item active" data-page="list"><span>▦</span>自動名單</button><button class="nav-item" data-page="star"><span>☆</span>自選追蹤</button><button class="nav-item" data-page="guide"><span>▥</span>法人排行</button><button class="nav-item" data-page="setting"><span>⚙</span>狀態設定</button></nav>
 </div>
@@ -313,7 +313,7 @@ html.chaopan-chart-expanded .modal-overlay{z-index:99990!important}
 <script src="radar-extras-v311.js?v=20261018-v311-r15" defer></script>
 <script src="trade-desk-v310.js?v=20261018-v311-r15" defer></script>
 <script src="trade-guidance-v311.js?v=20261018-v311-r15" defer></script>
-<script src="market-intel-v311.js?v=r44-17-20261021" defer></script>
+<script src="market-intel-v311.js?v=r61-20261112" defer></script>
 <script src="stock-stage-v318.js?v=20261019-r31-trend-watch" defer></script>
 <script src="maintrend_strategy_v320.js?v=20261019-r20" defer></script>
 <script src="sector-stage-v325.js?v=20261027-combined-guard2" defer></script>

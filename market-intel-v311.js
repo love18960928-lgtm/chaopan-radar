@@ -67,21 +67,18 @@ function marketPanel(intel,asOf){
  const coverageHint=completed===checkedKeys.length?'主要資料來源皆通過格式／日期初核':
    '主要資料來源僅 '+completed+'/'+checkedKeys.length+' 項通過初核；缺值不是零。請到 GitHub Actions 檢查官方抓取結果。';
  return `<div class="intel-market-head"><strong>台股盤後儀表板</strong><span>交易日 ${esc(asOf||'—')} · 非即時</span></div>
- <p class="intel-market-foot" role="status">${esc(coverageHint)} 程式更新成功，不等於法人／融資／期貨已抓到資料。</p>
+
  <div class="intel-index-grid">${indexCard('加權指數',indices.taiex,asOf)}${indexCard('櫃買指數',indices.otc,asOf)}${indexCard('台指期',indices.taifex,asOf,indices.taifex?.session||'日盤')}</div>
  ${flow('上市三大法人官方買賣超金額',listedValid,'億元',[['外資',listed.foreign],['投信',listed.trust],['自營商',listed.dealer]])}
  ${flow('上市三大法人個股買賣超小計',tw,'張・'+(tw?.count||0)+'檔',[['外資',tw?.f],['投信',tw?.t],['自營商',tw?.d]])}
  ${flow('上櫃三大法人個股買賣超小計',ot,'張・'+(ot?.count||0)+'檔',[['外資',ot?.f],['投信',ot?.t],['自營商',ot?.d]])}
- <div class="intel-market-foot">上市的「億元」是證交所金額彙總；個股小計是已核對個股的淨張數相加，不等於市場整體成交金額，也不代表法人持倉。上櫃金額彙總目前未認證。</div>
  <div class="intel-flow-head"><strong>官方上市市場融資金額</strong><span>${officialMargin?esc(asOf)+'｜億元｜暫定':'官方彙總尚未核對'}</span></div>
  <div class="intel-flow-grid"><div class="intel-flow"><span>上市融資金額</span><b>${officialMargin?fm(officialMargin.marginAmountYi)+' 億元':'待官方資料'}</b></div><div class="intel-flow"><span>較前日增減</span><b class="${tone(officialMargin?.marginAmountDeltaYi)}">${officialMargin?signed(officialMargin.marginAmountDeltaYi)+' 億元':'待資料'}</b></div></div>
  <div class="intel-flow-head"><strong>外資臺股期貨 TX 未平倉</strong><span>${foreignTx?esc(asOf)+'｜口':'尚未核對'}</span></div><div class="intel-flow-grid"><div class="intel-flow"><span>多單</span><b>${foreignTx?fm(foreignTx.longLots,0):'待資料'}</b></div><div class="intel-flow"><span>空單</span><b>${foreignTx?fm(foreignTx.shortLots,0):'待資料'}</b></div><div class="intel-flow"><span>淨部位</span><b class="${tone(foreignTx?.netLots)}">${foreignTx?signed(foreignTx.netLots):'待資料'}</b></div></div>
- <div class="intel-market-foot">只核對期交所「臺股期貨 TX／外資及陸資／未平倉」，不是期貨各商品合計或個股法人籌碼。</div>
  <div class="intel-flow-head"><strong>融資水位（上市已取得個股小計）</strong><span>${marginTotal!==null?esc(asOf)+'｜'+covered+'筆':'同日資料未核對'}</span></div>
  <div class="intel-flow-grid"><div class="intel-flow"><span>融資餘額小計</span><b>${marginTotal!==null?fm(marginTotal,0)+' 張':'待資料'}</b></div><div class="intel-flow"><span>較前日增減</span><b class="${tone(marginDelta)}">${marginDelta!==null?signed(marginDelta)+' 張':'待資料'}</b></div><div class="intel-flow"><span>上櫃融資個股小計</span><b>${otcMarginSubtotal!==null?fm(otcMarginSubtotal,0)+' 張（'+otcMargins.length+'檔）':'待資料（'+sourceMessage('tpex_margin')+'）'}</b></div></div>
- <div class="intel-market-foot">此為來源資料內的上市個股餘額加總；上櫃也僅是已取得的個股小計，均非全臺市場正式融資金額或融資使用率；今日餘額屬暫定，5／20交易日變化須有完整歷史才顯示。</div>
- <details class="intel-subdetail"><summary>資料來源狀態（點開查看缺值原因）</summary><p>上市法人：${sourceMessage('twse_t86')}｜上櫃法人：${sourceMessage('tpex')}｜上市融資總額：${sourceMessage('twse_margin_total')}｜上櫃融資：${sourceMessage('tpex_margin')}｜TX 外資未平倉：${sourceMessage('taifex_foreign_tx')}｜美國 VIX：${sourceMessage('usVix')}。上櫃官方市場融資金額與臺灣 VIX 尚待確認自動下載格式，不能用個股小計冒充。</p><ul>${checkedKeys.filter(key=>!['ok','retained'].includes(sources[key]?.status)).map(key=>'<li>'+esc(key)+': '+esc(sources[key]?.reason||sourceMessage(key))+'</li>').join('')}</ul></details>
- <div class="intel-vix-note">恐慌指數｜美國 VIX <b>${vix('usVix')}</b>｜台灣 VIX <b>${vix('twVix')}</b>（<a href="https://www.taifex.com.tw/cht/7/vixDaily3MNew" target="_blank" rel="noopener noreferrer">期交所查詢</a>）<small>各自標記來源交易日。沒有官方可核對數值就不補零；VIX 不預測漲跌方向。</small></div>`;
+ <details class="intel-subdetail"><summary>資料來源狀態（點開查看缺值原因）</summary><p>上市法人：${sourceMessage('twse_t86')}｜上櫃法人：${sourceMessage('tpex')}｜上市融資總額：${sourceMessage('twse_margin_total')}｜上櫃融資：${sourceMessage('tpex_margin')}｜TX 外資未平倉：${sourceMessage('taifex_foreign_tx')}｜美國 VIX：${sourceMessage('usVix')}</p><ul>${checkedKeys.filter(key=>!['ok','retained'].includes(sources[key]?.status)).map(key=>'<li>'+esc(key)+': '+esc(sources[key]?.reason||sourceMessage(key))+'</li>').join('')}</ul></details>
+ <div class="intel-vix-note">恐慌指數｜美國 VIX <b>${vix('usVix')}</b>｜台灣 VIX <b>${vix('twVix')}</b>（<a href="https://www.taifex.com.tw/cht/7/vixDaily3MNew" target="_blank" rel="noopener noreferrer">期交所查詢</a>）</div>`;
 }
 function marginLight(intel,row){if(!safeMarket(intel,row?.date))return null;
  const x=intel.margin?.[row.market+'-'+row.code];return x?.date===row.date?x:null;}
