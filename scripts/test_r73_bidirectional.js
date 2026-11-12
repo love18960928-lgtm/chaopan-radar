@@ -1,0 +1,23 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const src=fs.readFileSync(__dirname+'/../app-detail-swipe-v222.js','utf8');
+const a=src.indexOf('function defensiveEarlyWarning(c){'),b=src.indexOf('function defenseHistory(bars, maxBars=60){',a);
+const ctx={};vm.createContext(ctx);
+vm.runInContext(`const esc=s=>String(s);const price=v=>Number(v).toFixed(2);const overheadResistance=c=>({levels:[{price:120}]});`+src.slice(a,b)+`;this.calc=nextSessionDefense;this.card=nextSessionDefenseCard;this.warning=defensiveEarlyWarning;`,ctx);
+const mk=(closes,vols)=>closes.map((v,i)=>[`2026-${String(1+Math.floor(i/28)).padStart(2,'0')}-${String(1+i%28).padStart(2,'0')}`,v-.3,v+1,v-1,v,vols?.[i]??1000]);
+const base=mk(Array.from({length:32},(_,i)=>100+i*.3));
+const normal={bars:base,date:base.at(-1)[0]};
+assert.equal(ctx.calc(normal).status,'none');
+assert.equal(ctx.card(normal),'');
+const noFuture=ctx.calc(normal);assert.equal(noFuture.asOf,base.at(-1)[0]);
+assert.equal(ctx.calc({...normal,date:'2026-12-12'}).status,'stale');
+assert.equal(ctx.calc({bars:base.slice(0,20)}).status,'insufficient');
+const bad=base.map(x=>[...x]);bad.at(-1)[5]=null;assert.equal(ctx.calc({bars:bad,date:normal.date}).status,'invalid');
+const bounceCloses=[...Array.from({length:16},(_,i)=>115-i*.95),...Array.from({length:10},(_,i)=>100+i*.1),100.5,101,102,103,104,105];
+const bounce=mk(bounceCloses);
+const br=ctx.calc({bars:bounce,date:bounce.at(-1)[0]});
+assert.equal(br.mode,'bounce',JSON.stringify(br));
+assert(br.failure<br.close);assert(ctx.card({bars:bounce,date:bounce.at(-1)[0]}).includes('支撐起漲'));
+// First/second defensive signals must not be relabelled as zero.
+const weak=mk(Array.from({length:30},(_,i)=>100+i*.5));weak.at(-1)[4]=94;weak.at(-1)[3]=93;weak.at(-1)[1]=95;weak.at(-1)[2]=96;
+assert.notEqual(ctx.calc({bars:weak,date:weak.at(-1)[0]}).mode,'defense');
+console.log('r73 bidirectional: 10 checks passed');
