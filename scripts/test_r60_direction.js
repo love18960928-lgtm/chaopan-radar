@@ -1,0 +1,12 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert'),path=require('path');
+const s=fs.readFileSync(path.join(__dirname,'..','app-detail-swipe-v222.js'),'utf8');
+const part=s.slice(s.indexOf('function detectConsolidation(all){'),s.indexOf('function detectPriceGaps(all){'));
+const ctx={};vm.createContext(ctx);vm.runInContext(part,ctx);
+const cases=[null,{}, {bars:[]}, {bars:[['x',1,2,1,1.5,100]]}];
+for(const c of cases)assert.equal(ctx.consolidationDirection(c).status,'unavailable');
+const bars=Array.from({length:40},(_,i)=>['day'+i,100, i%6===0?106:103,i%6===3?94:97,100+(i%3-1),1000]);
+const result=ctx.consolidationDirection({bars});
+assert(result&&typeof result.text==='string');
+assert(result.text.includes('盤整末端'));
+assert(!result.text.includes('買進訊號'));
+console.log('r60: 7 direction smoke assertions passed');
