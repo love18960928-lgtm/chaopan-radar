@@ -1073,6 +1073,35 @@ function defensiveEarlyWarning(c){
 }
 // r70: chronological, no-lookahead defense replay. A signal is evaluated only
 // on the candle's own historical prefix, never using future candles.
+// r72: next-session levels are frozen at the latest COMPLETED close.
+// Next MA5 crossover threshold: x < (sum(last 4 closes)+x)/5 => x < sum(last 4)/4.
+function nextSessionDefense(c){
+ const bars=c?.bars;
+ if(!Array.isArray(bars)||bars.length<26)return {status:'insufficient',text:'次日防守：至少需要26根完整日K'};
+ const a=bars.slice(-26), valid=b=>Array.isArray(b)&&b.length>=6&&[b[2],b[3],b[4],b[5]].every(v=>v!==null&&v!==''&&Number.isFinite(Number(v))&&Number(v)>0)&&Number(b[2])>=Number(b[3])&&Number(b[4])<=Number(b[2])&&Number(b[4])>=Number(b[3]);
+ if(!a.every(valid))return {status:'invalid',text:'次日防守：K線或成交量缺漏，暫停計算'};
+ const close=Number(a.at(-1)[4]),date=String(a.at(-1)[0]),closes=a.map(b=>Number(b[4]));
+ if(c?.date&&String(c.date).slice(0,10)!==date.slice(0,10))return {status:'stale',text:'次日防守：資料日期不一致，暫停計算'};
+ const avg=v=>v.reduce((x,y)=>x+y,0)/v.length;
+ const ma5Trigger=avg(closes.slice(-4));
+ const ma10Trigger=avg(closes.slice(-9));
+ const recentLow=Math.min(...a.slice(-5).map(b=>Number(b[3])));
+ const levels=[{value:ma5Trigger,source:'次日MA5收盤跌破門檻'},{value:recentLow,source:'最近5根最低價'}].filter(v=>v.value>0&&v.value<close);
+ const early=levels.length?Math.max(...levels.map(v=>v.value)):null;
+ const supportCandidates=[ma10Trigger,Math.min(...a.slice(-10).map(b=>Number(b[3])))].filter(v=>v>0&&v<close);
+ const defensive=supportCandidates.length?Math.max(...supportCandidates):null;
+ const orderedDefense=defensive!==null&&early!==null&&defensive>=early?null:defensive;
+ const pct=v=>v===null?'—':`${((v/close-1)*100).toFixed(2)}%`;
+ const fmt=v=>v===null?'—':v.toFixed(2);
+ const text=`${date} 收盤預算｜次日預警 ${fmt(early)} (${pct(early)})；次日防守 ${fmt(orderedDefense)} (${pct(orderedDefense)})；MA5動態收盤門檻 ${fmt(ma5Trigger)}。盤中觸及僅為預警，須以次日收盤確認；不保證成交價`;
+ return {status:'ok',asOf:date,close,early,defensive:orderedDefense,ma5Trigger,ma10Trigger,recentLow,text};
+}
+function nextSessionDefenseCard(c){
+ const r=nextSessionDefense(c);
+ if(r.status!=='ok')return `<div class="r72-defense-plan" role="status">${esc(r.text)}</div>`;
+ const show=v=>v===null?'無有效下方價位':price(v);
+ return `<div class="r72-defense-plan" role="status"><strong>第0根｜次日防守價位（${esc(r.asOf)} 收盤預算）</strong><div>預警價 <b>${show(r.early)}</b>　防守價 <b>${show(r.defensive)}</b>　MA5收盤門檻 <b>${price(r.ma5Trigger)}</b></div><small>次日盤中跌破為提前提醒；第一根須收盤確認。價位只依已完成K棒計算，未考慮跳空與即時委託量。</small></div>`;
+}
 function defenseHistory(bars, maxBars=60){
  if(!Array.isArray(bars))return [];
  const start=Math.max(25,bars.length-Math.max(1,maxBars));
@@ -1095,7 +1124,7 @@ function guidanceCard(c){
  const g=ChaopanGuidance.evaluate(c,deskEvidence(c),supportLines(c));
  return `<section class="guidance-panel battle-panel" aria-label="六大作戰價位與原始關卡圖解">
   <div class="guidance-title"><strong>◎ 超盤手｜六價位與關卡圖解</strong><span class="guidance-signal">研究版</span></div>
-  <div class="r65-defensive-watch" role="status">${esc(defensiveEarlyWarning(c).text)}</div><div class="r70-defense-history" role="status">${esc(defenseHistoryText(c))}</div>
+  <div class="r65-defensive-watch" role="status">${esc(defensiveEarlyWarning(c).text)}</div>${nextSessionDefenseCard(c)}<div class="r70-defense-history" role="status">${esc(defenseHistoryText(c))}</div>
   ${r38PlanCard(c,g,false)}
   ${annotatedBattleChart(c,g)}
   <p class="guidance-note">K線走勢圖、關卡圖解與原四分頁保持原功能；缺核對來源不給可執行買賣結論。所有情境價位僅為盤後研究。</p>
