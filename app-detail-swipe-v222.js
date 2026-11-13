@@ -2130,7 +2130,7 @@ function detailNavigationIds(id){
  return universeIds.includes(id)?universeIds:[id];
 }
 function showDetails(id,jumpIntraday=false){
- const c=allRows().find(x=>rowId(x)===id)||(rowId(state.lookupRow||{})===id?state.lookupRow:null);if(!c)return;
+ const lookup=(rowId(state.lookupRow||{})===id?state.lookupRow:null);const c=lookup||allRows().find(x=>rowId(x)===id);if(!c){quickLookupNotice('找不到個股分析資料：'+id);return;}
  state.etfDetail=null;state.detailIds=detailNavigationIds(id);
  state.detail=c;state.chartDays=60;state.r41Page='card';
  if($('#modalOverlay').hidden){history.pushState({chaopanDetail:true},'',location.href);state.detailHistory=true;}
@@ -2726,34 +2726,59 @@ async function loadQuickDirectory(){
   }catch(e){quickDirectoryError='股票索引尚未部署';console.warn(e)}finally{quickDirectoryLoading=null;quickDraw()}
  })();return quickDirectoryLoading;
 }
+// r83: make lookup errors visible and prevent silent no-op when detail rendering fails.
+function quickLookupNotice(message){
+ const target=$('#quickStockResults');
+ if(target){
+  let notice=target.querySelector('.r83-lookup-notice');
+  if(!notice){notice=document.createElement('p');notice.className='r447-msg r83-lookup-notice';notice.setAttribute('role','alert');notice.style.cssText='padding:12px;border:1px solid #f5bd67;border-radius:10px;color:#ffd58c;white-space:normal';target.prepend(notice)}
+  notice.textContent=message;
+ }
+ try{toast(message)}catch(e){console.warn(message)}
+}
 async function quickOpen(market,code){
- const id=market+'-'+code;let row=allRows().find(x=>rowId(x)===id);
+ market=String(market||'').trim();code=String(code||'').trim();
+ if(!market||!/^\d{4,6}$/.test(code)){quickLookupNotice('股票代號或市場資料有誤，請重新搜尋');return}
+ const id=market+'-'+code;
+ let row=allRows().find(x=>rowId(x)===id);
  const expectedDay=state.payload?.asOf||quickDirectory?.asOf;
  if(quickDirectory&&expectedDay&&quickDirectory.asOf!==expectedDay){
-   toast(`完整股票索引是 ${quickDirectory.asOf}，但最新行情是 ${expectedDay}；日期不同，請等待盤後同步後再查詢。`);return;
+  quickLookupNotice(`股票索引日期 ${quickDirectory.asOf} 與盤後行情 ${expectedDay} 不一致；請更新資料後再試。`);return;
  }
- if(row&&(!expectedDay||row.date!==expectedDay)){
-   toast('股票歷史資料與最新盤後日不同，拒絕使用舊走勢與買點');return;
+ if(row&&expectedDay&&row.date!==expectedDay){
+  // A current lookup shard may be available even when the ranking cache is stale.
+  row=null;
  }
  if(!row){
-   if(quickShardBusy)return;
-   quickShardBusy=true;
-   const target=$('#quickStockResults');if(target)target.insertAdjacentHTML('beforeend','<p class="r447-msg">正在下載個股歷史資料…</p>');
-   try{
-    const digit=String(code).charAt(0);if(!/^\d$/.test(digit))throw Error('代號格式不符');
-    const response=await fetch('./data/stock-lookup/'+digit+'.json',{cache:'no-cache'});
-    if(!response.ok)throw Error('個股分組未部署');
-    const data=await response.json();const latest=state.payload?.asOf||quickDirectory?.asOf;
-    if(!latest||data.asOf!==latest||data.asOf!==quickDirectory?.asOf)throw Error('股票資料與盤後資料日期不同，拒絕顯示舊行情');
-    if(!Array.isArray(data.rows)||data.rows.length<1)throw Error('歷史資料缺漏');
-    row=data.rows.find(x=>String(x.code)===String(code)&&x.market===market&&x.date===latest);
-    if(!row)throw Error('找不到同市場同日期完整股票資料');
-    state.lookupRow=row;
-   }catch(e){toast('無法開啟完整分析：'+e.message);console.warn(e);return}
-   finally{quickShardBusy=false;quickDraw()}
+  if(quickShardBusy){quickLookupNotice('個股資料仍在下載，請稍候再試');return}
+  quickShardBusy=true;
+  const target=$('#quickStockResults');
+  if(target)target.insertAdjacentHTML('beforeend','<p class="r447-msg r83-loading">正在下載個股歷史資料…</p>');
+  try{
+   const digit=code.charAt(0);if(!/^\d$/.test(digit))throw Error('代號格式不符');
+   const response=await fetch('./data/stock-lookup/'+digit+'.json',{cache:'no-store'});
+   if(!response.ok)throw Error('個股資料 HTTP '+response.status+'；請確認 GitHub 的 data/stock-lookup/'+digit+'.json 已部署');
+   const data=await response.json();
+   const latest=state.payload?.asOf||quickDirectory?.asOf;
+   if(!latest||data.asOf!==latest||quickDirectory&&data.asOf!==quickDirectory.asOf)throw Error('個股資料日期 '+(data.asOf||'未知')+' 與盤後日期 '+(latest||'未知')+' 不一致');
+   if(!Array.isArray(data.rows)||!data.rows.length)throw Error('個股歷史資料缺漏');
+   row=data.rows.find(x=>String(x.code)===code&&String(x.market)===market&&x.date===latest);
+   if(!row)throw Error('找不到 '+market+' '+code+' 的同日資料；請更新股票索引及個股分組');
+   state.lookupRow=row;
+  }catch(e){quickLookupNotice('無法開啟 '+code+'：'+e.message);console.error('r83 quick lookup',e);return}
+  finally{quickShardBusy=false;target?.querySelectorAll('.r83-loading').forEach(x=>x.remove())}
  }
- showDetails(id);
+ try{
+  // Use the validated row, even when an old ranking row shares the same ID.
+  state.lookupRow=row;
+  showDetails(id);
+  if($('#modalOverlay')?.hidden)quickLookupNotice('個股頁未成功開啟，請回報此畫面');
+ }catch(e){
+  console.error('r83 detail render',e);
+  quickLookupNotice('個股頁顯示失敗：'+(e?.message||String(e)));
+ }
 }
+
 function initQuickStockSearch(){
  const field=$('#quickStockSearch'),result=$('#quickStockResults');if(!field||!result)return;
  field.addEventListener('input',()=>{quickDraw();if(!quickDirectory&&!quickDirectoryLoading)loadQuickDirectory()});
