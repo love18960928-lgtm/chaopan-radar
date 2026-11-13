@@ -1315,7 +1315,7 @@ function nextSessionDefenseCard(c){
  </div>
  <div class="r91-pnl" style="padding:10px;border:1px solid #385a6c;border-radius:10px">${plan?`目前帳面報酬 ${plan.gain.toFixed(2)}%；帳面損益約 ${Math.round(plan.unrealizedPerShare*Number(qty)).toLocaleString('zh-TW')} 元`:'輸入成本後，顯示報酬率與獲利保護條件'}</div>
  <div class="r91-guidance" style="line-height:1.65">${esc(label)}；${plan&&plan.lock>0?`目前獲利級距對應保留 ${Math.round(plan.lock*100)}% 浮盈的參考底線，與技術防守價取較高者。`:'尚未達到獲利鎖定級距，優先參考技術防守。'}${v.reason?' '+esc(v.reason):''}</div>
- <small style="color:#a8bfcb">r92：量價趨勢決定風險狀態，成本與獲利保護價僅供規劃，不能單憑觸價推定出貨或成交。法人只使用同日已核對的個股資料；單日法人賣超不能證明出貨。<br>參考級距：獲利3%／5%／8%／12%／20%起，分別保護約15%／30%／45%／55%／65%的浮盈；這是待回測的散戶風控參數，不是外資投信實際交易規則。法人買賣超須同日個股官方資料才可判斷，未提供時一律顯示「待核對」，不假設法人買賣方向。僅盤後日K；不提供盤中成交保證，損益未扣費稅。</small>
+
  </section>`;
 }
 function r82BindCost(card,c){
