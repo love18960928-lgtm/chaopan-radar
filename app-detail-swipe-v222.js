@@ -1221,61 +1221,72 @@ function r82Snap(v,dir='down'){
 function r82Plan(c){
  const r=nextSessionDefense(c);
  if(r.status!=='ok'||!r.dailyPlan)return {ok:false,reason:r.text||'資料不足'};
- const bars=c.bars, last=bars.at(-1), close=Number(last[4]), atr=Number(r.dailyPlan.atr);
- if(!Array.isArray(bars)||bars.length<20||!Number.isFinite(close)||close<=0||String(last[0])!==String(c.date))return {ok:false,reason:'歷史K線不足或日期不一致，暫停減碼價計算'};
- const previous=bars.slice(0,-1), prior=previous.slice(-20);
- const neck=Number(latestNeck(c));
- // r88: pressure is a pre-existing level, never today's high. Separate the
- // nearest prior high from a repeatedly-tested historical ceiling.
- const priorHighs=prior.map(b=>Number(b[2])).filter(v=>Number.isFinite(v)&&v>0);
- const candidates=[neck,...priorHighs].filter(v=>Number.isFinite(v)&&v>close*1.002);
- const resistance=candidates.length?Math.min(...candidates):null;
- const prior5=previous.slice(-5).map(b=>Number(b[2])).filter(Number.isFinite);
- const priorCeiling=prior5.length?Math.max(...prior5):null;
- const rejected=priorCeiling!==null&&Number(last[2])>priorCeiling&&close<priorCeiling;
+ const bars=c.bars||[],last=bars.at(-1),close=Number(last?.[4]),atr=Number(r.dailyPlan.atr);
+ if(bars.length<20||!Number.isFinite(close)||close<=0||String(last[0])!==String(c.date))return {ok:false,reason:'歷史K線不足或日期不一致，暫停價位計算'};
+ const prior=bars.slice(-21,-1),neck=Number(latestNeck(c));
+ const known=prior.map(b=>Number(b[2])).concat([neck]).filter(v=>Number.isFinite(v)&&v>close*1.002);
+ const resistance=known.length?r82Snap(Math.min(...known),'up'):null;
  const risk=defensiveEarlyWarning(c);
- const rejection=!!r.dailyPlan.rejection||rejected;
  const buffer=Number.isFinite(atr)&&atr>0?Math.max(.005,Math.min(.015,atr/close*.18)):.01;
- // If the stock is already below the planned exit level, the historical
- // trigger is missed. Do not present it as an executable next-day sell price.
- const rawReduction=resistance?r82Snap(resistance*(1-buffer),'down'):null;
- const reduction=rawReduction!==null&&rawReduction>close?rawReduction:null;
- const state=rejection?'突破失敗／回落警戒':risk.stage==='zero'||risk.stage==='first'||risk.stage==='second'?'防守觀察':'趨勢觀察';
- const reason=!resistance?'目前無高於收盤的已知壓力':rawReduction!==null&&reduction===null?'減碼觸發價已在收盤價下方；不得當成隔日可成交賣價':null;
- return {ok:true,date:r.asOf,close,resistance:resistance?r82Snap(resistance,'up'):null,reduction,buffer,state,rejection,risk:risk.stage,atr,neck:Number.isFinite(neck)?neck:null,priorCeiling,reason};
+ const rebound=resistance?r82Snap(resistance*(1-buffer),'down'):null;
+ const recentLow=Math.min(...bars.slice(-5).map(b=>Number(b[3])).filter(v=>Number.isFinite(v)&&v>0));
+ const technicalFloor=Number.isFinite(recentLow)?r82Snap(recentLow,'down'):null;
+ const atrFloor=Number.isFinite(atr)&&atr>0?r82Snap(close-atr*.7,'down'):null;
+ const defense=technicalFloor!==null&&atrFloor!==null?Math.max(technicalFloor,atrFloor):technicalFloor??atrFloor;
+ const priorCeiling=Math.max(...bars.slice(-6,-1).map(b=>Number(b[2])));
+ const rejection=!!r.dailyPlan.rejection||(Number(last[2])>priorCeiling&&close<priorCeiling);
+ return {ok:true,date:r.asOf,close,resistance,rebound:rebound!==null&&rebound>close?rebound:null,defense,buffer,rejection,risk:risk.stage,atr,technicalFloor,reason:rebound!==null&&rebound<=close?'反彈減碼區已在收盤價下方，不可視為隔日可成交價':null};
+}
+// r91: cost-aware, EOD-only profit protection. Never assert an intraday fill.
+function r91ProfitPlan(v,cost){
+ if(!Number.isFinite(cost)||cost<=0)return null;
+ const gain=(v.close/cost-1)*100;
+ // Explicit provisional tiers; must be backtested, not institutional trade rules.
+ const lock=gain>=20?.65:gain>=12?.55:gain>=8?.45:gain>=5?.30:gain>=3?.15:0;
+ const profitFloor=lock>0?r82Snap(cost+(v.close-cost)*lock,'down'):null;
+ // A higher profit floor than today's close is never a valid tomorrow stop.
+ const validProfit=profitFloor!==null&&profitFloor<v.close?profitFloor:null;
+ const defense=validProfit!==null?Math.max(v.defense??0,validProfit):v.defense;
+ const level=Number.isFinite(defense)&&defense>0?r82Snap(defense,'down'):null;
+ return {gain,lock,profitFloor:validProfit,defense:level,alreadyBroken:level!==null&&v.close<=level,unrealizedPerShare:v.close-cost};
 }
 function nextSessionDefenseCard(c){
  const v=r82Plan(c);
- if(!v.ok)return `<section class="r82-decision" style="padding:16px;border:1px solid #385a6c;border-radius:14px"><strong>盤後減碼觀察</strong><p>${esc(v.reason)}</p></section>`;
- const code=String(c.code||'');
- const key='chaopan-r82-cost-'+code;
- let cost='';try{const stored=localStorage.getItem(key);if(stored!==null&&Number(stored)>0)cost=String(Number(stored))}catch(e){}
- const show=n=>n===null?'待確認':price(n);
- const desc=v.reason||'僅當隔日反彈接近壓力且再度受阻時，觀察是否跌回預設參考價；不代表自動成交。';
- return `<section class="r82-decision" data-reduction="${v.reduction===null?'':v.reduction}" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
- <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>盤後減碼決策</strong><span style="border:1px solid #e7b45c;color:#e7b45c;border-radius:18px;padding:4px 9px">${esc(v.state)}</span></div>
- <div style="font-size:.95em">${esc(v.date)} 收盤 <strong>${price(v.close)} 元</strong></div>
+ if(!v.ok)return `<section class="r82-decision" style="padding:16px;border:1px solid #385a6c;border-radius:14px"><strong>盤後風險決策</strong><p>${esc(v.reason)}</p></section>`;
+ const code=String(c.code||''),key='chaopan-r82-cost-'+code,qtyKey='chaopan-r91-qty-'+code;
+ let cost='',qty='1000';try{const stored=localStorage.getItem(key),q=localStorage.getItem(qtyKey);if(stored!==null&&Number(stored)>0)cost=String(Number(stored));if(q!==null&&Number(q)>0)qty=String(Math.floor(Number(q)))}catch(e){}
+ const plan=r91ProfitPlan(v,Number(cost)),show=n=>n===null||!Number.isFinite(n)?'待確認':price(n);
+ const label=v.rebound===null?'反彈區未成立':`反彈遇壓區 ${show(v.rebound)} 元（須先反彈受阻）`;
+ return `<section class="r82-decision r91-decision" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>盤後持股保護｜法人籌碼輔助</strong><span style="border:1px solid #e7b45c;color:#e7b45c;border-radius:18px;padding:4px 9px">${v.rejection?'衝高回落警戒':'隔日條件觀察'}</span></div>
+ <div>${esc(v.date)} 收盤 <strong>${price(v.close)} 元</strong>；上方已知候選壓力 <strong>${show(v.resistance)} 元</strong></div>
  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
- <div style="padding:12px;border:1px solid #385a6c;border-radius:12px;min-width:0"><small>上方壓力價</small><div style="font-size:1.5em;font-weight:700;color:#79dfbd">${show(v.resistance)}</div></div>
- <div style="padding:12px;border:1px solid #385a6c;border-radius:12px;min-width:0"><label for="r82-cost-${esc(code)}" style="display:block;font-size:.85em">你的持股成本（元）</label><input id="r82-cost-${esc(code)}" class="r82-cost-input" type="number" min="0" step="0.5" inputmode="decimal" value="${esc(cost)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%;max-width:100%;font-size:1.15em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:7px" /></div>
- <div style="padding:12px;border:1px solid #385a6c;border-radius:12px;min-width:0"><small>自動減碼參考價</small><div style="font-size:1.5em;font-weight:700;color:#f5bd67">${show(v.reduction)}</div></div>
- <div style="padding:12px;border:1px solid #385a6c;border-radius:12px;min-width:0"><small>減碼時每張估算損益</small><div class="r82-profit" style="font-size:1.2em;font-weight:700">${cost&&v.reduction!==null?Math.round((v.reduction-Number(cost))*1000).toLocaleString('zh-TW')+' 元':'輸入成本後顯示'}</div></div>
+ <label style="min-width:0">持股成本（元）<input class="r82-cost-input" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
+ <label style="min-width:0">實際持股（股）<input class="r91-qty-input" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
+ <div style="padding:12px;border:1px solid #385a6c;border-radius:12px;min-width:0"><small>反彈遇壓減碼區</small><div style="font-size:1.4em;font-weight:700;color:#f5bd67">${show(v.rebound)}</div><small>只在反彈受阻時觀察，不是停損價</small></div>
+ <div style="padding:12px;border:1px solid #385a6c;border-radius:12px;min-width:0"><small>獲利保護／轉弱防守</small><div class="r91-defense" style="font-size:1.4em;font-weight:700;color:#ff9c9c">${show(plan?.defense??v.defense)}</div><small>隔日跌破才觀察減碼，非保證成交</small></div>
  </div>
- <div style="font-size:.9em;line-height:1.6">${desc}</div>
- <small style="color:#a8bfcb">已知壓力為歷史候選關卡，未驗證多次測試強度；壓力下方緩衝 ${(v.buffer*100).toFixed(2)}%（ATR調整，0.5%～1.5%）；成本僅計算損益，不保證減碼獲利。第0根：${v.risk==='zero'||v.risk==='first'||v.risk==='second'?'警戒':'未觸發'}；衝高回落：${v.rejection?'警戒':'未觸發'}。僅盤後日K；不提供盤中即時訊號，損益未扣費稅。</small>
+ <div class="r91-pnl" style="padding:10px;border:1px solid #385a6c;border-radius:10px">${plan?`目前帳面報酬 ${plan.gain.toFixed(2)}%；帳面損益約 ${Math.round(plan.unrealizedPerShare*Number(qty)).toLocaleString('zh-TW')} 元`:'輸入成本後，顯示報酬率與獲利保護條件'}</div>
+ <div class="r91-guidance" style="line-height:1.65">${esc(label)}；${plan&&plan.lock>0?`目前獲利級距對應保留 ${Math.round(plan.lock*100)}% 浮盈的參考底線，與技術防守價取較高者。`:'尚未達到獲利鎖定級距，優先參考技術防守。'}${v.reason?' '+esc(v.reason):''}</div>
+ <small style="color:#a8bfcb">參考級距：獲利3%／5%／8%／12%／20%起，分別保護約15%／30%／45%／55%／65%的浮盈；這是待回測的散戶風控參數，不是外資投信實際交易規則。法人買賣超須同日個股官方資料才可判斷，未提供時一律顯示「待核對」，不假設法人買賣方向。僅盤後日K；不提供盤中成交保證，損益未扣費稅。</small>
  </section>`;
 }
 function r82BindCost(card,c){
- const input=card.querySelector('.r82-cost-input'),profit=card.querySelector('.r82-profit');
- if(!input||!profit)return;
- const plan=r82Plan(c),key='chaopan-r82-cost-'+String(c.code||'');
- input.addEventListener('input',()=>{
-  const cost=Number(input.value);
-  if(!input.value||!Number.isFinite(cost)||cost<=0||plan.reduction===null){profit.textContent='輸入成本後顯示';profit.style.color='';}
-  else{const pnl=Math.round((plan.reduction-cost)*1000);profit.textContent=pnl.toLocaleString('zh-TW')+' 元';profit.style.color=pnl>=0?'#79dfbd':'#ff909b';}
-  try{if(input.value&&Number.isFinite(cost)&&cost>0)localStorage.setItem(key,String(cost));else localStorage.removeItem(key)}catch(e){}
- });
- input.dispatchEvent(new Event('input'));
+ const input=card.querySelector('.r82-cost-input'),qtyInput=card.querySelector('.r91-qty-input'),pnl=card.querySelector('.r91-pnl'),def=card.querySelector('.r91-defense'),guide=card.querySelector('.r91-guidance');
+ if(!input||!qtyInput||!pnl||!def||!guide)return;
+ const v=r82Plan(c),key='chaopan-r82-cost-'+String(c.code||''),qtyKey='chaopan-r91-qty-'+String(c.code||'');
+ const update=()=>{
+  const cost=Number(input.value),qty=Number(qtyInput.value),plan=input.value?r91ProfitPlan(v,cost):null;
+  if(!plan){pnl.textContent='輸入有效成本後，顯示報酬率與獲利保護條件';def.textContent=v.defense===null?'待確認':price(v.defense)}
+  else{
+   def.textContent=plan.defense===null?'待確認':price(plan.defense);
+   const valid=Number.isSafeInteger(qty)&&qty>0&&qty<=100000000;
+   pnl.textContent=`帳面報酬 ${plan.gain.toFixed(2)}%｜${valid?'帳面損益 '+Math.round(plan.unrealizedPerShare*qty).toLocaleString('zh-TW')+' 元':'請輸入有效持股數'}`;
+   guide.textContent=`反彈遇壓 ${v.rebound===null?'待確認':price(v.rebound)} 元（須先反彈且受阻）；獲利保護比例 ${Math.round(plan.lock*100)}% 浮盈，與技術防守取較高值。${plan.defense!==null&&v.close<=plan.defense?'防守價已被收盤觸及，僅列為風險警示，不能當作隔日保證成交價。':''}`;
+  }
+  try{if(input.value&&Number.isFinite(cost)&&cost>0)localStorage.setItem(key,String(cost));else localStorage.removeItem(key);if(Number.isSafeInteger(qty)&&qty>0&&qty<=100000000)localStorage.setItem(qtyKey,String(qty))}catch(e){}
+ };
+ input.addEventListener('input',update);qtyInput.addEventListener('input',update);update();
 }
 
 function defenseHistory(bars, maxBars=60){
