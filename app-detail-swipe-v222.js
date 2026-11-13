@@ -1279,7 +1279,14 @@ function r92Decision(c,mode='medium'){
  const foreign=Number(ins?.foreignNetShares),trust=Number(ins?.trustNetShares);
  const validIns=!!ins&&insDate.length>=8&&insDate===barDate&&ins.foreignNetShares!==null&&ins.foreignNetShares!==undefined&&ins.trustNetShares!==null&&ins.trustNetShares!==undefined&&Number.isFinite(foreign)&&Number.isFinite(trust);
  const institution=validIns?`同日外資 ${foreign>=0?'+':''}${Math.round(foreign/1000).toLocaleString('zh-TW')}張、投信 ${trust>=0?'+':''}${Math.round(trust/1000).toLocaleString('zh-TW')}張`:'待核對（缺少同日個股法人資料）';
- const institutionalSelling=validIns&&foreign<0&&trust<0&&vol>0&&(-foreign-trust)/vol>=.08;
+ // Institutional totals are in SHARES; EOD volume can be shares or lots.
+ // Only use a sell-pressure ratio when the bar unit is independently confirmed
+ // against the stock's displayed lot count. Otherwise mark it unknown.
+ const reportedLots=Number(c.lots);
+ const barIsLots=Number.isFinite(reportedLots)&&reportedLots>0&&Math.abs(vol/reportedLots-1)<.03;
+ const barIsShares=Number.isFinite(reportedLots)&&reportedLots>0&&Math.abs(vol/(reportedLots*1000)-1)<.03;
+ const volumeShares=barIsLots?vol*1000:barIsShares?vol:null;
+ const institutionalSelling=validIns&&volumeShares!==null&&foreign<0&&trust<0&&(-foreign-trust)/volumeShares>=.08;
  const reasons=[];
  if(trendStrong)reasons.push('所選週期趨勢仍健康');
  else if(trendWeak)reasons.push('所選週期均線轉弱');
@@ -1360,6 +1367,11 @@ function r101Quality(c,mode){
   if(![o,h,l,cl,v].every(Number.isFinite)||l<=0||h<l||o<l||o>h||cl<l||cl>h||v<0)return {ok:false,why:'日K價格或成交量異常'};
  }
  if(String(c.date||'')!==prev)return {ok:false,why:'最新盤後日期與K線不一致'};
+ // r105: stale EOD snapshots must never be presented as tomorrow's instruction.
+ // Allow long weekends/holidays; do not guess the exchange holiday calendar.
+ const now=new Date(),latest=new Date(prev+'T00:00:00+08:00');
+ if(!Number.isFinite(latest.getTime())||latest.getTime()>now.getTime()+86400000)return {ok:false,why:'盤後日期異常，暫停操作建議'};
+ if(now.getTime()-latest.getTime()>10*86400000)return {ok:false,why:'盤後資料超過10天未更新，暫停明日操作建議'};
  return {ok:true};
 }
 function r99Action(c,cost,qty,mode='medium'){
@@ -1425,7 +1437,11 @@ function r103ConditionalLevels(c,a){
  });
  const atr=ranges.every(Number.isFinite)?ranges.reduce((x,y)=>x+y,0)/ranges.length:null;
  if(!Number.isFinite(atr)||atr<=0)return null;
- const resistanceCandidates=[...highs,Number(a.rebound),Number(a.breakout)].filter(x=>Number.isFinite(x)&&x>close);
+ // Prefer confirmed local swing highs, not any arbitrary day's high a tick above close.
+ const pivotHighs=[];
+ for(let i=2;i<highs.length-2;i++)if(highs[i]>=highs[i-1]&&highs[i]>=highs[i+1]&&highs[i]>highs[i-2]&&highs[i]>highs[i+2])pivotHighs.push(highs[i]);
+ const minGap=Math.max(.5*atr,close*.005);
+ const resistanceCandidates=[...pivotHighs,Number(a.rebound),Number(a.breakout)].filter(x=>Number.isFinite(x)&&x>close+minGap);
  const resistance=resistanceCandidates.length?Math.min(...resistanceCandidates):null;
  const priorLow=Math.min(...b.slice(-6,-1).map(x=>Number(x[3])));
  const support=Math.min(...lows.slice(-10));
@@ -1450,15 +1466,15 @@ function r99ActionHTML(a,c){
  let rows='';
  if(lv){
   if(isExit){
-   rows=row('出場警戒',lv.defense,'已確認轉弱；下一交易日優先控管風險，非保證成交價')+row('深度防守',lv.exit,'跳空跌破時可能以更差價格成交');
+   rows=`<div style="padding:8px 0;border-top:1px solid #355466"><b>出場優先｜下一交易日評估處理 ${fmt(a.shares)} 股</b><small style="display:block">已確認出場訊號，不需等待更低價再次觸發；委託價格依實際開盤與流動性評估，跳空可能擴大損失</small></div>`;
   }else if(isRisk){
-   rows=row('反彈減碼',lv.rebound,'反彈遇壓且無法站穩才考慮執行')+row('跌破減碼',lv.defense,'跌破此價才觸發防守情境')+row('失效出場',lv.exit,'再度破壞結構時評估剩餘持股');
+   rows=`<small style="font-weight:700">以下兩種減碼方式擇一執行，合計最多 ${fmt(a.shares)} 股，不得重複賣出</small>`+row('反彈減碼',lv.rebound,'反彈遇壓且無法站穩才考慮執行')+row('跌破減碼',lv.defense,'跌破此價才觸發防守情境')+row('失效出場',lv.exit,'再度破壞結構時評估剩餘持股');
   }else{
    rows=row('轉強關卡',a.breakout,'收盤有效突破後重新評估續抱或加碼')+row('風險警戒',lv.defense,'跌破後重新評估，不代表現在要賣');
   }
  }
  return `<div style="border:2px solid ${colors[a.tone]||colors.muted};border-radius:12px;padding:13px;display:grid;gap:9px" aria-live="polite">
-  <small>盤後決策｜${esc(a.asOf||'資料待確認')}｜明日參考 r104</small>
+  <small>盤後決策｜${esc(a.asOf||'資料待確認')}｜明日參考 r105</small>
   <strong style="font-size:1.7em;color:${colors[a.tone]||colors.muted}">${esc(a.title)}</strong>
   ${actionLine}
   ${a.valid?rows:'<small>資料核對前不提供操作價格。</small>'}
@@ -1477,7 +1493,7 @@ function nextSessionDefenseCard(c){
   try{initialPlan=r91ProfitPlan(v,Number(cost));}catch(e){initialPlan=null;}
  }
  return `<section class="r82-decision r91-decision" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
- <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>持股決策 <small style="font-size:.65em;opacity:.7">r104</small></strong></div>
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>持股決策 <small style="font-size:.65em;opacity:.7">r105</small></strong></div>
  <div class="r99-action">${r99ActionHTML(r99Action(c,Number(cost),Number(qty),mode),c)}</div>
  <label>持有週期 <select class="r92-mode" style="font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"><option value="short" ${mode==='short'?'selected':''}>短線｜5、10日趨勢</option><option value="medium" ${mode==='medium'?'selected':''}>中期｜20日趨勢</option><option value="long" ${mode==='long'?'selected':''}>長期｜60日趨勢</option></select></label>
  <div style="font-size:.9em;opacity:.85">${esc(v.date)} 收盤 ${price(v.close)} 元</div>
