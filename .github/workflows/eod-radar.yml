@@ -59,11 +59,19 @@ jobs:
           else
             echo "::warning::沒有 data/radar.json，跳過法人抓取"
           fi
-      - name: Enrich official TWSE stock-level institutional flows
+      - name: Verify and enrich official TWSE T86 institutional flows
+        # An institutional-data failure must not appear as a green successful update.
+        # No data is invented; radar.json remains unchanged if validation fails.
         run: |
-          if ! python scripts/update_institutions.py --radar data/radar.json; then
-            echo "::warning::TWSE T86 unavailable or invalid; keep institutional data unverified"
-          fi
+          python scripts/update_institutions.py --radar data/radar.json
+          python - <<'PYVERIFY'
+          import json
+          obj=json.load(open('data/radar.json', encoding='utf-8'))
+          day=obj.get('asOf')
+          rows=[c for c in obj.get('candidates',[]) if c.get('market')=='上市' and (c.get('institutional') or {}).get('date')==day]
+          print('T86_POSTWRITE', 'date=',day,'verifiedListedCandidates=',len(rows))
+          assert rows, 'no same-day institutional candidates persisted'
+          PYVERIFY
       - name: Build independently searchable stocks
         run: python scripts/build_stock_lookup.py
       - name: Rebuild all four three-low payloads from validated EOD data
