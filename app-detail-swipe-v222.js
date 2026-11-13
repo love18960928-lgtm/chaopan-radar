@@ -1250,15 +1250,62 @@ function r91ProfitPlan(v,cost){
  const level=Number.isFinite(defense)&&defense>0?r82Snap(defense,'down'):null;
  return {gain,lock,profitFloor:validProfit,defense:level,alreadyBroken:level!==null&&v.close<=level,unrealizedPerShare:v.close-cost};
 }
+// r92: EOD trend/volume/verified-institutional decision. Pure calculation, no intraday inference.
+function r92Decision(c,mode='medium'){
+ const bars=Array.isArray(c?.bars)?c.bars:[];
+ if(bars.length<25)return {status:'資料不足',tone:'muted',reasons:['至少需要25根有效日K'],institution:'待核對',trend:'待核對',volume:'待核對'};
+ const last=bars.at(-1),close=Number(last?.[4]),open=Number(last?.[1]),high=Number(last?.[2]),low=Number(last?.[3]),vol=Number(last?.[5]);
+ const closes=bars.map(b=>Number(b[4]));
+ const vols=bars.map(b=>Number(b[5]));
+ const ma=n=>closes.length>=n&&closes.slice(-n).every(x=>Number.isFinite(x)&&x>0)?closes.slice(-n).reduce((a,b)=>a+b,0)/n:null;
+ const avgVol=vols.slice(-21,-1).every(x=>Number.isFinite(x)&&x>=0)?vols.slice(-21,-1).reduce((a,b)=>a+b,0)/20:null;
+ if(!Number.isFinite(close)||close<=0||!Number.isFinite(high)||!Number.isFinite(low)||high<low||!Number.isFinite(vol)||vol<0||String(last[0])!==String(c.date))return {status:'資料不足',tone:'muted',reasons:['日K欄位或日期未核對'],institution:'待核對',trend:'待核對',volume:'待核對'};
+ const m5=ma(5),m10=ma(10),m20=ma(20),m60=ma(60),m120=ma(120);
+ const m20prev=closes.length>=21?closes.slice(-21,-1).reduce((a,b)=>a+b,0)/20:null;
+ const m60prev=closes.length>=61?closes.slice(-61,-1).reduce((a,b)=>a+b,0)/60:null;
+ const volumeRatio=avgVol>0?vol/avgVol:null;
+ const closeLocation=high>low?(close-low)/(high-low):.5;
+ const priorLow=Math.min(...bars.slice(-6,-1).map(b=>Number(b[3])));
+ const riskBreak=Number.isFinite(priorLow)&&close<priorLow;
+ const shortWeak=close<m10&&m5<m10;
+ const mediumWeak=close<m20&&(m20prev===null||m20<m20prev);
+ const longWeak=m60!==null&&m60prev!==null&&close<m60&&m60<m60prev;
+ const trendWeak=mode==='short'?shortWeak:mode==='long'?longWeak:mediumWeak;
+ const trendStrong=mode==='short'?close>m5&&m5>=m10:mode==='long'?m60!==null&&close>m60&&m60prev!==null&&m60>=m60prev:close>m20&&m20prev!==null&&m20>=m20prev;
+ const sellPressure=volumeRatio!==null&&volumeRatio>=1.4&&closeLocation<=.3&&close<open;
+ const failedBreak=high>Math.max(...bars.slice(-6,-1).map(b=>Number(b[2])))&&close<Math.max(...bars.slice(-6,-1).map(b=>Number(b[2])))&&closeLocation<=.35;
+ const ins=c.institutional,insDate=String(ins?.date||'').replace(/[^0-9]/g,'');
+ const barDate=String(last[0]).replace(/[^0-9]/g,'');
+ const foreign=Number(ins?.foreignNetShares),trust=Number(ins?.trustNetShares);
+ const validIns=!!ins&&insDate.length>=8&&insDate===barDate&&ins.foreignNetShares!==null&&ins.foreignNetShares!==undefined&&ins.trustNetShares!==null&&ins.trustNetShares!==undefined&&Number.isFinite(foreign)&&Number.isFinite(trust);
+ const institution=validIns?`同日外資 ${foreign>=0?'+':''}${Math.round(foreign/1000).toLocaleString('zh-TW')}張、投信 ${trust>=0?'+':''}${Math.round(trust/1000).toLocaleString('zh-TW')}張`:'待核對（缺少同日個股法人資料）';
+ const institutionalSelling=validIns&&foreign<0&&trust<0&&vol>0&&(-foreign-trust)/vol>=.08;
+ const reasons=[];
+ if(trendStrong)reasons.push('所選週期趨勢仍健康');
+ else if(trendWeak)reasons.push('所選週期均線轉弱');
+ else reasons.push('趨勢尚未確認');
+ if(sellPressure)reasons.push('放量收低且收黑，留意賣壓');
+ if(failedBreak)reasons.push('盤中突破前5日高點但收盤未站穩');
+ if(riskBreak)reasons.push('收盤跌破前5日已知低點');
+ if(institutionalSelling)reasons.push('同日外資與投信同步賣超且占量偏高');
+ else if(!validIns)reasons.push('法人資料不足，不推定出貨');
+ let status='震盪觀察',tone='warning';
+ if(trendWeak&&(sellPressure||riskBreak)){status=mode==='long'&&!longWeak?'減碼警戒':'趨勢破壞';tone='danger'}
+ else if((trendWeak||riskBreak)&&(sellPressure||failedBreak||institutionalSelling)){status='減碼警戒';tone='danger'}
+ else if(trendStrong&&!sellPressure&&!riskBreak){status='多頭續抱';tone='success'}
+ return {status,tone,reasons,institution,trend:trendStrong?'偏多':trendWeak?'轉弱':'整理',volume:volumeRatio===null?'待核對':volumeRatio.toFixed(2)+'倍',institutionalSelling,validIns,close,mode};
+}
 function nextSessionDefenseCard(c){
  const v=r82Plan(c);
  if(!v.ok)return `<section class="r82-decision" style="padding:16px;border:1px solid #385a6c;border-radius:14px"><strong>盤後風險決策</strong><p>${esc(v.reason)}</p></section>`;
- const code=String(c.code||''),key='chaopan-r82-cost-'+code,qtyKey='chaopan-r91-qty-'+code;
- let cost='',qty='1000';try{const stored=localStorage.getItem(key),q=localStorage.getItem(qtyKey);if(stored!==null&&Number(stored)>0)cost=String(Number(stored));if(q!==null&&Number(q)>0)qty=String(Math.floor(Number(q)))}catch(e){}
- const plan=r91ProfitPlan(v,Number(cost)),show=n=>n===null||!Number.isFinite(n)?'待確認':price(n);
+ const code=String(c.code||''),key='chaopan-r82-cost-'+code,qtyKey='chaopan-r91-qty-'+code,modeKey='chaopan-r92-mode-'+code;
+ let cost='',qty='1000',mode='medium';try{const savedMode=localStorage.getItem(modeKey);if(['short','medium','long'].includes(savedMode))mode=savedMode;const stored=localStorage.getItem(key),q=localStorage.getItem(qtyKey);if(stored!==null&&Number(stored)>0)cost=String(Number(stored));if(q!==null&&Number(q)>0)qty=String(Math.floor(Number(q)))}catch(e){}
+ const plan=r91ProfitPlan(v,Number(cost)),decision=r92Decision(c,mode),show=n=>n===null||!Number.isFinite(n)?'待確認':price(n);
  const label=v.rebound===null?'反彈區未成立':`反彈遇壓區 ${show(v.rebound)} 元（須先反彈受阻）`;
  return `<section class="r82-decision r91-decision" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
- <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>盤後持股保護｜法人籌碼輔助</strong><span style="border:1px solid #e7b45c;color:#e7b45c;border-radius:18px;padding:4px 9px">${v.rejection?'衝高回落警戒':'隔日條件觀察'}</span></div>
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>盤後持股決策｜量價優先</strong><span class="r92-status" style="border:1px solid #e7b45c;color:#e7b45c;border-radius:18px;padding:4px 9px">${esc(decision.status)}</span></div>
+ <label>持有週期 <select class="r92-mode" style="font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"><option value="short" ${mode==='short'?'selected':''}>短線｜5、10日趨勢</option><option value="medium" ${mode==='medium'?'selected':''}>中期｜20日趨勢</option><option value="long" ${mode==='long'?'selected':''}>長期｜60日趨勢</option></select></label>
+ <div class="r92-evidence" style="line-height:1.7;padding:10px;border:1px solid #385a6c;border-radius:10px">趨勢：${esc(decision.trend)}｜量比：${esc(decision.volume)}<br>法人：${esc(decision.institution)}<br>${esc(decision.reasons.join('；'))}</div>
  <div>${esc(v.date)} 收盤 <strong>${price(v.close)} 元</strong>；上方已知候選壓力 <strong>${show(v.resistance)} 元</strong></div>
  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
  <label style="min-width:0">持股成本（元）<input class="r82-cost-input" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
@@ -1268,14 +1315,20 @@ function nextSessionDefenseCard(c){
  </div>
  <div class="r91-pnl" style="padding:10px;border:1px solid #385a6c;border-radius:10px">${plan?`目前帳面報酬 ${plan.gain.toFixed(2)}%；帳面損益約 ${Math.round(plan.unrealizedPerShare*Number(qty)).toLocaleString('zh-TW')} 元`:'輸入成本後，顯示報酬率與獲利保護條件'}</div>
  <div class="r91-guidance" style="line-height:1.65">${esc(label)}；${plan&&plan.lock>0?`目前獲利級距對應保留 ${Math.round(plan.lock*100)}% 浮盈的參考底線，與技術防守價取較高者。`:'尚未達到獲利鎖定級距，優先參考技術防守。'}${v.reason?' '+esc(v.reason):''}</div>
- <small style="color:#a8bfcb">參考級距：獲利3%／5%／8%／12%／20%起，分別保護約15%／30%／45%／55%／65%的浮盈；這是待回測的散戶風控參數，不是外資投信實際交易規則。法人買賣超須同日個股官方資料才可判斷，未提供時一律顯示「待核對」，不假設法人買賣方向。僅盤後日K；不提供盤中成交保證，損益未扣費稅。</small>
+ <small style="color:#a8bfcb">r92：量價趨勢決定風險狀態，成本與獲利保護價僅供規劃，不能單憑觸價推定出貨或成交。法人只使用同日已核對的個股資料；單日法人賣超不能證明出貨。<br>參考級距：獲利3%／5%／8%／12%／20%起，分別保護約15%／30%／45%／55%／65%的浮盈；這是待回測的散戶風控參數，不是外資投信實際交易規則。法人買賣超須同日個股官方資料才可判斷，未提供時一律顯示「待核對」，不假設法人買賣方向。僅盤後日K；不提供盤中成交保證，損益未扣費稅。</small>
  </section>`;
 }
 function r82BindCost(card,c){
- const input=card.querySelector('.r82-cost-input'),qtyInput=card.querySelector('.r91-qty-input'),pnl=card.querySelector('.r91-pnl'),def=card.querySelector('.r91-defense'),guide=card.querySelector('.r91-guidance');
+ const input=card.querySelector('.r82-cost-input'),qtyInput=card.querySelector('.r91-qty-input'),pnl=card.querySelector('.r91-pnl'),def=card.querySelector('.r91-defense'),guide=card.querySelector('.r91-guidance'),modeInput=card.querySelector('.r92-mode'),statusEl=card.querySelector('.r92-status'),evidenceEl=card.querySelector('.r92-evidence');
  if(!input||!qtyInput||!pnl||!def||!guide)return;
- const v=r82Plan(c),key='chaopan-r82-cost-'+String(c.code||''),qtyKey='chaopan-r91-qty-'+String(c.code||'');
+ const v=r82Plan(c),key='chaopan-r82-cost-'+String(c.code||''),qtyKey='chaopan-r91-qty-'+String(c.code||''),modeKey='chaopan-r92-mode-'+String(c.code||'');
  const update=()=>{
+  if(modeInput&&statusEl&&evidenceEl){
+   const decision=r92Decision(c,modeInput.value);
+   statusEl.textContent=decision.status;
+   evidenceEl.textContent=`趨勢：${decision.trend}｜量比：${decision.volume}｜法人：${decision.institution}｜${decision.reasons.join('；')}`;
+   try{localStorage.setItem(modeKey,modeInput.value)}catch(e){}
+  }
   const cost=Number(input.value),qty=Number(qtyInput.value),plan=input.value?r91ProfitPlan(v,cost):null;
   if(!plan){pnl.textContent='輸入有效成本後，顯示報酬率與獲利保護條件';def.textContent=v.defense===null?'待確認':price(v.defense)}
   else{
@@ -1286,7 +1339,7 @@ function r82BindCost(card,c){
   }
   try{if(input.value&&Number.isFinite(cost)&&cost>0)localStorage.setItem(key,String(cost));else localStorage.removeItem(key);if(Number.isSafeInteger(qty)&&qty>0&&qty<=100000000)localStorage.setItem(qtyKey,String(qty))}catch(e){}
  };
- input.addEventListener('input',update);qtyInput.addEventListener('input',update);update();
+ input.addEventListener('input',update);qtyInput.addEventListener('input',update);if(modeInput)modeInput.addEventListener('change',update);update();
 }
 
 function defenseHistory(bars, maxBars=60){
