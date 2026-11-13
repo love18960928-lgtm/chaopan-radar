@@ -616,7 +616,7 @@ function unifiedCardShell({key,rankText,stage,code,name,industry,closeText,chang
  return `<article class="sector-battle-card sector-r9 unified-battle-card" data-card-key="${esc(key)}">
   <div class="sector-card-eyebrow"><b>${esc(rankText)}</b><span>${esc(stage)}</span></div>
   <div class="sector-card-identity"><div><strong>${esc(code)} ${esc(name)}</strong><div class="sector-card-meta">${esc(industry)}</div></div><div class="sector-card-quote"><b>${esc(closeText)}</b><small class="${esc(changeClass||'')}">${esc(changeText||'—')}</small></div></div>
-  <div class="sector-r9-tabs" role="tablist" aria-label="${esc(code)}作戰資訊分頁">${tab('summary','速覽')}${tab('levels','買賣價位')}${tab('evidence','技術證據')}</div>
+  <div class="sector-r9-tabs" role="tablist" aria-label="${esc(code)}作戰資訊分頁">${tab('summary','速覽')}${tab('levels','持股決策')}${tab('evidence','技術證據')}</div>
   ${panel('summary',summary)}${panel('levels',levels)}${panel('evidence',evidence)}
   <div class="sector-card-actions">${actions}</div>
  </article>`;
@@ -1295,6 +1295,17 @@ function r92Decision(c,mode='medium'){
  else if(trendStrong&&!sellPressure&&!riskBreak){status='多頭續抱';tone='success'}
  return {status,tone,reasons,institution,trend:trendStrong?'偏多':trendWeak?'轉弱':'整理',volume:volumeRatio===null?'待核對':volumeRatio.toFixed(2)+'倍',institutionalSelling,validIns,close,mode};
 }
+// r95: pure, cost-aware EOD scenario calculator; no implied execution.
+function r95PositionScenario(cost,qty,close,defense,sellPrice,sellQty){
+ if(!Number.isFinite(cost)||cost<=0||!Number.isSafeInteger(qty)||qty<=0||!Number.isFinite(close)||close<=0)return null;
+ const validDefense=Number.isFinite(defense)&&defense>0;
+ const validSale=Number.isFinite(sellPrice)&&sellPrice>0&&Number.isSafeInteger(sellQty)&&sellQty>=0&&sellQty<=qty;
+ return {breakEven:cost,breakEvenRise:(cost/close-1)*100,unrealized:(close-cost)*qty,
+  defenseLoss:validDefense?(defense-close)*qty:null,
+  defenseTotal:validDefense?(defense-cost)*qty:null,
+  sellPnl:validSale?(sellPrice-cost)*sellQty:null,
+  sellRemaining:validSale?qty-sellQty:null};
+}
 function nextSessionDefenseCard(c){
  const v=r82Plan(c);
  if(!v.ok)return `<section class="r82-decision" style="padding:16px;border:1px solid #385a6c;border-radius:14px"><strong>盤後風險決策</strong><p>${esc(v.reason)}</p></section>`;
@@ -1303,7 +1314,7 @@ function nextSessionDefenseCard(c){
  const plan=r91ProfitPlan(v,Number(cost)),decision=r92Decision(c,mode),show=n=>n===null||!Number.isFinite(n)?'待確認':price(n);
  const label=v.rebound===null?'反彈區未成立':`反彈遇壓區 ${show(v.rebound)} 元（須先反彈受阻）`;
  return `<section class="r82-decision r91-decision" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
- <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>盤後持股決策｜量價優先</strong><span class="r92-status" style="border:1px solid #e7b45c;color:#e7b45c;border-radius:18px;padding:4px 9px">${esc(decision.status)}</span></div>
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>持股決策｜量價優先 <small style="font-size:.65em;opacity:.7">r96</small></strong><span class="r92-status" style="border:1px solid #e7b45c;color:#e7b45c;border-radius:18px;padding:4px 9px">${esc(decision.status)}</span></div>
  <label>持有週期 <select class="r92-mode" style="font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"><option value="short" ${mode==='short'?'selected':''}>短線｜5、10日趨勢</option><option value="medium" ${mode==='medium'?'selected':''}>中期｜20日趨勢</option><option value="long" ${mode==='long'?'selected':''}>長期｜60日趨勢</option></select></label>
  <div class="r92-evidence" style="line-height:1.7;padding:10px;border:1px solid #385a6c;border-radius:10px">趨勢：${esc(decision.trend)}｜量比：${esc(decision.volume)}<br>法人：${esc(decision.institution)}<br>${esc(decision.reasons.join('；'))}</div>
  <div>${esc(v.date)} 收盤 <strong>${price(v.close)} 元</strong>；上方已知候選壓力 <strong>${show(v.resistance)} 元</strong></div>
@@ -1311,9 +1322,21 @@ function nextSessionDefenseCard(c){
  <label style="min-width:0">持股成本（元）<input class="r82-cost-input" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
  <label style="min-width:0">實際持股（股）<input class="r91-qty-input" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
  <div style="padding:12px;border:1px solid #385a6c;border-radius:12px;min-width:0"><small>反彈遇壓減碼區</small><div style="font-size:1.4em;font-weight:700;color:#f5bd67">${show(v.rebound)}</div><small>只在反彈受阻時觀察，不是停損價</small></div>
- <div style="padding:12px;border:1px solid #385a6c;border-radius:12px;min-width:0"><small>獲利保護／轉弱防守</small><div class="r91-defense" style="font-size:1.4em;font-weight:700;color:#ff9c9c">${show(plan?.defense??v.defense)}</div><small>隔日跌破才觀察減碼，非保證成交</small></div>
+ <div style="padding:12px;border:1px solid #385a6c;border-radius:12px;min-width:0"><small>轉弱防守參考</small><div class="r91-defense" style="font-size:1.4em;font-weight:700;color:#ff9c9c">${show(plan?.defense??v.defense)}</div><small>隔日跌破才觀察減碼，非保證成交</small></div>
  </div>
  <div class="r91-pnl" style="padding:10px;border:1px solid #385a6c;border-radius:10px">${plan?`目前帳面報酬 ${plan.gain.toFixed(2)}%；帳面損益約 ${Math.round(plan.unrealizedPerShare*Number(qty)).toLocaleString('zh-TW')} 元`:'輸入成本後，顯示報酬率與獲利保護條件'}</div>
+ <div class="r95-scenarios" style="display:grid;gap:10px;padding:12px;border:1px solid #385a6c;border-radius:12px">
+  <strong>回本與防守風險｜r96</strong>
+  <div class="r95-risk" style="line-height:1.65">輸入有效成本與股數後顯示回本及防守風險。</div>
+  <details class="r96-sale-details"><summary style="cursor:pointer;color:#66dcc4;font-weight:700">展開減碼試算</summary><div style="display:grid;gap:10px;margin-top:10px">
+  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+   <label style="min-width:0">假設賣出價（元）<input class="r95-sell-price" type="number" min="0" step="any" inputmode="decimal" value="${show(v.rebound) === '待確認'?'':v.rebound}" style="box-sizing:border-box;width:100%;font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
+   <label style="min-width:0">假設賣出股數<input class="r95-sell-qty" type="number" min="0" step="1" inputmode="numeric" value="100" style="box-sizing:border-box;width:100%;font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
+  </div>
+  <div class="r95-sale" style="line-height:1.65">輸入成本與股數後試算。</div>
+  <small style="opacity:.75">情境試算未扣交易費稅，不代表指定價可成交。</small>
+  </div></details>
+ </div>
  <div class="r91-guidance" style="line-height:1.65">${esc(label)}；${plan&&plan.lock>0?`目前獲利級距對應保留 ${Math.round(plan.lock*100)}% 浮盈的參考底線，與技術防守價取較高者。`:'尚未達到獲利鎖定級距，優先參考技術防守。'}${v.reason?' '+esc(v.reason):''}</div>
 
  </section>`;
@@ -1322,6 +1345,7 @@ function r82BindCost(card,c){
  const input=card.querySelector('.r82-cost-input'),qtyInput=card.querySelector('.r91-qty-input'),pnl=card.querySelector('.r91-pnl'),def=card.querySelector('.r91-defense'),guide=card.querySelector('.r91-guidance'),modeInput=card.querySelector('.r92-mode'),statusEl=card.querySelector('.r92-status'),evidenceEl=card.querySelector('.r92-evidence');
  if(!input||!qtyInput||!pnl||!def||!guide)return;
  const v=r82Plan(c),key='chaopan-r82-cost-'+String(c.code||''),qtyKey='chaopan-r91-qty-'+String(c.code||''),modeKey='chaopan-r92-mode-'+String(c.code||'');
+ const sellPriceInput=card.querySelector('.r95-sell-price'),sellQtyInput=card.querySelector('.r95-sell-qty'),riskEl=card.querySelector('.r95-risk'),saleEl=card.querySelector('.r95-sale');
  const update=()=>{
   if(modeInput&&statusEl&&evidenceEl){
    const decision=r92Decision(c,modeInput.value);
@@ -1337,9 +1361,18 @@ function r82BindCost(card,c){
    pnl.textContent=`帳面報酬 ${plan.gain.toFixed(2)}%｜${valid?'帳面損益 '+Math.round(plan.unrealizedPerShare*qty).toLocaleString('zh-TW')+' 元':'請輸入有效持股數'}`;
    guide.textContent=`反彈遇壓 ${v.rebound===null?'待確認':price(v.rebound)} 元（須先反彈且受阻）；獲利保護比例 ${Math.round(plan.lock*100)}% 浮盈，與技術防守取較高值。${plan.defense!==null&&v.close<=plan.defense?'防守價已被收盤觸及，僅列為風險警示，不能當作隔日保證成交價。':''}`;
   }
+  if(riskEl&&saleEl){
+   const calc=r95PositionScenario(cost,qty,v.close,plan?.defense??v.defense,sellPriceInput?.value===''?NaN:Number(sellPriceInput?.value),sellQtyInput?.value===''?NaN:Number(sellQtyInput?.value));
+   const money=n=>`${n>=0?'+':'−'}${Math.round(Math.abs(n)).toLocaleString('zh-TW')} 元`;
+   if(!calc){riskEl.textContent='請輸入有效成本與整數持股股數';saleEl.textContent='—'}
+   else{
+    riskEl.textContent=`回本價 ${price(calc.breakEven)} 元｜距回本需 ${calc.breakEvenRise>=0?'+':''}${calc.breakEvenRise.toFixed(2)}%｜若收盤由 ${price(v.close)} 跌至防守參考 ${(plan?.defense??v.defense)===null?'待確認':price(plan?.defense??v.defense)} 元，帳面損益變化 ${calc.defenseLoss===null?'待確認':money(calc.defenseLoss)}（非停損成交保證）`;
+    saleEl.textContent=calc.sellPnl===null?'請輸入有效賣出價及不超過持股的整數股數':`假設賣出損益 ${money(calc.sellPnl)}｜剩餘 ${calc.sellRemaining.toLocaleString('zh-TW')} 股`;
+   }
+  }
   try{if(input.value&&Number.isFinite(cost)&&cost>0)localStorage.setItem(key,String(cost));else localStorage.removeItem(key);if(Number.isSafeInteger(qty)&&qty>0&&qty<=100000000)localStorage.setItem(qtyKey,String(qty))}catch(e){}
  };
- input.addEventListener('input',update);qtyInput.addEventListener('input',update);if(modeInput)modeInput.addEventListener('change',update);update();
+ input.addEventListener('input',update);qtyInput.addEventListener('input',update);if(modeInput)modeInput.addEventListener('change',update);if(sellPriceInput)sellPriceInput.addEventListener('input',update);if(sellQtyInput)sellQtyInput.addEventListener('input',update);update();
 }
 
 function defenseHistory(bars, maxBars=60){
