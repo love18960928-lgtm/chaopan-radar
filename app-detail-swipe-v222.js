@@ -1367,6 +1367,7 @@ function r101Quality(c,mode){
   if(![o,h,l,cl,v].every(Number.isFinite)||l<=0||h<l||o<l||o>h||cl<l||cl>h||v<0)return {ok:false,why:'日K價格或成交量異常'};
  }
  if(String(c.date||'')!==prev)return {ok:false,why:'最新盤後日期與K線不一致'};
+ if(Number(b.at(-1)?.[5])<=0)return {ok:false,why:'最新交易日無成交量或可能停牌，暫停買賣價位判斷'};
  // r105: stale EOD snapshots must never be presented as tomorrow's instruction.
  // Allow long weekends/holidays; do not guess the exchange holiday calendar.
  const now=new Date(),latest=new Date(prev+'T00:00:00+08:00');
@@ -1419,6 +1420,7 @@ function r99Action(c,cost,qty,mode='medium'){
   title='盤整等待';tone='warning';fraction=0;condition='所選週期尚未確認偏多';note='不加碼';
  }
  const shares=fraction===1?qty:fraction>0?Math.max(1,Math.floor(qty*fraction)):0;
+ if(shares>0&&fraction<1){const provisional={close,rebound,breakout};const levels=r103ConditionalLevels(c,provisional);if(!levels||!(levels.defense>0&&levels.defense<close))return wait('減碼防守價未驗證，暫停減碼指令');}
  const value=shares*close,pnl=shares*(close-cost);
  return {title,tone,trigger,stop:defense,rebound,breakout,shares,value,pnl,close,condition,note,asOf:v.date,valid:true,profit:profitable,qty,rollingHigh,drawdown,riskCount};
 }
@@ -1477,7 +1479,7 @@ function r99ActionHTML(a,c){
   }
  }
  return `<div style="border:2px solid ${colors[a.tone]||colors.muted};border-radius:12px;padding:13px;display:grid;gap:9px" aria-live="polite">
-  <small>盤後決策｜${esc(a.asOf||'資料待確認')}｜明日參考 r107</small>
+  <small>盤後決策｜${esc(a.asOf||'資料待確認')}｜明日參考 r108</small>
   <strong style="font-size:1.7em;color:${colors[a.tone]||colors.muted}">${esc(a.title)}</strong>
   ${actionLine}
   ${a.valid?rows:'<small>資料核對前不提供操作價格。</small>'}
@@ -1497,7 +1499,7 @@ function nextSessionDefenseCard(c){
   try{initialPlan=r91ProfitPlan(v,Number(cost));}catch(e){initialPlan=null;}
  }
  return `<section class="r82-decision r91-decision" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
- <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>持股決策 <small style="font-size:.65em;opacity:.7">r106</small></strong></div>
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>持股決策 <small style="font-size:.65em;opacity:.7">r108</small></strong></div>
  <div class="r99-action">${r99ActionHTML(r99Action(c,Number(cost),Number(qty),mode),c)}</div>
  <label>持有週期 <select class="r92-mode" style="font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"><option value="short" ${mode==='short'?'selected':''}>短線｜5、10日趨勢</option><option value="medium" ${mode==='medium'?'selected':''}>中期｜20日趨勢</option><option value="long" ${mode==='long'?'selected':''}>長期｜60日趨勢</option></select></label>
  <div style="font-size:.9em;opacity:.85">${esc(v.date)} 收盤 ${price(v.close)} 元</div>
