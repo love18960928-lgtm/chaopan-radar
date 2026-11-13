@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: r76-eod-single-plan-20261113 */
+/* CHAOPAN_RADAR_BUILD: r109-next-session-one-page-20261114 */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const state={r41Page:'card',r41Advanced:null,payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false,instMarket:'all',instAsset:'stock',instSort:'amount'};
@@ -609,15 +609,15 @@ function financeCardPreview(c){
 }
 
 function unifiedCardShell({key,rankText,stage,code,name,industry,closeText,changeText,changeClass,summary,levels,evidence,finance,actions}){
- const kinds=['summary','levels','evidence'];
- const active=kinds.includes(sectorCardTabs.get(key))?sectorCardTabs.get(key):'summary';
+ const kinds=['summary','levels'];
+ const active=kinds.includes(sectorCardTabs.get(key))?sectorCardTabs.get(key):(rankText==='超盤手｜個股完整分析'?'levels':'summary');
  const tab=(id,label)=>`<button type="button" role="tab" data-card-tab="${id}" aria-selected="${active===id}" class="${active===id?'active':''}">${label}</button>`;
  const panel=(id,content)=>`<div role="tabpanel" data-card-panel="${id}" ${active===id?'':'hidden'}>${content}</div>`;
  return `<article class="sector-battle-card sector-r9 unified-battle-card" data-card-key="${esc(key)}">
   <div class="sector-card-eyebrow"><b>${esc(rankText)}</b><span>${esc(stage)}</span></div>
   <div class="sector-card-identity"><div><strong>${esc(code)} ${esc(name)}</strong><div class="sector-card-meta">${esc(industry)}</div></div><div class="sector-card-quote"><b>${esc(closeText)}</b><small class="${esc(changeClass||'')}">${esc(changeText||'—')}</small></div></div>
-  <div class="sector-r9-tabs" role="tablist" aria-label="${esc(code)}作戰資訊分頁">${tab('summary','速覽')}${tab('levels','持股決策')}${tab('evidence','技術證據')}</div>
-  ${panel('summary',summary)}${panel('levels',levels)}${panel('evidence',evidence)}
+  <div class="sector-r9-tabs" role="tablist" aria-label="${esc(code)}作戰資訊分頁">${tab('summary','速覽')}${tab('levels','明日操作')}</div>
+  ${panel('summary',summary)}${panel('levels',levels)}
   <div class="sector-card-actions">${actions}</div>
  </article>`;
 }
@@ -1377,10 +1377,10 @@ function r101Quality(c,mode){
 }
 function r99Action(c,cost,qty,mode='medium'){
  const v=r82Plan(c),d=r92Decision(c,mode),quality=r101Quality(c,mode);
- const wait=(why)=>({title:'等待資料',tone:'muted',note:why,condition:'資料不足，暫不給買賣方向',shares:0,valid:false});
+ const wait=(why,title='等待資料')=>({title,tone:'muted',note:why,condition:'資料不足，暫不給買賣方向',shares:0,valid:false});
+ if(!Number.isFinite(cost)||cost<=0||!Number.isSafeInteger(qty)||qty<=0||qty>100000000)return wait('請輸入實際成本價與持股股數，再產生明日操作計畫','請先輸入持股');
  if(!quality.ok)return wait(quality.why);
  if(!v.ok||d.status==='資料不足')return wait('盤後資料尚未完成核對');
- if(!Number.isFinite(cost)||cost<=0||!Number.isSafeInteger(qty)||qty<=0||qty>100000000)return wait('請輸入有效成本價與持股股數');
  const bars=c.bars,close=v.close,valid=x=>Number.isFinite(x)&&x>0;
  const breakout=valid(v.resistance)?v.resistance:null;
  const defense=valid(v.defense)?v.defense:null;
@@ -1420,9 +1420,9 @@ function r99Action(c,cost,qty,mode='medium'){
   title='盤整等待';tone='warning';fraction=0;condition='所選週期尚未確認偏多';note='不加碼';
  }
  const shares=fraction===1?qty:fraction>0?Math.max(1,Math.floor(qty*fraction)):0;
- if(shares>0&&fraction<1){const provisional={close,rebound,breakout};const levels=r103ConditionalLevels(c,provisional);if(!levels||!(levels.defense>0&&levels.defense<close))return wait('減碼防守價未驗證，暫停減碼指令');}
+ if(shares>0&&fraction<1){const provisional={close,rebound,breakout};const levels=r103ConditionalLevels(c,provisional);if(!levels||!(levels.defense>0&&levels.defense<close))return wait('盤後已發現減碼風險，但防守價尚未驗證，暫不提供賣出股數或委託價','風險警戒｜價位待核對');}
  const value=shares*close,pnl=shares*(close-cost);
- return {title,tone,trigger,stop:defense,rebound,breakout,shares,value,pnl,close,condition,note,asOf:v.date,valid:true,profit:profitable,qty,rollingHigh,drawdown,riskCount};
+ return {title,tone,trigger,stop:defense,rebound,breakout,shares,value,pnl,close,cost,condition,note,asOf:v.date,valid:true,profit:profitable,qty,rollingHigh,drawdown,riskCount};
 }
 // r103: derive next-session conditional prices solely from completed EOD bars.
 // Prices are alert thresholds, not executable orders or inferred intraday signals.
@@ -1456,36 +1456,49 @@ function r103ConditionalLevels(c,a){
  return {rebound:valid(rebound)?rebound:null,defense:valid(defense)&&defense<close?defense:null,exit:valid(exit)&&exit<defense?exit:null,atr,close,pct};
 }
 // r104: one EOD decision. Conditional alerts are not automatic orders.
+// r109: one glance next-session plan. Every hypothetical sale scenario uses
+// ITS OWN price to calculate proceeds/P&L; no default position or implied fill.
 function r99ActionHTML(a,c){
- const fmt=n=>Math.round(n).toLocaleString('zh-TW');
- const px=n=>Number.isFinite(n)&&n>0?price(n)+' 元':'待確認';
- const colors={success:'#6ee7c1',warning:'#f5bd67',danger:'#ff9c9c',muted:'#aab7c4'};
- const lv=a.valid?r103ConditionalLevels(c,a):null;
- const pct=n=>lv?.pct(n)==null?'':`（${Number(lv.pct(n))>=0?'+':''}${lv.pct(n)}%）`;
- const isExit=a.title==='止血出場',isRisk=a.shares>0;
- // r106: no implied executable instruction when price levels are not validated.
- const usableLevels=!!lv&&Number.isFinite(lv.defense)&&lv.defense>0&&lv.defense<a.close; // Downside protection must not depend on an available rebound resistance.
- const actionName=isExit?'評估出場':a.title==='獲利減碼'?'獲利減碼':'風險減碼';
- const actionLine=isRisk?`<strong>${actionName} ${fmt(a.shares)} 股｜收盤價試算 ${fmt(a.value)} 元｜損益 ${a.pnl>=0?'+':''}${fmt(a.pnl)} 元（非委託價格）</strong>`:`<strong>${esc(a.condition||a.note||'')}</strong>`;
- const row=(label,val,desc)=>`<div style="display:grid;grid-template-columns:6em 1fr;gap:8px;padding:7px 0;border-top:1px solid #355466"><b>${label}</b><span>${px(val)}${pct(val)}<small style="display:block;opacity:.8">${desc}</small></span></div>`;
- let rows='';
- if(lv){
-  if(isExit){
-   rows=`<div style="padding:8px 0;border-top:1px solid #355466"><b>出場優先｜下一交易日評估處理 ${fmt(a.shares)} 股</b><small style="display:block">已確認出場訊號，不需等待更低價再次觸發；委託價格依實際開盤與流動性評估，跳空可能擴大損失</small></div>`;
-  }else if(isRisk){
-   rows=`<small style="font-weight:700">以下兩種減碼方式擇一執行，合計最多 ${fmt(a.shares)} 股，不得重複賣出</small>`+row('反彈減碼',lv.rebound,'盤後預設觀察價；盤中遇壓是否轉弱須自行確認，非自動賣單')+row('跌破減碼',lv.defense,'盤中跌破為風險預警；是否有效跌破需依操作週期確認')+row('失效出場',lv.exit,'再度破壞結構時評估剩餘持股');
-  }else{
-   rows=row('轉強關卡',a.breakout,'收盤有效突破後重新評估續抱或加碼')+row('風險警戒',lv.defense,'跌破後重新評估，不代表現在要賣');
+ const money=n=>Number.isFinite(n)?Math.round(n).toLocaleString('zh-TW'):'—';
+ const level=n=>Number.isFinite(n)&&n>0?price(n)+' 元':'待核對';
+ const color={success:'#6ee7c1',warning:'#f5bd67',danger:'#ff9c9c',muted:'#aab7c4'}[a.tone]||'#aab7c4';
+ const box=(headline,detail,highlight=false)=>`<div style="padding:9px 0;border-top:1px solid #355466"><b style="color:${highlight?color:'inherit'}">${headline}</b><div style="font-size:.92em">${detail}</div></div>`;
+ const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R109 明日操作</small>`;
+ if(!a.valid)return `<div style="border:2px solid ${color};border-radius:12px;padding:13px;display:grid;gap:8px" aria-live="polite">${base}<strong style="font-size:1.65em;color:${color}">${esc(a.title)}</strong><div>${esc(a.note||'請先核對資料')}</div><small>未提供操作價格或股數。</small></div>`;
+ const lv=r103ConditionalLevels(c,a);
+ const pct=n=>Number.isFinite(n)&&n>0?`（${(n/a.close-1)*100>=0?'+':''}${((n/a.close-1)*100).toFixed(2)}%）`:'';
+ const scenario=(name,n,shares,remark)=>{
+  if(!Number.isFinite(n)||n<=0)return box(name,'價位待核對；不能將收盤價當成委託價');
+  const pl=(n-a.cost)*shares;
+  const sale=Number.isSafeInteger(shares)&&shares>0?`${money(shares)}股｜回收約 ${money(n*shares)} 元｜損益約 ${pl>=0?'+':''}${money(pl)} 元`:'';
+  return box(name,`<b>${level(n)} ${pct(n)}</b><div>${sale}</div><small style="opacity:.75">${esc(remark)}</small>`);
+ };
+ const isExit=a.title==='止血出場',hasSale=a.shares>0;
+ let body='';
+ if(isExit){
+  body=box('明日優先：評估出場 '+money(a.shares)+' 股','已由收盤資料確認結構轉弱；下一交易日依實際可成交價格處理，不用再等跌破更低價',true);
+  body+=box('以昨收試算（不是委託價）',`回收約 ${money(a.close*a.shares)} 元｜損益約 ${a.pnl>=0?'+':''}${money(a.pnl)} 元`);
+  body+='<small>若跳空開低，昨收與防守價都不保證成交；注意流動性及價格限制。</small>';
+ }else if(hasSale){
+  body=box('明日優先：減碼 '+money(a.shares)+' 股','盤後風險訊號已成立；反彈與跌破是同一筆減碼的替代執行情境，不可重複賣出',true);
+  if(lv){
+   body+=scenario('開高／反彈遇壓',lv.rebound,a.shares,'觸及壓力且轉弱時評估；強勢突破不要機械式賣出');
+   body+=scenario('開低／跌破防守',lv.defense,a.shares,'跌破時優先控管風險；跳空下跌不能保證此價成交');
+   if(Number.isFinite(lv.exit)&&lv.exit>0)body+=box('剩餘持股出場警戒',`<b>${level(lv.exit)} ${pct(lv.exit)}</b>｜結構再度失效時評估`);
+  }else body+=box('減碼價尚未驗證','保留已確認風險警告，但不提供未核對的委託價格');
+  body+='<small>若明日價格介於兩個價位之間，風險仍未解除；盤中是否轉強需人工確認，系統不會即時判定或自動下單。</small>';
+ }else{
+  body=box('明日優先：'+(a.title==='偏多續抱'?'續抱、不急著賣':a.title==='加碼觀察'?'觀察突破，尚未加碼':a.title==='獲利保護'?'守住獲利防線':'等待，不新增部位'),esc(a.condition||a.note||''),true);
+  if(lv){
+   const up=Number.isFinite(a.breakout)&&a.breakout>a.close?a.breakout:null;
+   if(up)body+=box('上攻關卡',`<b>${level(up)} ${pct(up)}</b>｜收盤確認量價後才評估加碼或續抱`);
+   if(Number.isFinite(lv.defense)&&lv.defense>0)body+=box('防守警戒',`<b>${level(lv.defense)} ${pct(lv.defense)}</b>｜跌破後重新評估，不等於現在應賣`);
   }
  }
- return `<div style="border:2px solid ${colors[a.tone]||colors.muted};border-radius:12px;padding:13px;display:grid;gap:9px" aria-live="polite">
-  <small>盤後決策｜${esc(a.asOf||'資料待確認')}｜明日參考 r108</small>
-  <strong style="font-size:1.7em;color:${colors[a.tone]||colors.muted}">${esc(a.title)}</strong>
-  ${actionLine}
-  ${a.valid?rows:'<small>資料核對前不提供操作價格。</small>'}
-  ${a.valid&&!lv?'<small>波動資料不足，暫停價位判斷；不可直接以收盤價委託。</small>':''}
-  ${a.valid&&isRisk&&!isExit&&!usableLevels?'<small style="color:#ffb9a0">防守價未核對：不可把股數或收盤價當成開盤賣出指令。</small>':''}
-  <small style="opacity:.8">${esc(a.note||'')}｜僅盤後日K條件，非即時監控；未扣費稅，跳空可能無法依警戒價成交。</small>
+ return `<div style="border:2px solid ${color};border-radius:12px;padding:13px;display:grid;gap:7px" aria-live="polite">
+  ${base}<strong style="font-size:1.75em;color:${color}">${esc(a.title)}${hasSale?' '+money(a.shares)+' 股':''}</strong>
+  ${body}
+  <small style="opacity:.7">僅依完成的盤後日K推演明日情境；未扣手續費、證交稅與滑價。操作價為觀察門檻，不是保證成交價。</small>
  </div>`;
 }
 function nextSessionDefenseCard(c){
@@ -1494,18 +1507,18 @@ function nextSessionDefenseCard(c){
  const code=String(c.code||''),key='chaopan-r82-cost-'+code,qtyKey='chaopan-r91-qty-'+code,modeKey='chaopan-r92-mode-'+code;
  // r102: compute initial P/L plan before rendering; r101 referenced an undefined `plan`.
  let initialPlan=null;
- let cost='',qty='1000',mode='medium';try{const savedMode=localStorage.getItem(modeKey);if(['short','medium','long'].includes(savedMode))mode=savedMode;const stored=localStorage.getItem(key),q=localStorage.getItem(qtyKey);if(stored!==null&&Number(stored)>0)cost=String(Number(stored));if(q!==null&&Number(q)>0)qty=String(Math.floor(Number(q)))}catch(e){}
+ let cost='',qty='',mode='medium';try{const savedMode=localStorage.getItem(modeKey);if(['short','medium','long'].includes(savedMode))mode=savedMode;const stored=localStorage.getItem(key),q=localStorage.getItem(qtyKey);if(stored!==null&&Number(stored)>0)cost=String(Number(stored));if(q!==null&&Number.isSafeInteger(Number(q))&&Number(q)>0&&Number(q)<=100000000)qty=String(Number(q))}catch(e){}
  if(cost!=='' && Number.isFinite(Number(cost)) && Number(cost)>0){
   try{initialPlan=r91ProfitPlan(v,Number(cost));}catch(e){initialPlan=null;}
  }
  return `<section class="r82-decision r91-decision" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
- <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>持股決策 <small style="font-size:.65em;opacity:.7">r108</small></strong></div>
- <div class="r99-action">${r99ActionHTML(r99Action(c,Number(cost),Number(qty),mode),c)}</div>
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>明日持股操作 <small style="font-size:.65em;opacity:.7">R109</small></strong></div>
+ <div class="r99-action">${r99ActionHTML(r99Action(c,cost===''?NaN:Number(cost),qty===''?NaN:Number(qty),mode),c)}</div>
  <label>持有週期 <select class="r92-mode" style="font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"><option value="short" ${mode==='short'?'selected':''}>短線｜5、10日趨勢</option><option value="medium" ${mode==='medium'?'selected':''}>中期｜20日趨勢</option><option value="long" ${mode==='long'?'selected':''}>長期｜60日趨勢</option></select></label>
  <div style="font-size:.9em;opacity:.85">${esc(v.date)} 收盤 ${price(v.close)} 元</div>
  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
  <label style="min-width:0">持股成本（元）<input class="r82-cost-input" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
- <label style="min-width:0">實際持股（股）<input class="r91-qty-input" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
+ <label style="min-width:0">實際持股（股）<input class="r91-qty-input" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
  </div>
  <div class="r91-pnl" style="padding:10px;border:1px solid #385a6c;border-radius:10px">${initialPlan?`目前帳面報酬 ${initialPlan.gain.toFixed(2)}%；帳面損益約 ${Math.round(initialPlan.unrealizedPerShare*Number(qty)).toLocaleString('zh-TW')} 元`:'輸入成本後，顯示報酬率與獲利保護條件'}</div>
 
