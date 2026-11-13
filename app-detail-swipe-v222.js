@@ -1421,7 +1421,7 @@ function nextSessionDefenseCard(c){
  const code=String(c.code||''),key='chaopan-r82-cost-'+code,qtyKey='chaopan-r91-qty-'+code,modeKey='chaopan-r92-mode-'+code;
  let cost='',qty='1000',mode='medium';try{const savedMode=localStorage.getItem(modeKey);if(['short','medium','long'].includes(savedMode))mode=savedMode;const stored=localStorage.getItem(key),q=localStorage.getItem(qtyKey);if(stored!==null&&Number(stored)>0)cost=String(Number(stored));if(q!==null&&Number(q)>0)qty=String(Math.floor(Number(q)))}catch(e){}
  return `<section class="r82-decision r91-decision" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
- <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>持股決策 <small style="font-size:.65em;opacity:.7">r101</small></strong></div>
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>持股決策 <small style="font-size:.65em;opacity:.7">r102</small></strong></div>
  <div class="r99-action">${r99ActionHTML(r99Action(c,Number(cost),Number(qty),mode))}</div>
  <label>持有週期 <select class="r92-mode" style="font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"><option value="short" ${mode==='short'?'selected':''}>短線｜5、10日趨勢</option><option value="medium" ${mode==='medium'?'selected':''}>中期｜20日趨勢</option><option value="long" ${mode==='long'?'selected':''}>長期｜60日趨勢</option></select></label>
  <div style="font-size:.9em;opacity:.85">${esc(v.date)} 收盤 ${price(v.close)} 元</div>
@@ -1429,7 +1429,7 @@ function nextSessionDefenseCard(c){
  <label style="min-width:0">持股成本（元）<input class="r82-cost-input" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
  <label style="min-width:0">實際持股（股）<input class="r91-qty-input" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
  </div>
- <div class="r91-pnl" style="padding:10px;border:1px solid #385a6c;border-radius:10px">${plan?`目前帳面報酬 ${plan.gain.toFixed(2)}%；帳面損益約 ${Math.round(plan.unrealizedPerShare*Number(qty)).toLocaleString('zh-TW')} 元`:'輸入成本後，顯示報酬率與獲利保護條件'}</div>
+ <div class="r91-pnl" style="padding:10px;border:1px solid #385a6c;border-radius:10px">輸入成本及持股股數後，顯示帳面損益</div>
 
  </section>`;
 }
