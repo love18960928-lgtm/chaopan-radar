@@ -1306,17 +1306,58 @@ function r95PositionScenario(cost,qty,close,defense,sellPrice,sellQty){
   sellPnl:validSale?(sellPrice-cost)*sellQty:null,
   sellRemaining:validSale?qty-sellQty:null};
 }
+// r98: EOD-only consolidation direction and first-breakout qualification.
+// Never backfill missing days, use future bars, or treat a candidate as an order.
+function r98Structure(c){
+ const bars=c?.bars;
+ const unknown=(why)=>({status:'資料不足',direction:'待核對',first:'不可判定',reason:why,detail:'',ready:false});
+ if(!Array.isArray(bars)||bars.length<65)return unknown('至少需要65根完整日K，才能核對20／60日結構');
+ let prev='';
+ for(const b of bars){
+  if(!Array.isArray(b)||b.length<6||typeof b[0]!=='string'||!/\d{4}-\d{2}-\d{2}/.test(b[0])||b[0]<=prev)return unknown('日期缺漏或排序錯誤');
+  prev=b[0];const o=Number(b[1]),h=Number(b[2]),l=Number(b[3]),cl=Number(b[4]),v=Number(b[5]);
+  if(![o,h,l,cl,v].every(Number.isFinite)||l<=0||h<l||o<l||o>h||cl<l||cl>h||v<0)return unknown('日K價量欄位異常');
+ }
+ if(c.date&&String(c.date)!==bars.at(-1)[0])return unknown('候選資料與最後日K日期不一致');
+ const close=+bars.at(-1)[4],open=+bars.at(-1)[1],high=+bars.at(-1)[2],low=+bars.at(-1)[3],vol=+bars.at(-1)[5];
+ const closes=bars.map(b=>+b[4]);
+ const avg=(arr)=>arr.reduce((a,b)=>a+b,0)/arr.length;
+ const ma=(n,end=closes.length)=>avg(closes.slice(end-n,end));
+ const m20=ma(20),m60=ma(60),m20past=ma(20,closes.length-10),m60past=ma(60,closes.length-5);
+ const prior20=bars.slice(-21,-1),older20=bars.slice(-41,-21);
+ const hi=a=>Math.max(...a.map(b=>+b[2])),lo=a=>Math.min(...a.map(b=>+b[3]));
+ const top=hi(prior20),bottom=lo(prior20),olderTop=hi(older20),olderBottom=lo(older20);
+ const slope20=(m20/m20past-1)*100,slope60=(m60/m60past-1)*100;
+ const topShift=(top/olderTop-1)*100,bottomShift=(bottom/olderBottom-1)*100;
+ const tolerance=1.5;
+ const ascending=topShift>tolerance&&bottomShift>tolerance&&slope20>0;
+ const descending=topShift< -tolerance&&bottomShift< -tolerance&&slope20<0;
+ const direction=ascending?'上升整理':descending?'下降整理':Math.abs(topShift)<=tolerance&&Math.abs(bottomShift)<=tolerance?'橫向盤整':'混合整理';
+ const vol20=avg(prior20.map(b=>+b[5])),vr=vol20>0?vol/vol20:null;
+ const location=high>low?(close-low)/(high-low):.5;
+ const breakout=close>top;
+ const trendOK=close>m20&&m20>=m20past&&m60>=m60past;
+ const volumeOK=vr!==null&&vr>=1.5;
+ const closeOK=location>=.65&&close>=open;
+ const first=breakout&&trendOK&&volumeOK&&closeOK?'第一根候選':breakout?'突破待確認':descending?'下降整理勿追':ascending?'上升整理待突破':'盤整等待';
+ const caution=vr!==null&&vr>=1.5&&location<=.3&&close<open?'放量收低，需注意賣壓':'未見本模型定義的放量收低';
+ return {status:'已計算',direction,first,ready:first==='第一根候選',reason:caution,
+  detail:`20日區間 ${bottom.toFixed(2)}～${top.toFixed(2)} 元｜高點變化 ${topShift.toFixed(1)}%／低點變化 ${bottomShift.toFixed(1)}%｜20日均線10日斜率 ${slope20.toFixed(2)}%｜量比 ${vr===null?'待核對':vr.toFixed(2)+'倍'}`,
+  top,bottom,close,volumeRatio:vr,topShift,bottomShift,slope20,slope60,breakout,trendOK,volumeOK,closeOK};
+}
+
 function nextSessionDefenseCard(c){
  const v=r82Plan(c);
  if(!v.ok)return `<section class="r82-decision" style="padding:16px;border:1px solid #385a6c;border-radius:14px"><strong>盤後風險決策</strong><p>${esc(v.reason)}</p></section>`;
  const code=String(c.code||''),key='chaopan-r82-cost-'+code,qtyKey='chaopan-r91-qty-'+code,modeKey='chaopan-r92-mode-'+code;
  let cost='',qty='1000',mode='medium';try{const savedMode=localStorage.getItem(modeKey);if(['short','medium','long'].includes(savedMode))mode=savedMode;const stored=localStorage.getItem(key),q=localStorage.getItem(qtyKey);if(stored!==null&&Number(stored)>0)cost=String(Number(stored));if(q!==null&&Number(q)>0)qty=String(Math.floor(Number(q)))}catch(e){}
- const plan=r91ProfitPlan(v,Number(cost)),decision=r92Decision(c,mode),show=n=>n===null||!Number.isFinite(n)?'待確認':price(n);
+ const plan=r91ProfitPlan(v,Number(cost)),decision=r92Decision(c,mode),structure=r98Structure(c),show=n=>n===null||!Number.isFinite(n)?'待確認':price(n);
  const label=v.rebound===null?'反彈區未成立':`反彈遇壓區 ${show(v.rebound)} 元（須先反彈受阻）`;
  return `<section class="r82-decision r91-decision" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
- <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>持股決策｜量價優先 <small style="font-size:.65em;opacity:.7">r96</small></strong><span class="r92-status" style="border:1px solid #e7b45c;color:#e7b45c;border-radius:18px;padding:4px 9px">${esc(decision.status)}</span></div>
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>持股決策｜量價優先 <small style="font-size:.65em;opacity:.7">r98</small></strong><span class="r92-status" style="border:1px solid #e7b45c;color:#e7b45c;border-radius:18px;padding:4px 9px">${esc(decision.status)}</span></div>
  <label>持有週期 <select class="r92-mode" style="font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"><option value="short" ${mode==='short'?'selected':''}>短線｜5、10日趨勢</option><option value="medium" ${mode==='medium'?'selected':''}>中期｜20日趨勢</option><option value="long" ${mode==='long'?'selected':''}>長期｜60日趨勢</option></select></label>
  <div class="r92-evidence" style="line-height:1.7;padding:10px;border:1px solid #385a6c;border-radius:10px">趨勢：${esc(decision.trend)}｜量比：${esc(decision.volume)}<br>法人：${esc(decision.institution)}<br>${esc(decision.reasons.join('；'))}</div>
+ <div class="r98-structure" style="line-height:1.7;padding:12px;border:1px solid #385a6c;border-radius:10px"><strong>盤整方向｜${esc(structure.direction)}</strong>　<span style="color:${structure.ready?'#6ee7c1':'#f2c46e'}">${esc(structure.first)}</span><div>${esc(structure.detail||structure.reason)}</div><small>${esc(structure.status==='已計算'?structure.reason+'；僅依盤後日K計算，突破須隔日追蹤，非保證獲利':'資料不足不給買進訊號')}</small></div>
  <div>${esc(v.date)} 收盤 <strong>${price(v.close)} 元</strong>；上方已知候選壓力 <strong>${show(v.resistance)} 元</strong></div>
  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
  <label style="min-width:0">持股成本（元）<input class="r82-cost-input" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
