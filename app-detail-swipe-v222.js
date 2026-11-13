@@ -1347,32 +1347,60 @@ function r98Structure(c){
 }
 
 // r99: actionable after-close position decision. Uses completed EOD bars only.
+// r101: EOD-only, multi-signal risk gating and rolling-high drawdown protection.
+// Rolling highs are market observations, NOT a claim about the investor's entry-date peak.
+function r101Quality(c,mode){
+ const b=c?.bars;
+ const needed=mode==='long'?65:mode==='medium'?45:25;
+ if(!Array.isArray(b)||b.length<needed)return {ok:false,why:`${mode==='long'?'長期':'目前'}判斷至少需要${needed}根完整日K`};
+ let prev='';
+ for(const x of b){
+  if(!Array.isArray(x)||x.length<6||typeof x[0]!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(x[0])||x[0]<=prev)return {ok:false,why:'日K日期缺漏、重複或排序錯誤'};
+  prev=x[0];const [o,h,l,cl,v]=x.slice(1,6).map(Number);
+  if(![o,h,l,cl,v].every(Number.isFinite)||l<=0||h<l||o<l||o>h||cl<l||cl>h||v<0)return {ok:false,why:'日K價格或成交量異常'};
+ }
+ if(String(c.date||'')!==prev)return {ok:false,why:'最新盤後日期與K線不一致'};
+ return {ok:true};
+}
 function r99Action(c,cost,qty,mode='medium'){
- const v=r82Plan(c),d=r92Decision(c,mode);
- if(!v.ok||!Number.isFinite(cost)||cost<=0||!Number.isSafeInteger(qty)||qty<=0||qty>100000000||d.status==='資料不足')return {title:'等待資料',tone:'muted',note:'輸入有效成本與股數，並確認最新盤後資料',price:null,shares:0};
- const close=v.close,valid=x=>Number.isFinite(x)&&x>0;
+ const v=r82Plan(c),d=r92Decision(c,mode),quality=r101Quality(c,mode);
+ const wait=(why)=>({title:'等待資料',tone:'muted',note:why,condition:'資料不足，暫不給買賣方向',shares:0,valid:false});
+ if(!quality.ok)return wait(quality.why);
+ if(!v.ok||d.status==='資料不足')return wait('盤後資料尚未完成核對');
+ if(!Number.isFinite(cost)||cost<=0||!Number.isSafeInteger(qty)||qty<=0||qty>100000000)return wait('請輸入有效成本價與持股股數');
+ const bars=c.bars,close=v.close,valid=x=>Number.isFinite(x)&&x>0;
  const breakout=valid(v.resistance)?v.resistance:null;
  const defense=valid(v.defense)?v.defense:null;
  const rebound=valid(v.rebound)&&v.rebound>close?v.rebound:null;
- const plan=r91ProfitPlan(v,cost),protectedFloor=plan?.defense;
- // A cost-based floor cannot replace a market-structure trigger; it is a separate warning.
- const stop=valid(defense)?defense:null;
- const severe=d.status==='趨勢破壞'||(d.status==='減碼警戒'&&d.institutionalSelling&&d.trend==='轉弱');
- const reduce=d.status==='減碼警戒'||d.status==='減碼確認'||d.status==='減碼預警'||d.status==='趨勢破壞';
+ const recent=bars.slice(-Math.min(60,bars.length));
+ const rollingHigh=Math.max(...recent.map(b=>Number(b[2])));
+ const drawdown=(close/rollingHigh-1)*100;
+ const prev20=bars.slice(-21,-1);
+ const prior20Low=Math.min(...prev20.map(b=>Number(b[3])));
+ const last=bars.at(-1),prior=bars.at(-2);
+ const closeLocation=Number(last[2])>Number(last[3])?(close-Number(last[3]))/(Number(last[2])-Number(last[3])):.5;
+ const breakdown20=close<prior20Low;
+ const twoDayWeak=close<Number(prior[4])&&Number(prior[4])<Number(bars.at(-3)[4]);
+ const volumeRatio=Number.parseFloat(d.volume);
+ const distributionRisk=Number.isFinite(volumeRatio)&&volumeRatio>=1.4&&closeLocation<=.3&&close<Number(last[1]);
+ const riskCount=Number(distributionRisk)+Number(breakdown20)+Number(twoDayWeak)+Number(d.institutionalSelling);
+ // A single bad candle is not sufficient for full liquidation. Confirm market structure first.
+ const severe=d.trend==='轉弱'&&breakdown20&&riskCount>=2;
+ const reduce=d.status==='趨勢破壞'||d.status==='減碼警戒'||(drawdown<=-12&&riskCount>=2);
  const profitable=close>cost;
- let title='盤整等待',tone='warning',fraction=0,trigger=null,condition='等待趨勢或量價確認',note='不加碼';
- if(severe){title='止血出場';tone='danger';fraction=1;trigger=close;condition='盤後確認轉弱，次一交易日優先評估出場';note='以最新收盤價估算，隔日不保證成交';}
- else if(reduce){title=profitable?'獲利減碼':'風險減碼';tone='warning';fraction=.25;trigger=close;condition='盤後出現轉弱警訊，次一交易日評估先減碼';note='非盤中自動成交';}
+ let title='盤整等待',tone='warning',fraction=0,trigger=null,condition='未達確認條件，等待下一交易日收盤訊號',note='不加碼';
+ if(severe){title='止血出場';tone='danger';fraction=1;trigger=close;condition='中期支撐失守且多項轉弱訊號確認，下一交易日優先評估出場';note='隔日可能跳空，收盤價僅供金額估算';}
+ else if(reduce){title=profitable?'獲利減碼':'風險減碼';tone='warning';fraction=riskCount>=2?.5:.25;trigger=close;condition='趨勢轉弱，先控制部分部位風險';note='未確認全面出貨，保留後續重新評估空間';}
  else if(d.status==='多頭續抱'||d.status==='突破續抱'){
-  title='偏多續抱';tone='success';trigger=breakout;condition='趨勢維持且未確認轉弱，突破壓力後續抱';note='加碼須另確認突破量能，不因成本低就加碼';
+  title='偏多續抱';tone='success';trigger=breakout;condition='趨勢健康，尚未達減碼條件；突破後續抱';note='加碼仍須收盤確認量價';
  }else if(d.trend==='偏多'&&v.highVolume&&!d.institutionalSelling){
-  title='加碼觀察';tone='success';trigger=breakout;condition='突破壓力且收盤量價確認才考慮加碼';note='盤後再確認，不預先認定已突破';
- }else if(profitable&&d.status==='震盪觀察'){
-  title='獲利保護';tone='warning';trigger=protectedFloor??stop;condition='若收盤跌破獲利保護參考價，重新評估減碼';note='尚未觸發賣出';
+  title='加碼觀察';tone='success';trigger=breakout;condition='突破壓力且收盤量價確認後，才考慮加碼';note='尚未觸發加碼';
+ }else if(profitable&&drawdown<=-8&&riskCount>=1){
+  title='獲利保護';tone='warning';trigger=defense;condition='近60日高點回落且出現轉弱訊號，觀察防守價';note='尚未確認減碼';
  }
  const shares=fraction===1?qty:fraction>0?Math.max(1,Math.floor(qty*fraction)):0;
  const value=shares*close,pnl=shares*(close-cost);
- return {title,tone,trigger,stop,rebound,breakout,shares,value,pnl,close,condition,note,asOf:v.date,valid:true,profit:profitable,qty};
+ return {title,tone,trigger,stop:defense,rebound,breakout,shares,value,pnl,close,condition,note,asOf:v.date,valid:true,profit:profitable,qty,rollingHigh,drawdown};
 }
 function r99ActionHTML(a){
  const fmt=n=>Math.round(n).toLocaleString('zh-TW');
@@ -1393,7 +1421,7 @@ function nextSessionDefenseCard(c){
  const code=String(c.code||''),key='chaopan-r82-cost-'+code,qtyKey='chaopan-r91-qty-'+code,modeKey='chaopan-r92-mode-'+code;
  let cost='',qty='1000',mode='medium';try{const savedMode=localStorage.getItem(modeKey);if(['short','medium','long'].includes(savedMode))mode=savedMode;const stored=localStorage.getItem(key),q=localStorage.getItem(qtyKey);if(stored!==null&&Number(stored)>0)cost=String(Number(stored));if(q!==null&&Number(q)>0)qty=String(Math.floor(Number(q)))}catch(e){}
  return `<section class="r82-decision r91-decision" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
- <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>持股決策 <small style="font-size:.65em;opacity:.7">r99</small></strong></div>
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>持股決策 <small style="font-size:.65em;opacity:.7">r101</small></strong></div>
  <div class="r99-action">${r99ActionHTML(r99Action(c,Number(cost),Number(qty),mode))}</div>
  <label>持有週期 <select class="r92-mode" style="font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"><option value="short" ${mode==='short'?'selected':''}>短線｜5、10日趨勢</option><option value="medium" ${mode==='medium'?'selected':''}>中期｜20日趨勢</option><option value="long" ${mode==='long'?'selected':''}>長期｜60日趨勢</option></select></label>
  <div style="font-size:.9em;opacity:.85">${esc(v.date)} 收盤 ${price(v.close)} 元</div>
