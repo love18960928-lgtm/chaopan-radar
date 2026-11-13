@@ -59,6 +59,11 @@ jobs:
           else
             echo "::warning::沒有 data/radar.json，跳過法人抓取"
           fi
+      - name: Enrich official TWSE stock-level institutional flows
+        run: |
+          if ! python scripts/update_institutions.py --radar data/radar.json; then
+            echo "::warning::TWSE T86 unavailable or invalid; keep institutional data unverified"
+          fi
       - name: Build independently searchable stocks
         run: python scripts/build_stock_lookup.py
       - name: Rebuild all four three-low payloads from validated EOD data
