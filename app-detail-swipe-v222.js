@@ -717,7 +717,8 @@ function sectorBattleCard(c,options={}){
   const w=v===null?0:hi===lo?60:12+(v-lo)/(hi-lo)*88;
   return `<div class="sector-price-line"><small>${esc(name)}</small><span class="sector-price-track"><i style="width:${w.toFixed(1)}%"></i></span><b>${v===null?'—':n(v)}</b></div>`;
  }).join('');
- const levels=options.source==='lookup-detail'?nextSessionDefenseCard(c):r38PlanCard(c,g,true);
+ // r87: same reduction/price panel across lookup and all candidate cards.
+ const levels=nextSessionDefenseCard(c);
  const trackLine=track.length?`紅K×${track[0].red}／綠K×${track[0].green}；${esc(track[0].source)}`:'歷史突破K線事件尚未核對';
  const institutional=options.institutional;
  const institutionFacts=institutional?`<div class="sector-card-institution">三大法人淨買賣超：外資 ${Number(institutional.foreign).toLocaleString('zh-TW')} 張／投信 ${Number(institutional.trust).toLocaleString('zh-TW')} 張／自營商 ${Number(institutional.dealer).toLocaleString('zh-TW')} 張；交易日 ${esc(state.payload?.asOf||'待核對')}。</div>`:'';
@@ -726,7 +727,7 @@ function sectorBattleCard(c,options={}){
  <div class="sector-card-tags"><span class="sector-card-tag ok">${esc(ma510)}</span><span class="sector-card-tag muted">${trackLine}</span></div>
  <div class="sector-ma-row">${[5,10,20,60,120,240].map(d=>`<span class="sector-ma ${numeric(ma.values?.[d])===null?'missing':ma.close>=ma.values[d]?'above':'below'}">MA${d} ${n(ma.values[d])}</span>`).join('')}</div>
  <small>排名為研究排序，不是勝率；缺資料不補零。完整走勢請使用個股的「走勢圖」分頁。</small>`;
- const actions=options.source==='lookup-detail'?'':`<button type="button" class="sector-open-detail" data-card-detail="${esc(key)}">查看完整作戰字卡</button>`;
+ const actions=options.source==='lookup-detail'?'':`<button type="button" class="sector-open-detail" data-card-detail="${esc(key)}">開啟走勢圖與關卡圖解</button>`;
  return unifiedCardShell({key:cardKey,rankText,stage:stage+(breakoutStar(c)?" ｜ "+breakoutStar(c).mark:"")+(c.breakoutQuality==='weak'?" 🔴轉弱":c.breakoutQuality==='watch'?" 🟡觀察":c.breakoutQuality==='strong'?" 🟢續強":""),code:c.code,name:c.name,
   industry:c.industry||c.fundamentals?.industry||c.market||'產業待核對',
   closeText:n(c.close),changeText:pct(c.changePct),changeClass:numeric(c.changePct)>0?'rising':numeric(c.changePct)<0?'falling':'',
@@ -1242,7 +1243,7 @@ function nextSessionDefenseCard(c){
  let cost='';try{const stored=localStorage.getItem(key);if(stored!==null&&Number(stored)>0)cost=String(Number(stored))}catch(e){}
  const show=n=>n===null?'待確認':price(n);
  const desc=v.resistance===null?'目前未找到高於收盤的已知壓力；暫不產生減碼價。':v.reduction>=v.resistance?'減碼價計算異常，請檢查資料。':'反彈接近壓力且受阻時，觀察是否跌回減碼參考價；並非到價自動成交。';
- return `<section class="r82-decision" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
+ return `<section class="r82-decision" data-reduction="${v.reduction===null?'':v.reduction}" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>盤後減碼決策</strong><span style="border:1px solid #e7b45c;color:#e7b45c;border-radius:18px;padding:4px 9px">${esc(v.state)}</span></div>
  <div style="font-size:.95em">${esc(v.date)} 收盤 <strong>${price(v.close)} 元</strong></div>
  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
@@ -2835,7 +2836,20 @@ function initQuickStockSearch(){
  result.addEventListener('click',e=>{const b=e.target.closest('[data-quick-code]');if(b)quickOpen(b.dataset.quickMarket,b.dataset.quickCode)});
  loadQuickDirectory();
 }
-function wire(){loadWatch();setupSixtyToolbar();setupDetailSwipe();initQuickStockSearch();$('#deskDisclosure')?.addEventListener('toggle',e=>{if(e.target.open&&state.payload)renderTradeDesk(true)});document.addEventListener('click',unifiedCardEvents);document.addEventListener('toggle',e=>{if(e.target.matches?.('details.r30-stock-entry'))r30StockToggle(e.target);},true);
+function wire(){loadWatch();setupSixtyToolbar();setupDetailSwipe();initQuickStockSearch();$('#deskDisclosure')?.addEventListener('toggle',e=>{if(e.target.open&&state.payload)renderTradeDesk(true)});document.addEventListener('click',unifiedCardEvents);
+ // r87: delegated input binding supports cost inputs in dynamically rendered candidate cards.
+ document.addEventListener('input',e=>{
+  const input=e.target.closest?.('.unified-battle-card .r82-cost-input');
+  if(!input)return;
+  const card=input.closest('.unified-battle-card'),profit=card?.querySelector('.r82-profit');
+  if(!profit)return;
+  const code=String(input.closest('.r82-decision')?.dataset.code||'');
+  const v=Number(input.closest('.r82-decision')?.dataset.reduction||NaN);
+  const cost=Number(input.value);
+  if(!input.value||!Number.isFinite(cost)||cost<=0||!Number.isFinite(v)||v<=0){profit.textContent='輸入成本後顯示';profit.style.color='';}
+  else{const pnl=Math.round((v-cost)*1000);profit.textContent=pnl.toLocaleString('zh-TW')+' 元';profit.style.color=pnl>=0?'#79dfbd':'#ff909b';}
+  if(code){try{if(input.value&&cost>0)localStorage.setItem('chaopan-r82-cost-'+code,String(cost));else localStorage.removeItem('chaopan-r82-cost-'+code)}catch(_){}}
+ });document.addEventListener('toggle',e=>{if(e.target.matches?.('details.r30-stock-entry'))r30StockToggle(e.target);},true);
  $$('.lens-scope').forEach(b=>b.onclick=()=>{state.rankLens=b.dataset.lens;state.rankView='20';state.stageView='all';state.tab='all';state.query='';$('#searchBox').value='';state.visible=30;renderList()});const liquidityToggle=$('#onlyLiquid');if(liquidityToggle){liquidityToggle.checked=state.liquidityOnly;liquidityToggle.addEventListener('change',e=>{state.liquidityOnly=e.target.checked;state.visible=30;renderList()})}$$('.rank-scope').forEach(b=>b.onclick=()=>{state.rankView=b.dataset.scope;state.visible=30;state.tab='all';renderList()});$$('.stage-scope').forEach(b=>b.onclick=()=>{state.stageView=b.dataset.stage;state.visible=30;state.tab='all';state.query='';$('#searchBox').value='';renderList()});const sort=$('#sortFilter');if(sort){sort.insertAdjacentHTML('afterbegin','<option value="trade">操盤品質與追高風險（預設）</option><option value="launch">第一根發動優先</option><option value="priority">基本面投資優先度</option>');sort.value='trade';state.sort='trade';}$$('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.stat-card').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.nav-item').forEach(b=>b.onclick=()=>navTo(b.dataset.page));$('#searchBox').oninput=e=>{state.query=e.target.value;state.visible=30;renderList()};$('#showMore').onclick=()=>{state.visible+=30;renderList()};$('#refreshBtn').onclick=()=>loadData();$('.advanced-radar')?.addEventListener('toggle',e=>{if(e.target.open&&state.payload){state.rankListDirty=false;renderList()}});$('#closeModal').onclick=()=>hideDetails();$('#modalOverlay').onclick=e=>{if(e.target===$('#modalOverlay'))hideDetails()};window.onkeydown=e=>{if(e.key==='Escape')hideDetails()};window.addEventListener('popstate',()=>{if(state.detail||state.etfDetail)hideDetails(true)});loadData();if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(console.warn)}}
 document.addEventListener('DOMContentLoaded',wire);
 
