@@ -1361,8 +1361,8 @@ function r99Action(c,cost,qty,mode='medium'){
  const reduce=d.status==='減碼警戒'||d.status==='減碼確認'||d.status==='減碼預警'||d.status==='趨勢破壞';
  const profitable=close>cost;
  let title='盤整等待',tone='warning',fraction=0,trigger=null,condition='等待趨勢或量價確認',note='不加碼';
- if(severe){title='止血出場';tone='danger';fraction=1;trigger=close;condition='盤後確認轉弱，明日優先處理出場風險';note='以最新收盤價估算，隔日不保證成交';}
- else if(reduce){title=profitable?'獲利減碼':'風險減碼';tone='warning';fraction=.25;trigger=close;condition='盤後出現轉弱警訊，明日優先評估減碼';note='非盤中自動成交';}
+ if(severe){title='止血出場';tone='danger';fraction=1;trigger=close;condition='盤後確認轉弱，次一交易日優先評估出場';note='以最新收盤價估算，隔日不保證成交';}
+ else if(reduce){title=profitable?'獲利減碼':'風險減碼';tone='warning';fraction=.25;trigger=close;condition='盤後出現轉弱警訊，次一交易日評估先減碼';note='非盤中自動成交';}
  else if(d.status==='多頭續抱'||d.status==='突破續抱'){
   title='偏多續抱';tone='success';trigger=breakout;condition='趨勢維持且未確認轉弱，突破壓力後續抱';note='加碼須另確認突破量能，不因成本低就加碼';
  }else if(d.trend==='偏多'&&v.highVolume&&!d.institutionalSelling){
@@ -1389,30 +1389,33 @@ function r99ActionHTML(a){
 }
 function nextSessionDefenseCard(c){
  const v=r82Plan(c);
- if(!v.ok)return `<section class="r82-decision" style="padding:16px;border:1px solid #385a6c;border-radius:14px"><strong>持股決策｜資料待確認</strong><p>${esc(v.reason)}</p></section>`;
+ if(!v.ok)return `<section class="r82-decision" style="padding:16px;border:1px solid #385a6c;border-radius:14px"><strong>盤後風險決策</strong><p>${esc(v.reason)}</p></section>`;
  const code=String(c.code||''),key='chaopan-r82-cost-'+code,qtyKey='chaopan-r91-qty-'+code,modeKey='chaopan-r92-mode-'+code;
- let cost='',qty='',mode='medium';
- try{const m=localStorage.getItem(modeKey),x=localStorage.getItem(key),q=localStorage.getItem(qtyKey);if(['short','medium','long'].includes(m))mode=m;if(x!==null&&Number(x)>0)cost=String(Number(x));if(q!==null&&Number(q)>0)qty=String(Math.floor(Number(q)))}catch(e){}
- return `<section class="r82-decision r91-decision" style="box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:14px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
- <strong>持股決策｜${esc(v.date)} 盤後</strong>
+ let cost='',qty='1000',mode='medium';try{const savedMode=localStorage.getItem(modeKey);if(['short','medium','long'].includes(savedMode))mode=savedMode;const stored=localStorage.getItem(key),q=localStorage.getItem(qtyKey);if(stored!==null&&Number(stored)>0)cost=String(Number(stored));if(q!==null&&Number(q)>0)qty=String(Math.floor(Number(q)))}catch(e){}
+ return `<section class="r82-decision r91-decision" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>持股決策 <small style="font-size:.65em;opacity:.7">r99</small></strong></div>
+ <div class="r99-action">${r99ActionHTML(r99Action(c,Number(cost),Number(qty),mode))}</div>
+ <label>持有週期 <select class="r92-mode" style="font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"><option value="short" ${mode==='short'?'selected':''}>短線｜5、10日趨勢</option><option value="medium" ${mode==='medium'?'selected':''}>中期｜20日趨勢</option><option value="long" ${mode==='long'?'selected':''}>長期｜60日趨勢</option></select></label>
+ <div style="font-size:.9em;opacity:.85">${esc(v.date)} 收盤 ${price(v.close)} 元</div>
  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
- <label style="min-width:0">持股成本（元）<input class="r82-cost-input" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="輸入成本" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
- <label style="min-width:0">持有股數<input class="r91-qty-input" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" placeholder="輸入股數" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
+ <label style="min-width:0">持股成本（元）<input class="r82-cost-input" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
+ <label style="min-width:0">實際持股（股）<input class="r91-qty-input" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
  </div>
- <label>持有週期 <select class="r92-mode" style="font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"><option value="short" ${mode==='short'?'selected':''}>短線｜5、10日</option><option value="medium" ${mode==='medium'?'selected':''}>波段｜20日</option><option value="long" ${mode==='long'?'selected':''}>長期｜60日</option></select></label>
- <div class="r99-action" aria-live="polite">${r99ActionHTML(r99Action(c,cost===''?NaN:Number(cost),qty===''?NaN:Number(qty),mode))}</div>
- <div class="r91-pnl" style="padding:10px;border:1px solid #385a6c;border-radius:10px">${cost!==''&&qty!==''?`帳面損益：${Math.round((v.close-Number(cost))*Number(qty)).toLocaleString('zh-TW')} 元`:'輸入成本及股數後顯示帳面損益'}</div>
+ <div class="r91-pnl" style="padding:10px;border:1px solid #385a6c;border-radius:10px">${plan?`目前帳面報酬 ${plan.gain.toFixed(2)}%；帳面損益約 ${Math.round(plan.unrealizedPerShare*Number(qty)).toLocaleString('zh-TW')} 元`:'輸入成本後，顯示報酬率與獲利保護條件'}</div>
+
  </section>`;
 }
 function r82BindCost(card,c){
- const input=card.querySelector('.r82-cost-input'),qtyInput=card.querySelector('.r91-qty-input'),modeInput=card.querySelector('.r92-mode'),pnl=card.querySelector('.r91-pnl'),actionEl=card.querySelector('.r99-action');
- if(!input||!qtyInput||!actionEl)return;
+ const input=card.querySelector('.r82-cost-input'),qtyInput=card.querySelector('.r91-qty-input'),pnl=card.querySelector('.r91-pnl'),modeInput=card.querySelector('.r92-mode'),actionEl=card.querySelector('.r99-action');
+ if(!input||!qtyInput||!pnl||!actionEl)return;
  const v=r82Plan(c),key='chaopan-r82-cost-'+String(c.code||''),qtyKey='chaopan-r91-qty-'+String(c.code||''),modeKey='chaopan-r92-mode-'+String(c.code||'');
  const update=()=>{
-  const cost=input.value===''?NaN:Number(input.value),qty=qtyInput.value===''?NaN:Number(qtyInput.value),valid=Number.isFinite(cost)&&cost>0&&Number.isSafeInteger(qty)&&qty>0&&qty<=100000000;
+  const cost=input.value.trim()===''?NaN:Number(input.value),qty=qtyInput.value.trim()===''?NaN:Number(qtyInput.value);
   actionEl.innerHTML=r99ActionHTML(r99Action(c,cost,qty,modeInput?.value||'medium'));
-  if(pnl)pnl.textContent=valid?`帳面報酬 ${((v.close/cost-1)*100).toFixed(2)}%｜帳面損益 ${Math.round((v.close-cost)*qty).toLocaleString('zh-TW')} 元`:'輸入有效成本及整數股數後顯示損益';
-  try{if(Number.isFinite(cost)&&cost>0)localStorage.setItem(key,String(cost));else localStorage.removeItem(key);if(Number.isSafeInteger(qty)&&qty>0&&qty<=100000000)localStorage.setItem(qtyKey,String(qty));else localStorage.removeItem(qtyKey);if(modeInput)localStorage.setItem(modeKey,modeInput.value)}catch(e){}
+  const valid=Number.isSafeInteger(qty)&&qty>0&&qty<=100000000;
+  const plan=Number.isFinite(cost)&&cost>0?r91ProfitPlan(v,cost):null;
+  pnl.textContent=plan&&valid?`帳面報酬 ${plan.gain.toFixed(2)}%｜帳面損益 ${Math.round(plan.unrealizedPerShare*qty).toLocaleString('zh-TW')} 元`:'輸入有效成本與持股股數，立即顯示損益及明日決策';
+  try{if(plan)localStorage.setItem(key,String(cost));else localStorage.removeItem(key);if(valid)localStorage.setItem(qtyKey,String(qty));if(modeInput)localStorage.setItem(modeKey,modeInput.value)}catch(e){}
  };
  input.addEventListener('input',update);qtyInput.addEventListener('input',update);if(modeInput)modeInput.addEventListener('change',update);update();
 }
