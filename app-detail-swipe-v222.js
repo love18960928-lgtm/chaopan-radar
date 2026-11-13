@@ -2384,6 +2384,51 @@ function renderDetail(){const c=state.detail;if(!c)return;const starred=state.wa
   const zoom=(dir)=>{const total=(c.bars||[]).length;state.chartDays=Math.min(Math.max(12,total),Math.max(12,Math.min(total,Math.round(state.chartDays*(dir==='in'?.76:1.32)))));renderDetail()};
   $$('.zoom-btn').forEach(b=>b.onclick=()=>zoom(b.dataset.zoom));
   const chart=$('#chartSvg');
+  // r86: Historical daily-candle inspector; read-only and independent of signals.
+  if(chart && chart.querySelector('svg') && Array.isArray(c.bars)){
+    const svg=chart.querySelector('svg');
+    const allBars=c.bars;
+    const shown=allBars.slice(-state.chartDays);
+    const plotLeft=126,plotRight=615;
+    const panel=document.createElement('div');
+    panel.className='r86-candle-inspector';
+    panel.setAttribute('role','status');
+    panel.setAttribute('aria-live','polite');
+    panel.style.cssText='margin:9px 0;padding:12px;border:1px solid #416278;border-radius:12px;background:#102637;color:#e4edf5;font-size:14px;line-height:1.65';
+    chart.insertAdjacentElement('beforebegin',panel);
+    const vertical=document.createElementNS('http://www.w3.org/2000/svg','line');
+    vertical.setAttribute('stroke','#f2cf75');vertical.setAttribute('stroke-width','1.3');
+    vertical.setAttribute('stroke-dasharray','4 3');vertical.setAttribute('pointer-events','none');
+    svg.appendChild(vertical);
+    const selectBar=(index)=>{
+      if(index<0||index>=shown.length)return;
+      const b=shown[index];if(!Array.isArray(b)||b.length<6)return;
+      const fmt=n=>Number(n).toLocaleString('zh-TW',{maximumFractionDigits:2});
+      const previous=allBars[allBars.length-shown.length+index-1];
+      const change=previous&&Number(previous[4])>0?(Number(b[4])/Number(previous[4])-1)*100:null;
+      panel.textContent='';
+      const head=document.createElement('div');head.style.cssText='font-weight:700;color:#65d9c2;margin-bottom:3px';head.textContent=String(b[0])+'｜歷史日K';
+      const line=document.createElement('div');line.textContent=`開 ${fmt(b[1])}　高 ${fmt(b[2])}　低 ${fmt(b[3])}　收 ${fmt(b[4])}`;
+      const foot=document.createElement('div');foot.textContent=`成交量 ${fmt(b[5])}（原始資料單位）`+(change===null?'':`　漲跌 ${change>=0?'+':''}${change.toFixed(2)}%`);
+      panel.append(head,line,foot);
+      const x=plotLeft+(plotRight-plotLeft)*(index+.5)/shown.length;
+      vertical.setAttribute('x1',String(x));vertical.setAttribute('x2',String(x));vertical.setAttribute('y1','20');vertical.setAttribute('y2','336');
+    };
+    const locate=ev=>{
+      const pt=svg.createSVGPoint();pt.x=ev.clientX;pt.y=ev.clientY;
+      const matrix=svg.getScreenCTM();if(!matrix)return;
+      const local=pt.matrixTransform(matrix.inverse());
+      if(local.x<plotLeft-8||local.x>plotRight+8)return;
+      selectBar(Math.max(0,Math.min(shown.length-1,Math.floor((local.x-plotLeft)/(plotRight-plotLeft)*shown.length))));
+    };
+    let dragging=false;
+    svg.addEventListener('pointerdown',ev=>{if(ev.pointerType==='touch'&&!ev.isPrimary)return;dragging=true;locate(ev)});
+    svg.addEventListener('pointermove',ev=>{if(dragging)locate(ev)});
+    svg.addEventListener('pointerup',()=>{dragging=false});
+    svg.addEventListener('pointercancel',()=>{dragging=false});
+    svg.addEventListener('click',locate);
+    if(shown.length)selectBar(shown.length-1);
+  }
   if(chart){let distance=null;const separation=ev=>Math.hypot(ev.touches[0].clientX-ev.touches[1].clientX,ev.touches[0].clientY-ev.touches[1].clientY);
     chart.addEventListener('touchstart',ev=>{if(ev.touches.length===2)distance=separation(ev)},{passive:true});
     chart.addEventListener('touchmove',ev=>{if(ev.touches.length!==2||!distance)return;ev.preventDefault();const next=separation(ev);if(next>distance*1.24){distance=null;zoom('in')}else if(next<distance*.8){distance=null;zoom('out')}},{passive:false});
