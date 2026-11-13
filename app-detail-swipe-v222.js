@@ -1222,18 +1222,27 @@ function r82Plan(c){
  const r=nextSessionDefense(c);
  if(r.status!=='ok'||!r.dailyPlan)return {ok:false,reason:r.text||'資料不足'};
  const bars=c.bars, last=bars.at(-1), close=Number(last[4]), atr=Number(r.dailyPlan.atr);
- const previous=bars.slice(0,-1), highs=previous.slice(-10).map(b=>Number(b[2]));
+ if(!Array.isArray(bars)||bars.length<20||!Number.isFinite(close)||close<=0||String(last[0])!==String(c.date))return {ok:false,reason:'歷史K線不足或日期不一致，暫停減碼價計算'};
+ const previous=bars.slice(0,-1), prior=previous.slice(-20);
  const neck=Number(latestNeck(c));
- const candidates=[neck,...highs].filter(v=>Number.isFinite(v)&&v>close*1.002);
+ // r88: pressure is a pre-existing level, never today's high. Separate the
+ // nearest prior high from a repeatedly-tested historical ceiling.
+ const priorHighs=prior.map(b=>Number(b[2])).filter(v=>Number.isFinite(v)&&v>0);
+ const candidates=[neck,...priorHighs].filter(v=>Number.isFinite(v)&&v>close*1.002);
  const resistance=candidates.length?Math.min(...candidates):null;
- // ATR-scaled 0.5%-1.5% pressure buffer; a candidate, never a guaranteed fill.
- const buffer=Number.isFinite(atr)&&atr>0?Math.max(.005,Math.min(.015,atr/close*.18)):.01;
- const reduction=resistance?r82Snap(resistance*(1-buffer),'down'):null;
+ const prior5=previous.slice(-5).map(b=>Number(b[2])).filter(Number.isFinite);
+ const priorCeiling=prior5.length?Math.max(...prior5):null;
+ const rejected=priorCeiling!==null&&Number(last[2])>priorCeiling&&close<priorCeiling;
  const risk=defensiveEarlyWarning(c);
- const rejection=!!r.dailyPlan.rejection;
- const failed=highs.length>0&&Number(last[2])>Math.max(...highs.slice(-5))&&close<Math.max(...highs.slice(-5));
- const state=rejection||failed?'壓力受阻警戒':risk.stage==='zero'||risk.stage==='first'||risk.stage==='second'?'防守觀察':'趨勢觀察';
- return {ok:true,date:r.asOf,close,resistance:r82Snap(resistance,'up'),reduction,buffer,state,rejection,risk:risk.stage,atr,neck:Number.isFinite(neck)?neck:null};
+ const rejection=!!r.dailyPlan.rejection||rejected;
+ const buffer=Number.isFinite(atr)&&atr>0?Math.max(.005,Math.min(.015,atr/close*.18)):.01;
+ // If the stock is already below the planned exit level, the historical
+ // trigger is missed. Do not present it as an executable next-day sell price.
+ const rawReduction=resistance?r82Snap(resistance*(1-buffer),'down'):null;
+ const reduction=rawReduction!==null&&rawReduction>close?rawReduction:null;
+ const state=rejection?'突破失敗／回落警戒':risk.stage==='zero'||risk.stage==='first'||risk.stage==='second'?'防守觀察':'趨勢觀察';
+ const reason=!resistance?'目前無高於收盤的已知壓力':rawReduction!==null&&reduction===null?'減碼觸發價已在收盤價下方；不得當成隔日可成交賣價':null;
+ return {ok:true,date:r.asOf,close,resistance:resistance?r82Snap(resistance,'up'):null,reduction,buffer,state,rejection,risk:risk.stage,atr,neck:Number.isFinite(neck)?neck:null,priorCeiling,reason};
 }
 function nextSessionDefenseCard(c){
  const v=r82Plan(c);
@@ -1242,7 +1251,7 @@ function nextSessionDefenseCard(c){
  const key='chaopan-r82-cost-'+code;
  let cost='';try{const stored=localStorage.getItem(key);if(stored!==null&&Number(stored)>0)cost=String(Number(stored))}catch(e){}
  const show=n=>n===null?'待確認':price(n);
- const desc=v.resistance===null?'目前未找到高於收盤的已知壓力；暫不產生減碼價。':v.reduction>=v.resistance?'減碼價計算異常，請檢查資料。':'反彈接近壓力且受阻時，觀察是否跌回減碼參考價；並非到價自動成交。';
+ const desc=v.reason||'僅當隔日反彈接近壓力且再度受阻時，觀察是否跌回預設參考價；不代表自動成交。';
  return `<section class="r82-decision" data-reduction="${v.reduction===null?'':v.reduction}" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>盤後減碼決策</strong><span style="border:1px solid #e7b45c;color:#e7b45c;border-radius:18px;padding:4px 9px">${esc(v.state)}</span></div>
  <div style="font-size:.95em">${esc(v.date)} 收盤 <strong>${price(v.close)} 元</strong></div>
@@ -1253,7 +1262,7 @@ function nextSessionDefenseCard(c){
  <div style="padding:12px;border:1px solid #385a6c;border-radius:12px;min-width:0"><small>減碼時每張估算損益</small><div class="r82-profit" style="font-size:1.2em;font-weight:700">${cost&&v.reduction!==null?Math.round((v.reduction-Number(cost))*1000).toLocaleString('zh-TW')+' 元':'輸入成本後顯示'}</div></div>
  </div>
  <div style="font-size:.9em;line-height:1.6">${desc}</div>
- <small style="color:#a8bfcb">壓力下方緩衝 ${(v.buffer*100).toFixed(2)}%（ATR調整，0.5%～1.5%）；成本僅計算損益，不保證減碼獲利。第0根：${v.risk==='zero'||v.risk==='first'||v.risk==='second'?'警戒':'未觸發'}；衝高回落：${v.rejection?'警戒':'未觸發'}。僅盤後日K；不提供盤中即時訊號，損益未扣費稅。</small>
+ <small style="color:#a8bfcb">已知壓力為歷史候選關卡，未驗證多次測試強度；壓力下方緩衝 ${(v.buffer*100).toFixed(2)}%（ATR調整，0.5%～1.5%）；成本僅計算損益，不保證減碼獲利。第0根：${v.risk==='zero'||v.risk==='first'||v.risk==='second'?'警戒':'未觸發'}；衝高回落：${v.rejection?'警戒':'未觸發'}。僅盤後日K；不提供盤中即時訊號，損益未扣費稅。</small>
  </section>`;
 }
 function r82BindCost(card,c){
@@ -2391,6 +2400,7 @@ function renderDetail(){const c=state.detail;if(!c)return;const starred=state.wa
     const allBars=c.bars;
     const shown=allBars.slice(-state.chartDays);
     const plotLeft=126,plotRight=615;
+    const validShown=shown.length>0&&shown.every(b=>Array.isArray(b)&&b.length>=6&&[1,2,3,4,5].every(k=>Number.isFinite(Number(b[k]))));
     const panel=document.createElement('div');
     panel.className='r86-candle-inspector';
     panel.setAttribute('role','status');
@@ -2419,7 +2429,7 @@ function renderDetail(){const c=state.detail;if(!c)return;const starred=state.wa
       const pt=svg.createSVGPoint();pt.x=ev.clientX;pt.y=ev.clientY;
       const matrix=svg.getScreenCTM();if(!matrix)return;
       const local=pt.matrixTransform(matrix.inverse());
-      if(local.x<plotLeft-8||local.x>plotRight+8)return;
+      if(!validShown||local.x<plotLeft-8||local.x>plotRight+8)return;
       selectBar(Math.max(0,Math.min(shown.length-1,Math.floor((local.x-plotLeft)/(plotRight-plotLeft)*shown.length))));
     };
     let dragging=false;
@@ -2427,8 +2437,9 @@ function renderDetail(){const c=state.detail;if(!c)return;const starred=state.wa
     svg.addEventListener('pointermove',ev=>{if(dragging)locate(ev)});
     svg.addEventListener('pointerup',()=>{dragging=false});
     svg.addEventListener('pointercancel',()=>{dragging=false});
+    svg.addEventListener('pointerleave',()=>{dragging=false});
     svg.addEventListener('click',locate);
-    if(shown.length)selectBar(shown.length-1);
+    if(validShown)selectBar(shown.length-1);else panel.textContent='歷史K線欄位不完整，無法查價';
   }
   if(chart){let distance=null;const separation=ev=>Math.hypot(ev.touches[0].clientX-ev.touches[1].clientX,ev.touches[0].clientY-ev.touches[1].clientY);
     chart.addEventListener('touchstart',ev=>{if(ev.touches.length===2)distance=separation(ev)},{passive:true});
@@ -2791,7 +2802,7 @@ async function quickOpen(market,code){
  let row=allRows().find(x=>rowId(x)===id);
  const expectedDay=state.payload?.asOf||quickDirectory?.asOf;
  if(quickDirectory&&expectedDay&&quickDirectory.asOf!==expectedDay){
-  quickLookupNotice(`股票索引日期 ${quickDirectory.asOf} 與盤後行情 ${expectedDay} 不一致；請更新資料後再試。`);return;
+  quickLookupNotice(`股票索引日期 ${quickDirectory.asOf} 與盤後行情 ${expectedDay} 不一致；將嘗試使用同日個股資料，若不存在則停止開啟。`);
  }
  if(row&&expectedDay&&row.date!==expectedDay){
   // A current lookup shard may be available even when the ranking cache is stale.
