@@ -2402,10 +2402,10 @@ function renderDetail(){const c=state.detail;if(!c)return;const starred=state.wa
     const plotLeft=126,plotRight=615;
     const validShown=shown.length>0&&shown.every(b=>Array.isArray(b)&&b.length>=6&&[1,2,3,4,5].every(k=>Number.isFinite(Number(b[k]))));
     const panel=document.createElement('div');
-    panel.className='r86-candle-inspector';
+    panel.className='r89-candle-header';
     panel.setAttribute('role','status');
     panel.setAttribute('aria-live','polite');
-    panel.style.cssText='margin:9px 0;padding:12px;border:1px solid #416278;border-radius:12px;background:#102637;color:#e4edf5;font-size:14px;line-height:1.65';
+    panel.style.cssText='display:block;box-sizing:border-box;position:relative;z-index:2;width:100%;margin:8px 0 5px;padding:8px 12px;border:1px solid #416278;border-radius:9px;background:#102637;color:#e4edf5;font-size:13px;line-height:1.4;pointer-events:none';
     chart.insertAdjacentElement('beforebegin',panel);
     const vertical=document.createElementNS('http://www.w3.org/2000/svg','line');
     vertical.setAttribute('stroke','#f2cf75');vertical.setAttribute('stroke-width','1.3');
@@ -2418,10 +2418,17 @@ function renderDetail(){const c=state.detail;if(!c)return;const starred=state.wa
       const previous=allBars[allBars.length-shown.length+index-1];
       const change=previous&&Number(previous[4])>0?(Number(b[4])/Number(previous[4])-1)*100:null;
       panel.textContent='';
-      const head=document.createElement('div');head.style.cssText='font-weight:700;color:#65d9c2;margin-bottom:3px';head.textContent=String(b[0])+'｜歷史日K';
-      const line=document.createElement('div');line.textContent=`開 ${fmt(b[1])}　高 ${fmt(b[2])}　低 ${fmt(b[3])}　收 ${fmt(b[4])}`;
-      const foot=document.createElement('div');foot.textContent=`成交量 ${fmt(b[5])}（原始資料單位）`+(change===null?'':`　漲跌 ${change>=0?'+':''}${change.toFixed(2)}%`);
-      panel.append(head,line,foot);
+      const head=document.createElement('div');
+      head.style.cssText='font-weight:700;color:#65d9c2;white-space:nowrap';
+      head.textContent=String(b[0])+'｜歷史日K';
+      const line=document.createElement('div');
+      line.style.cssText='display:flex;flex-wrap:wrap;gap:3px 14px;align-items:center;margin-top:3px';
+      [['開',b[1]],['高',b[2]],['低',b[3]],['收',b[4]],['量',b[5]]].forEach(([name,value])=>{
+        const item=document.createElement('span');item.style.whiteSpace='nowrap';
+        item.textContent=name+' '+fmt(value);line.appendChild(item);
+      });
+      if(change!==null){const item=document.createElement('span');item.style.whiteSpace='nowrap';item.style.color=change>=0?'#f18a91':'#55d0a8';item.textContent='漲跌 '+(change>=0?'+':'')+change.toFixed(2)+'%';line.appendChild(item)}
+      panel.append(head,line);
       const x=plotLeft+(plotRight-plotLeft)*(index+.5)/shown.length;
       vertical.setAttribute('x1',String(x));vertical.setAttribute('x2',String(x));vertical.setAttribute('y1','20');vertical.setAttribute('y2','336');
     };
@@ -2930,6 +2937,16 @@ globalThis.ChaopanApplyExpandedChart=function(){
    distancePanel.innerHTML=`<strong>${esc(stock.code)} ${esc(stock.name)}｜收盤 ${price(close)}</strong><div>${level('頸線',neck)}${level('第一支撐',numeric(supports[0]?.lower))}${level('第二支撐',numeric(supports[1]?.lower))}${level('最後防守',defense)}</div>`;
  }else{distancePanel.textContent='';}
  const chartSvg=area.querySelector('#chartSvg svg');
+ // r89: keep selected OHLCV above the chart and remove the obstructing floating distance card in landscape.
+ const inspector=area.querySelector('.r89-candle-header');
+ if(inspector){
+   inspector.style.position='relative';inspector.style.zIndex='5';
+   inspector.style.flex='0 0 auto';inspector.style.width='100%';
+   inspector.style.margin=expanded?'3px 0 2px':'8px 0 5px';
+   inspector.style.padding=expanded?'4px 10px':'8px 12px';
+   inspector.style.fontSize=expanded?'12px':'13px';
+ }
+ if(distancePanel){distancePanel.style.display=expanded?'none':'';}
  if(chartSvg){if(expanded)chartSvg.setAttribute('preserveAspectRatio','none');else chartSvg.removeAttribute('preserveAspectRatio');}
  const btn=area.querySelector('.chaopan-expand');
  if(btn){btn.textContent=expanded?'✕ 返回':'⛶ 橫向放大';btn.setAttribute('aria-label',expanded?'返回一般K線':'橫向放大K線');}
