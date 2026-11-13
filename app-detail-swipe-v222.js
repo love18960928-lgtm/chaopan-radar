@@ -2937,6 +2937,42 @@ globalThis.ChaopanApplyExpandedChart=function(){
    distancePanel.innerHTML=`<strong>${esc(stock.code)} ${esc(stock.name)}｜收盤 ${price(close)}</strong><div>${level('頸線',neck)}${level('第一支撐',numeric(supports[0]?.lower))}${level('第二支撐',numeric(supports[1]?.lower))}${level('最後防守',defense)}</div>`;
  }else{distancePanel.textContent='';}
  const chartSvg=area.querySelector('#chartSvg svg');
+ // r90: the host CSS uses a two-row !important GRID, so r89's inserted header
+ // fell into an implicit row below the chart. Reserve a real second row for it.
+ // This must use important to override the existing index.html layout rules.
+ if(expanded){
+   area.style.setProperty('grid-template-rows','42px minmax(42px,auto) minmax(0,1fr)','important');
+   area.style.setProperty('grid-template-columns','minmax(0,1fr)','important');
+ }else{
+   area.style.removeProperty('grid-template-rows');
+   area.style.removeProperty('grid-template-columns');
+ }
+ const header=area.querySelector('.r89-candle-header');
+ if(header){
+   if(expanded){
+     header.style.setProperty('grid-row','2','important');
+     header.style.setProperty('grid-column','1','important');
+     header.style.setProperty('display','block','important');
+     header.style.setProperty('overflow','hidden','important');
+     header.style.setProperty('margin','0','important');
+     header.style.setProperty('padding','3px 10px','important');
+     header.style.setProperty('font-size','clamp(11px,1.15vw,15px)','important');
+     header.style.setProperty('line-height','1.25','important');
+   }else{
+     ['grid-row','grid-column','overflow'].forEach(p=>header.style.removeProperty(p));
+   }
+ }
+ if(chartSvg){
+   if(expanded){chartSvg.parentElement.style.setProperty('grid-row','3','important');chartSvg.parentElement.style.setProperty('grid-column','1','important');}
+   else{chartSvg.parentElement.style.removeProperty('grid-row');chartSvg.parentElement.style.removeProperty('grid-column');}
+ }
+ // The expanded grid should contain only toolbar, OHLCV and the plot.
+ // Hiding the legacy status elements prevents implicit rows covering the header.
+ [...area.children].forEach(el=>{
+   if(el.classList.contains('chart-top')||el.classList.contains('r89-candle-header')||el.id==='chartSvg')return;
+   if(expanded){el.dataset.r90Display=el.style.display||'';el.style.setProperty('display','none','important')}
+   else if(Object.prototype.hasOwnProperty.call(el.dataset,'r90Display')){el.style.display=el.dataset.r90Display;delete el.dataset.r90Display}
+ });
  // r89: keep selected OHLCV above the chart and remove the obstructing floating distance card in landscape.
  const inspector=area.querySelector('.r89-candle-header');
  if(inspector){
