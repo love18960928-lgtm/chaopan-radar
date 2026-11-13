@@ -717,7 +717,7 @@ function sectorBattleCard(c,options={}){
   const w=v===null?0:hi===lo?60:12+(v-lo)/(hi-lo)*88;
   return `<div class="sector-price-line"><small>${esc(name)}</small><span class="sector-price-track"><i style="width:${w.toFixed(1)}%"></i></span><b>${v===null?'—':n(v)}</b></div>`;
  }).join('');
- const levels=r38PlanCard(c,g,true);
+ const levels=options.source==='lookup-detail'?nextSessionDefenseCard(c):r38PlanCard(c,g,true);
  const trackLine=track.length?`紅K×${track[0].red}／綠K×${track[0].green}；${esc(track[0].source)}`:'歷史突破K線事件尚未核對';
  const institutional=options.institutional;
  const institutionFacts=institutional?`<div class="sector-card-institution">三大法人淨買賣超：外資 ${Number(institutional.foreign).toLocaleString('zh-TW')} 張／投信 ${Number(institutional.trust).toLocaleString('zh-TW')} 張／自營商 ${Number(institutional.dealer).toLocaleString('zh-TW')} 張；交易日 ${esc(state.payload?.asOf||'待核對')}。</div>`:'';
@@ -1326,7 +1326,9 @@ function arrangeR41Detail(c){
  const originalDetailMarkup=card.innerHTML;
  // r81: remove duplicate recent-status, six-price and legacy decision cards from stock detail.
  // Original analysis stays out of the visible stock detail; chart and neckline diagram remain.
- card.innerHTML=nextSessionDefenseCard(c);
+ // r85: restore the complete original battle card (overview / trade levels / technical evidence).
+ // Only the trade-levels tab uses the new compact reduction planner; no duplicate card.
+ card.innerHTML=sectorBattleCard(c,{source:'lookup-detail',rankText:'超盤手｜個股完整分析'});
  r82BindCost(card,c);
 
  const sameDay=Array.isArray(c.bars)&&c.bars.length>0&&c.bars.at(-1)?.[0]===c.date&&c.date===state.payload?.asOf;
