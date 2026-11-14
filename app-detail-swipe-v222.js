@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: r115-verified-action-safe-horizon-20261114 */
+/* CHAOPAN_RADAR_BUILD: r116-preserve-original-detail-ui-20261114 */
 /* r112-consistent-data-gates retained in regression history */
 /* r111-price-integrity-preflight-20261114 retained in regression history */
 'use strict';
@@ -708,6 +708,10 @@ function r47SelectionAudit(c){
 }
 
 function sectorBattleCard(c,options={}){
+ // R116: never replace the whole detail panel with a corporate-action essay.
+ // Keep the exact same card shell in lists and detail views, with risky signals blocked.
+ const auditedAction=r111PriceIntegrity(c,120);
+ if(auditedAction.code==='CORPORATE_ACTION_UNADJUSTED')return r116GuardedBattleCard(c,auditedAction,options);
  const p=deskEvidence(c),g=ChaopanGuidance.evaluate(c,p,supportLines(c));
  const seq=breakoutReadout(c),track=ChaopanExtrasV311.breakoutTracks(c);
  const ma=ChaopanExtrasV311.averages(c),hold=continuationReadout(c);
@@ -1434,6 +1438,32 @@ function r115KnownActionHTML(c,integrity){
  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">${cells}</div>
  <p>MA120／MA240、跨除權息的大量K頸線、第一至第三根認證及明日操作：<b>待正式還原行情與來源重新驗證</b>。</p><small>來源：${esc(event.source)}；此版僅內建已查證的 7610 案例，其餘公司行動仍會保守阻擋。</small></section>`;
 }
+// R116: Preserve the usual battle-card UI for known events, without pretending
+// that raw cross-event necklines/stars are reliable. Portfolio inputs are saved.
+function r116GuardedBattleCard(c,integrity,options={}){
+ const key=(options.source||'sector')+'|'+rowId(c);
+ const raw=r115PostActionBars(c,integrity.event),closes=raw.map(x=>Number(x[4]));
+ const ma=n=>closes.length>=n&&closes.slice(-n).every(x=>Number.isFinite(x)&&x>0)?closes.slice(-n).reduce((a,b)=>a+b,0)/n:null;
+ const mini=[5,10,20,60].map(n=>`<span>MA${n} <b>${ma(n)===null?'資料不足':price(ma(n))}</b></span>`).join('');
+ const info=`<section class="r116-action-warning" role="status" style="padding:12px;border:1px solid #4b7789;border-radius:12px;margin-bottom:12px"><strong>已核對公司行動｜${esc(integrity.event.date)} ${esc(integrity.event.kind)}</strong><p>原本分析功能保留；跨除權息的長期均線、歷史頸線、突破星號與買賣價位仍待還原驗證。</p><details><summary>查看除權息資料及核對依據</summary><p>除權息前收盤 ${price(integrity.event.previousClose)} 元，公開參考價約 ${price(integrity.event.referencePrice)} 元；不是無故跳空。原始日K尚未跨日還原。</p><small>${esc(integrity.event.source)}</small></details></section>`;
+ const summary=`${info}<div class="sector-mini-status"><b>除權息後短期趨勢觀察</b><span class="sector-card-tag muted">長期關卡待核對</span></div><div class="sector-mini-stats">${mini}</div><div class="sector-six-dots"><span>六均線</span><span class="sector-ma-dot">5</span><span class="sector-ma-dot">10</span><span class="sector-ma-dot">20</span><span class="sector-ma-dot">60</span><span class="sector-ma-dot missing">120</span><span class="sector-ma-dot missing">240</span></div><p>僅使用除權息後 ${integer(raw.length)} 根日K計算短期均線。MA120／MA240不以未還原資料認證。</p>`;
+ const read=(k)=>{try{return localStorage.getItem(k)||''}catch(e){return ''}};
+ const cost=read('chaopan-r82-cost-'+c.code),qty=read('chaopan-r91-qty-'+c.code);
+ const levels=`<section class="r82-decision r91-decision r116-guarded-plan" style="padding:16px;border:1px solid #385a6c;border-radius:14px;display:grid;gap:12px" data-code="${esc(c.code)}"><strong>明日持股操作｜待核對</strong><div class="r99-action"><b>暫停交易訊號</b><p>${esc(integrity.why)}</p><small>目前不提供突破買點、減碼價、出場價或建議股數。請勿用未還原的歷史關卡交易。</small></div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px"><label style="min-width:0">持股成本（元）<input class="r116-cost-input" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%"/></label><label style="min-width:0">實際持股（股）<input class="r116-qty-input" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%"/></label></div><div class="r116-pnl" role="status">帳面損益需輸入有效成本與股數；不是交易建議。</div><small>股價尚未完成跨除權息的長期技術資料還原，成本／股數仍會留存，後續驗證完成可延續使用。</small></section>`;
+ return unifiedCardShell({key,rankText:options.rankText||'超盤手｜個股完整分析',stage:'價格資料待核對',code:c.code,name:c.name,industry:c.industry||c.market||'產業待核對',closeText:price(c.close),changeText:pct(c.changePct),changeClass:Number(c.changePct)>0?'rising':Number(c.changePct)<0?'falling':'',summary,levels,actions:options.source==='lookup-detail'?'':`<button type="button" data-card-detail="${esc(rowId(c))}">開啟走勢圖與關卡圖解</button>`});
+}
+function r116BindGuardedHoldings(card,c){
+ const cost=card?.querySelector('.r116-cost-input'),qty=card?.querySelector('.r116-qty-input'),out=card?.querySelector('.r116-pnl');
+ if(!cost||!qty||!out)return;
+ const update=()=>{
+  const a=cost.value.trim()===''?NaN:Number(cost.value),b=qty.value.trim()===''?NaN:Number(qty.value),cl=Number(c.close);
+  const valid=Number.isFinite(a)&&a>0&&Number.isSafeInteger(b)&&b>0&&b<=100000000&&Number.isFinite(cl)&&cl>0;
+  if(valid){const pnl=(cl-a)*b;out.textContent=`以 ${esc(c.date||'最近盤後')} 收盤 ${price(cl)} 元試算：帳面損益約 ${pnl>=0?'+':''}${Math.round(pnl).toLocaleString('zh-TW')} 元（未扣費稅、非成交價；不提供交易方向）`;}
+  else out.textContent='請輸入有效持股成本與股數；不提供未驗證的減碼或出場價。';
+  try{if(Number.isFinite(a)&&a>0)localStorage.setItem('chaopan-r82-cost-'+c.code,String(a));if(Number.isSafeInteger(b)&&b>0&&b<=100000000)localStorage.setItem('chaopan-r91-qty-'+c.code,String(b));}catch(e){}
+ };
+ cost.addEventListener('input',update);qty.addEventListener('input',update);update();
+}
 // r111: Fail closed on suspicious unadjusted corporate-action / source gaps.
 // This does NOT fix raw data or assert that a split actually occurred.
 // TWSE ordinary price-limit moves generally stay within ~10% per session;
@@ -1649,7 +1679,7 @@ function r99ActionHTML(a,c){
  const level=n=>Number.isFinite(n)&&n>0?price(n)+' 元':'待核對';
  const color={success:'#6ee7c1',warning:'#f5bd67',danger:'#ff9c9c',muted:'#aab7c4'}[a.tone]||'#aab7c4';
  const box=(headline,detail,highlight=false)=>`<div style="padding:9px 0;border-top:1px solid #355466"><b style="color:${highlight?color:'inherit'}">${headline}</b><div style="font-size:.92em">${detail}</div></div>`;
- const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R115 明日操作</small>`;
+ const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R116 明日操作</small>`;
  if(!a.valid)return `<div style="border:2px solid ${color};border-radius:12px;padding:13px;display:grid;gap:8px" aria-live="polite">${base}<strong style="font-size:1.65em;color:${color}">${esc(a.title)}</strong><div>${esc(a.note||'請先核對資料')}</div><small>未提供操作價格或股數。</small></div>`;
  const lv=r103ConditionalLevels(c,a);
  const pct=n=>Number.isFinite(n)&&n>0?`（${(n/a.close-1)*100>=0?'+':''}${((n/a.close-1)*100).toFixed(2)}%）`:'';
@@ -1699,7 +1729,7 @@ function nextSessionDefenseCard(c){
   try{initialPlan=r91ProfitPlan(v,Number(cost));}catch(e){initialPlan=null;}
  }
  return `<section class="r82-decision r91-decision" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
- <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>明日持股操作 <small style="font-size:.65em;opacity:.7">R115</small></strong></div>
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>明日持股操作 <small style="font-size:.65em;opacity:.7">R116</small></strong></div>
  <div class="r99-action">${r99ActionHTML(r99Action(c,cost===''?NaN:Number(cost),qty===''?NaN:Number(qty),mode),c)}</div>
  <label>持有週期 <select class="r92-mode" style="font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"><option value="short" ${mode==='short'?'selected':''}>短線｜5、10日趨勢</option><option value="medium" ${mode==='medium'?'selected':''}>中期｜20日趨勢</option><option value="long" ${mode==='long'?'selected':''}>長期｜60日趨勢</option></select></label>
  <div style="font-size:.9em;opacity:.85">${esc(v.date)} 收盤 ${price(v.close)} 元</div>
@@ -1787,7 +1817,8 @@ function arrangeR41Detail(c){
  // r85: restore the complete original battle card (overview / trade levels / technical evidence).
  // Only the trade-levels tab uses the new compact reduction planner; no duplicate card.
  card.innerHTML=sectorBattleCard(c,{source:'lookup-detail',rankText:'超盤手｜個股完整分析'});
- r82BindCost(card,c);
+ if(card.querySelector('.r116-guarded-plan'))r116BindGuardedHoldings(card,c);
+ else r82BindCost(card,c);
 
  const sameDay=Array.isArray(c.bars)&&c.bars.length>0&&c.bars.at(-1)?.[0]===c.date&&c.date===state.payload?.asOf;
  const lastSupport=sameDay?supportLines(c):[], defens=sameDay?c.structureV23?.mainDefense:null;
@@ -1806,14 +1837,21 @@ function arrangeR41Detail(c){
  gates.prepend(gateIntro);
  if(!sameDay)gates.insertAdjacentHTML('beforeend','<p class="r41-missing-chart">行情日期或歷史 K 棒不一致：價位待認證，請先更新盤後資料。</p>');
  
- // R115: a confirmed raw ex-rights event is NOT permission to trust old necklines.
- // Preserve the familiar three-tab layout but replace the misleading old cards.
+ // R116: Keep the original detail tabs and original chart toolbar.
+ // Corporate-action risk removes only invalid historical overlays and trade-level evidence.
  const audited=r111PriceIntegrity(c,120);
  if(audited.code==='CORPORATE_ACTION_UNADJUSTED'){
-  card.innerHTML=r115KnownActionHTML(c,audited);
-  const post=r115PostActionBars(c,audited.event);
-  graph.innerHTML=`<section class="chart-area" style="padding:12px"><h3>除權息後日K（僅歷史價量）</h3><p>從 ${esc(audited.event.date)} 起的原始日K，不跨除權息前的價格畫線，也不顯示未還原的長期頸線或買賣訊號。</p>${post.length>=5?makeChart(post,null,Math.min(60,post.length),[],[],null,c.date):'<p>除權息後K線不足，暫不繪製。</p>'}</section>`;
-  gates.innerHTML=`<section class="r41-gate-overview"><h3>歷史關卡待核對</h3><p>${esc(audited.why)}請先由來源端完成除權息調整與第一至第三根訊號重算。</p></section>`;
+  const post=r115PostActionBars(c,audited.event),chartEl=graph.querySelector('#chartSvg');
+  if(chartEl){chartEl.innerHTML=post.length>=5?makeChart(post,null,Math.min(state.chartDays,post.length),[],[],null,c.date):'<p>除權息後K線不足，暫不繪製。</p>';chartEl.className='';}
+  const note=graph.querySelector('.chart-window-notice');
+  if(note)note.textContent=`除權息後原始K線 ${post.length} 根；僅展示短期歷史走勢，不含跨事件長期頸線或交易訊號。`;
+  const title=graph.querySelector('.chart-top strong');if(title)title.textContent='除權息後 K線／成交量／短期均線';
+  graph.querySelectorAll('.fib-toolbar,.fib-toggle,.gap-toggle,.r58-breakout-audit,.r64-direction,.range-status').forEach(el=>{el.hidden=true;el.style.display='none'});
+  const legend=graph.querySelector('.chart-legend');if(legend)legend.innerHTML='<span>原始除權息後日K｜長期頸線、費波那契與缺口暫停核對</span>';
+  const hint=graph.querySelector('.chart-zoom-hint');if(hint)hint.textContent='保留原本K線縮放與歷史查價；此圖只使用除權息後的日K，並非交易建議。';
+  gates.replaceChildren();
+  gateIntro.innerHTML=`<div class="r41-gate-heading">關卡圖解 <small>${esc(c.date||'資料待核對')} · 非即時</small></div><div class="r41-gate-grid"><div><small>歷史大量K頸線</small><strong>待核對</strong></div><div><small>第一支撐</small><strong>待核對</strong></div><div><small>第二支撐</small><strong>待核對</strong></div><div><small>最後結構防守</small><strong>待核對</strong></div></div><p>已核對 ${esc(audited.event.date)} 除權息；跨事件歷史價格尚未還原，不顯示可能失真的關卡。${esc(audited.why)}</p>`;
+  gates.append(gateIntro);
   state.r41Advanced=null;
  }else{
   state.r41Advanced={code:c.code,date:c.date,html:advanced.join('')};
@@ -2850,13 +2888,14 @@ function renderDetail(){const c=state.detail;if(!c)return;const starred=state.wa
   // 盤中價量試算已停用，避免舊功能重新掛載。
 
   $$('.range-btn').forEach(b=>b.onclick=()=>{state.chartDays=b.dataset.days==='120'?120:Number(b.dataset.days);renderDetail()});
-  const zoom=(dir)=>{const total=(c.bars||[]).length;state.chartDays=Math.min(Math.max(12,total),Math.max(12,Math.min(total,Math.round(state.chartDays*(dir==='in'?.76:1.32)))));renderDetail()};
+  const zoom=(dir)=>{const audit=r111PriceIntegrity(c,120),total=audit.code==='CORPORATE_ACTION_UNADJUSTED'?r115PostActionBars(c,audit.event).length:(c.bars||[]).length;state.chartDays=Math.min(Math.max(12,total),Math.max(12,Math.min(total,Math.round(state.chartDays*(dir==='in'?.76:1.32)))));renderDetail()};
   $$('.zoom-btn').forEach(b=>b.onclick=()=>zoom(b.dataset.zoom));
   const chart=$('#chartSvg');
   // r86: Historical daily-candle inspector; read-only and independent of signals.
   if(chart && chart.querySelector('svg') && Array.isArray(c.bars)){
     const svg=chart.querySelector('svg');
-    const allBars=c.bars;
+    const chartAudit=r111PriceIntegrity(c,120);
+    const allBars=chartAudit.code==='CORPORATE_ACTION_UNADJUSTED'?r115PostActionBars(c,chartAudit.event):c.bars;
     const shown=allBars.slice(-state.chartDays);
     const plotLeft=126,plotRight=615;
     const validShown=shown.length>0&&shown.every(b=>Array.isArray(b)&&b.length>=6&&[1,2,3,4,5].every(k=>Number.isFinite(Number(b[k]))));
