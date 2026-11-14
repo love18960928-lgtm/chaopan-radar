@@ -2218,6 +2218,7 @@ const R131_CONDITIONS=[
  ['launch','量價啟動'],['trend','六線／主升延續'],['risk','假突破／轉弱警戒']
 ];
 let r131Condition='all';
+let r133Bucket='eligible';
 let r132Page=0;
 const R132_PAGE_SIZE=30;
 function r131Signals(c){
@@ -2242,19 +2243,55 @@ function r131Signals(c){
  // Only classify evidence that actually exists; never infer an unverified stage.
  return [...out];
 }
+// R133: screen eligibility is separate from technical tags; risk cannot be promoted to a bullish candidate.
+function r133RiskGate(c){
+ const b=Array.isArray(c?.bars)?c.bars:[];
+ const last=b.at(-1), prev=b.at(-2);
+ const num=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v):null;
+ const result={status:'unknown',reasons:[]};
+ if(!Array.isArray(last)||last.length<6)return {...result,reasons:['缺少完整日K']};
+ const o=num(last[1]),h=num(last[2]),l=num(last[3]),cl=num(last[4]),v=num(last[5]);
+ if([o,h,l,cl,v].some(x=>x===null)||h<l||o>h||o<l||cl>h||cl<l||v<0||h<=0)return {...result,reasons:['日K資料異常']};
+ const range=h-l,upper=h-Math.max(o,cl),body=Math.abs(cl-o);
+ const upperPct=range>0?upper/range:0;
+ const prior=b.slice(-21,-1).map(x=>Array.isArray(x)?num(x[5]):null);
+ const volReady=prior.length===20&&prior.every(x=>x!==null&&x>=0);
+ const avg=volReady?prior.reduce((a,x)=>a+x,0)/20:null;
+ const volRatio=avg>0?v/avg:null;
+ const text=[c?.unifiedStage,c?.followStatus,c?.trading?.status,c?.riskLevel].filter(Boolean).join(' ');
+ const explicitRisk=/假突破|跌破|出貨|賣壓|轉弱|突破失敗|減碼|高風險|風險升高/.test(text);
+ const longUpper=range>0&&upperPct>=0.4&&upper>body;
+ const distribution=longUpper&&cl<=o&&volRatio!==null&&volRatio>=1.5;
+ if(explicitRisk)result.reasons.push('既有策略標示轉弱／賣壓');
+ if(distribution)result.reasons.push('放量長上影且收低');
+ if(explicitRisk||distribution)return {status:'risk',reasons:result.reasons};
+ if(!volReady||avg<=0)return {status:'unknown',reasons:['前20日有效成交量不足']};
+ if(longUpper)return {status:'watch',reasons:['長上影線，上攻受阻待確認']};
+ if(!volReady||avg<=0)return {status:'unknown',reasons:['前20日有效成交量不足']};
+ if(!Array.isArray(prev)||prev.length<6)return {status:'unknown',reasons:['前一交易日資料不足']};
+ return {status:'eligible',reasons:['量價未觸發已定義的高風險排除條件']};
+}
+function r133ScreenerClass(c){
+ const signals=r131Signals(c),gate=r133RiskGate(c);
+ if(gate.status==='risk')return {bucket:'risk',signals,gate};
+ if(gate.status==='watch')return {bucket:'watch',signals,gate};
+ if(gate.status==='unknown')return {bucket:'unknown',signals,gate};
+ return {bucket:'eligible',signals,gate};
+}
 function r131Rows(){
  const asOf=state.payload?.asOf;
  if(state.mode!=='live'||!state.universe||state.universe.asOf!==asOf)return [];
- return rankedUniverse().filter(c=>c?.date===asOf&&r131Signals(c).length&&
-   (r131Condition==='all'||r131Signals(c).includes(r131Condition)));
+ return rankedUniverse().filter(c=>{const r=r133ScreenerClass(c);return c?.date===asOf&&r.signals.length&&r.bucket===r133Bucket&&
+   (r131Condition==='all'||r.signals.includes(r131Condition));});
 }
 function r131Mount(){
  const host=document.querySelector('.advanced-radar')||document.querySelector('#candidateList')?.parentElement;
  if(!host||document.querySelector('#r131Screener'))return;
  const panel=document.createElement('section');panel.id='r131Screener';panel.style.cssText='margin:12px 0;padding:14px;border:1px solid #35576b;border-radius:14px;background:#0c2432;color:#e7f5fa';
- panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R132</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
+ panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R133</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">可追蹤強勢候選（非買點）</option><option value="watch">長上影／待確認</option><option value="risk">出貨疑慮／轉弱警戒</option><option value="unknown">資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
  host.insertBefore(panel,host.firstChild);
- panel.querySelector('select').addEventListener('change',e=>{r131Condition=e.target.value;r132Page=0;r131Render()});
+ panel.querySelector('#r131Condition').addEventListener('change',e=>{r131Condition=e.target.value;r132Page=0;r131Render()});
+ panel.querySelector('#r133Bucket').addEventListener('change',e=>{r133Bucket=e.target.value;r132Page=0;r131Render()});
  panel.addEventListener('click',e=>{const page=e.target.closest('[data-r132-page]');if(page){const count=r131Rows().length;const max=Math.max(0,Math.ceil(count/R132_PAGE_SIZE)-1);r132Page=Math.max(0,Math.min(max,r132Page+(page.dataset.r132Page==='next'?1:-1)));r131Render();return;}const btn=e.target.closest('[data-r131-stock]');if(btn)showDetails(btn.dataset.r131Stock)});
 }
 function r131Render(){
@@ -2265,11 +2302,13 @@ function r131Render(){
  const pageBar=document.querySelector('#r132Pagination');if(pageBar)pageBar.hidden=rows.length<=R132_PAGE_SIZE;
  const prev=pageBar?.querySelector('[data-r132-page=prev]'),next=pageBar?.querySelector('[data-r132-page=next]');if(prev)prev.disabled=r132Page===0;if(next)next.disabled=r132Page>=maxPage;
  sum.textContent=state.mode==='live'&&state.universe?.asOf===state.payload?.asOf?
-  `${state.payload.asOf} 盤後｜符合此訊號 ${rows.length} 檔（每頁 30 檔，可翻頁）。此為訊號篩選，不等於突破認證或買進建議。`:
+  `${state.payload.asOf} 盤後｜符合此訊號 ${rows.length} 檔（每頁 30 檔，可翻頁）。依量價與風險分區，僅供觀察；未經回測，不等於突破認證或買進建議。`:
   '全市場盤後資料尚未同步，暫不提供篩選結果。';
  el.innerHTML=rows.slice(r132Page*R132_PAGE_SIZE,(r132Page+1)*R132_PAGE_SIZE).map(c=>{
-  const signals=r131Signals(c).map(k=>R131_CONDITIONS.find(x=>x[0]===k)?.[1]||k).join('、');
-  return `<button type="button" data-r131-stock="${esc(rowId(c))}" style="width:100%;text-align:left;background:transparent;color:inherit;border:0;border-top:1px solid #315060;padding:12px 3px"><b>${esc(c.code)} ${esc(c.name)}</b><span style="float:right">${price(c.close)}</span><small style="display:block;color:#a9cbd5;margin-top:4px">${esc(signals)}｜${esc(c.riskLevel||'風險待核對')}</small></button>`;
+  const classification=r133ScreenerClass(c);
+  const signals=classification.signals.map(k=>R131_CONDITIONS.find(x=>x[0]===k)?.[1]||k).join('、');
+  const reason=classification.gate.reasons.join('、');
+  return `<button type="button" data-r131-stock="${esc(rowId(c))}" style="width:100%;text-align:left;background:transparent;color:inherit;border:0;border-top:1px solid #315060;padding:12px 3px"><b>${esc(c.code)} ${esc(c.name)}</b><span style="float:right">${price(c.close)}</span><small style="display:block;color:#a9cbd5;margin-top:4px">${esc(signals)}｜${esc(reason)}｜${esc(c.riskLevel||'風險待核對')}</small></button>`;
  }).join('')||'<p style="font-size:13px">目前無符合條件的已辨識訊號，或資料不足。</p>';
 }
 function filtered(){
