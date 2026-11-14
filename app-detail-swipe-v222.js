@@ -1273,13 +1273,17 @@ function r92Decision(c,mode='medium'){
  const trendWeak=mode==='short'?shortWeak:mode==='long'?longWeak:mediumWeak;
  const trendStrong=mode==='short'?close>m5&&m5>=m10:mode==='long'?m60!==null&&close>m60&&m60prev!==null&&m60>=m60prev:close>m20&&m20prev!==null&&m20>=m20prev;
  const sellPressure=volumeRatio!==null&&volumeRatio>=1.4&&closeLocation<=.3&&close<open;
- // r119: repeated distribution-like candles are a warning, never proof of a specific seller.
- const prior20Vols=vols.slice(-21,-1);
- const baseline=prior20Vols.length===20&&prior20Vols.every(x=>Number.isFinite(x)&&x>=0)?prior20Vols.reduce((a,b)=>a+b,0)/20:null;
- const recentDistribution=baseline>0?bars.slice(-5).filter(b=>{
+ // r120: each historical signal uses only the twenty sessions preceding that candle.
+ // Do not use the latest twenty-session baseline to classify older sessions.
+ const recentDistribution=bars.slice(-5).reduce((count,b,i)=>{
+  const index=bars.length-5+i,history=bars.slice(index-20,index);
+  if(history.length!==20)return count;
+  const previousVolumes=history.map(x=>Number(x[5]));
+  if(!previousVolumes.every(x=>Number.isFinite(x)&&x>=0))return count;
+  const base=previousVolumes.reduce((a,v)=>a+v,0)/20;
   const o=Number(b[1]),h=Number(b[2]),l=Number(b[3]),cl=Number(b[4]),v=Number(b[5]);
-  return [o,h,l,cl,v].every(Number.isFinite)&&h>l&&cl<o&&((cl-l)/(h-l))<=.35&&v>=baseline*1.4;
- }).length:0;
+  return count+(base>0&&[o,h,l,cl,v].every(Number.isFinite)&&h>l&&o>=l&&o<=h&&cl>=l&&cl<=h&&cl<o&&((cl-l)/(h-l))<=.35&&v>=base*1.4?1:0);
+ },0);
  const repeatedSelling=recentDistribution>=2;
 
  const failedBreak=high>Math.max(...bars.slice(-6,-1).map(b=>Number(b[2])))&&close<Math.max(...bars.slice(-6,-1).map(b=>Number(b[2])))&&closeLocation<=.35;
@@ -1305,11 +1309,12 @@ function r92Decision(c,mode='medium'){
  if(failedBreak)reasons.push('盤中突破前5日高點但收盤未站穩');
  if(riskBreak)reasons.push('收盤跌破前5日已知低點');
  if(institutionalSelling)reasons.push('同日外資與投信同步賣超且占量偏高');
+ else if(validIns&&foreign<0&&trust<0)reasons.push('同日外資與投信同步賣超，但未確認達高占量警戒');
  else if(!validIns)reasons.push('法人資料不足，不推定出貨');
  let status='震盪觀察',tone='warning';
  if(trendWeak&&(sellPressure||riskBreak||repeatedSelling)){status=mode==='long'&&!longWeak?'減碼警戒':'趨勢破壞';tone='danger'}
  else if((trendWeak||riskBreak)&&(sellPressure||failedBreak||institutionalSelling||repeatedSelling)){status='減碼警戒';tone='danger'}
- else if(trendStrong&&!sellPressure&&!riskBreak&&!repeatedSelling){status='多頭續抱';tone='success'}
+ else if(trendStrong&&!sellPressure&&!riskBreak&&!repeatedSelling&&!institutionalSelling&&!failedBreak){status='多頭續抱';tone='success'}
  return {status,tone,reasons,repeatedSelling,recentDistribution,institution,trend:trendStrong?'偏多':trendWeak?'轉弱':'整理',volume:volumeRatio===null?'待核對':volumeRatio.toFixed(2)+'倍',institutionalSelling,validIns,close,mode};
 }
 // r95: pure, cost-aware EOD scenario calculator; no implied execution.
@@ -1407,6 +1412,8 @@ function r99Action(c,cost,qty,mode='medium'){
  const volumeRatio=Number.parseFloat(d.volume);
  const distributionRisk=Number.isFinite(volumeRatio)&&volumeRatio>=1.4&&closeLocation<=.3&&close<Number(last[1]);
  const riskCount=Number(distributionRisk)+Number(breakdown20)+Number(twoDayWeak)+Number(d.institutionalSelling)+Number(!!d.repeatedSelling);
+ // R120: failed-breakout risk is not the same as confirmed distribution.
+ const failedBreakRisk=d.reasons?.some(x=>x.includes('盤中突破前5日高點但收盤未站穩'))===true;
  // r110: independent profit give-back alert must be considered BEFORE a bullish
  // headline. 60-session market highs are NOT the investor's actual holding peak.
  const profitable=close>cost;
@@ -1431,7 +1438,8 @@ function r99Action(c,cost,qty,mode='medium'){
  const reduce=!severe&&(
   d.status==='趨勢破壞'||d.status==='減碼警戒'||
   (drawdown<=-12&&riskCount>=2&&failedTrend)||
-  (profitGiveback&&riskCount>=2)
+  (profitGiveback&&riskCount>=2)||
+  (failedBreakRisk&&riskCount>=2&&failedTrend)
  );
  let title='盤整等待',tone='warning',fraction=0,trigger=null,condition='尚未達確認條件，等待盤後重新評估',note='暫不加碼';
  if(severe){
