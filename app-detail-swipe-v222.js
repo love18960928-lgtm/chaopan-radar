@@ -783,7 +783,9 @@ function r137BreakoutHistoryGate(c,stage){
  // Do not infer a valid breakout event merely from a phase label. If the actual
  // event date is present it must agree with the candle selected for that stage.
  const eventDate=c?.breakoutEvent?.date||c?.breakoutEvent?.asOf||null;
- if(eventDate&&String(bars[start]?.[0])!==String(eventDate))return {status:'unknown',reason:'突破事件日期與日K不一致'};
+ if(!eventDate)return {status:'unknown',reason:'缺少可核對的突破事件日期'};
+ if(String(bars[start]?.[0])!==String(eventDate))return {status:'unknown',reason:'突破事件日期與日K不一致'};
+ if(bars.slice(start-20).some((x,i,a)=>i>0&&String(x[0])<=String(a[i-1][0])))return {status:'unknown',reason:'突破歷史日K日期未依序遞增'};
  const sample=bars.slice(start-20);
  if(sample.length!==20+days||!sample.every(valid))return {status:'unknown',reason:'突破期間或前20日K線資料異常'};
  const event=bars[start],eventHigh=Number(event[2]),eventLow=Number(event[3]);
@@ -797,8 +799,9 @@ function r137BreakoutHistoryGate(c,stage){
  if(eventDistribution){
   // A later close above the event high with non-decreasing price can resolve
   // the provisional candle warning, but not establish a certified buy point.
-  const reclaimed=follow.some(x=>Number(x[4])>eventHigh);
-  if(!reclaimed)return {status:'watch',reason:'突破當日放量長上影收低，尚未收復訊號K高點'};
+  const reclaimedIndex=follow.findIndex(x=>Number(x[4])>eventHigh);
+  if(reclaimedIndex<0)return {status:'watch',reason:'突破當日放量長上影收低，尚未收復訊號K高點'};
+  if(follow.slice(reclaimedIndex+1).some(x=>Number(x[4])<=eventHigh))return {status:'watch',reason:'突破後雖曾收復高點，但再次收回訊號K高點以下'};
  }
  return {status:'eligible',reason:'突破事件歷史K棒未觸發定義的風險否決'};
 }
@@ -3418,7 +3421,7 @@ document.addEventListener('click',function(e){
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
  const BUILD_ID='R137-20261114';
- const BUILD_LABEL='r137 · 突破事件全程風險驗證';
+ const BUILD_LABEL='r138 · 突破事件日期與二次轉弱驗證';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  const oldBadge=/r(?:60|1\d{2})\s*[·・]\s*(?:名單數量與觀察股分層|訊號衝突防呆|出貨訊號驗證|盤後判斷修正|統一版本顯示與風險篩選|突破認證風險一致性)/gi;
