@@ -772,6 +772,8 @@ function sectorRadar(){
 // Missing values are NOT interpreted as a positive institutional/technical confirmation.
 // R137: a clean last candle cannot erase distribution evidence on the breakout candle.
 // This is a conservative veto for breakout certification, NOT proof of insider selling.
+// R139: evaluate EVERY candle of the breakout event, not just the breakout day.
+// Status is a conservative certification gate, not a claim about actual seller identity.
 function r137BreakoutHistoryGate(c,stage){
  const bars=Array.isArray(c?.bars)?c.bars:[];
  const days={first:1,second:2,third:3,fourth:4}[stage]||1;
@@ -780,30 +782,49 @@ function r137BreakoutHistoryGate(c,stage){
    Number(x[3])>0&&Number(x[2])>=Number(x[3])&&Number(x[1])>=Number(x[3])&&Number(x[1])<=Number(x[2])&&
    Number(x[4])>=Number(x[3])&&Number(x[4])<=Number(x[2])&&Number(x[5])>=0;
  const start=bars.length-days;
- // Do not infer a valid breakout event merely from a phase label. If the actual
- // event date is present it must agree with the candle selected for that stage.
  const eventDate=c?.breakoutEvent?.date||c?.breakoutEvent?.asOf||null;
  if(!eventDate)return {status:'unknown',reason:'缺少可核對的突破事件日期'};
  if(String(bars[start]?.[0])!==String(eventDate))return {status:'unknown',reason:'突破事件日期與日K不一致'};
- if(bars.slice(start-20).some((x,i,a)=>i>0&&String(x[0])<=String(a[i-1][0])))return {status:'unknown',reason:'突破歷史日K日期未依序遞增'};
  const sample=bars.slice(start-20);
+ if(sample.some((x,i)=>i>0&&String(x[0])<=String(sample[i-1][0])))return {status:'unknown',reason:'突破歷史日K日期未依序遞增'};
  if(sample.length!==20+days||!sample.every(valid))return {status:'unknown',reason:'突破期間或前20日K線資料異常'};
+ const level=Number(c?.breakoutEvent?.level);
+ if(!Number.isFinite(level)||level<=0)return {status:'unknown',reason:'缺少可核對的突破頸線價'};
  const event=bars[start],eventHigh=Number(event[2]),eventLow=Number(event[3]);
- const avg=bars.slice(start-20,start).reduce((sum,x)=>sum+Number(x[5]),0)/20;
- if(!(avg>0))return {status:'unknown',reason:'突破前20日均量不可計算'};
- const o=Number(event[1]),h=Number(event[2]),l=Number(event[3]),close=Number(event[4]),vol=Number(event[5]);
- const upper=h-Math.max(o,close),range=h-l,body=Math.abs(close-o);
- const eventDistribution=range>0&&upper/range>=0.4&&upper>body&&close<=o&&vol/avg>=1.5;
- const follow=bars.slice(start+1);
- if(follow.some(x=>Number(x[4])<eventLow))return {status:'risk',reason:'突破後曾收盤跌破訊號K低點'};
- if(eventDistribution){
-  // A later close above the event high with non-decreasing price can resolve
-  // the provisional candle warning, but not establish a certified buy point.
-  const reclaimedIndex=follow.findIndex(x=>Number(x[4])>eventHigh);
-  if(reclaimedIndex<0)return {status:'watch',reason:'突破當日放量長上影收低，尚未收復訊號K高點'};
-  if(follow.slice(reclaimedIndex+1).some(x=>Number(x[4])<=eventHigh))return {status:'watch',reason:'突破後雖曾收復高點，但再次收回訊號K高點以下'};
+ if(!(Number(event[4])>level))return {status:'risk',reason:'突破當日未收盤站上事件頸線'};
+ if(!(Number(event[2])>level))return {status:'risk',reason:'突破當日最高價未越過事件頸線'};
+ // Require evidence the level was not already broken at the prior close.
+ if(!(Number(bars[start-1][4])<=level))return {status:'unknown',reason:'突破前一日已站上頸線，首次突破日期待核對'};
+ let warning=false,warningReason='';
+ let consecutiveHeavyDown=0;
+ for(let i=start;i<bars.length;i++){
+  const bar=bars[i],o=Number(bar[1]),h=Number(bar[2]),l=Number(bar[3]),cl=Number(bar[4]),v=Number(bar[5]);
+  const history=bars.slice(i-20,i);
+  if(history.length!==20||!history.every(valid))return {status:'unknown',reason:'突破後逐日量能基準資料不足'};
+  const avg=history.reduce((sum,x)=>sum+Number(x[5]),0)/20;
+  if(!(avg>0))return {status:'unknown',reason:'突破期間20日均量無法計算'};
+  const range=h-l,upper=h-Math.max(o,cl),body=Math.abs(cl-o);
+  const longUpper=range>0&&upper/range>=0.4&&upper>body;
+  const heavy=v/avg>=1.5;
+  const down=cl<o;
+  const distribution=longUpper&&heavy&&cl<=o;
+  if(i>start&&cl<eventLow)return {status:'risk',reason:'突破後曾收盤跌破訊號K低點'};
+  if(i>start&&cl<level)return {status:'risk',reason:'突破後收盤跌破事件頸線'};
+  consecutiveHeavyDown=heavy&&down?consecutiveHeavyDown+1:0;
+  if(consecutiveHeavyDown>=2)return {status:'risk',reason:'突破期間連續兩根放量收低'};
+  if(distribution){warning=true;warningReason=i===start?'突破當日放量長上影收低':'突破後第'+(i-start+1)+'根放量長上影收低';}
+  else if(longUpper){warning=true;warningReason='突破期間長上影線，需確認賣壓是否消退';}
  }
- return {status:'eligible',reason:'突破事件歷史K棒未觸發定義的風險否決'};
+ // An isolated warning is not automatically erased by a later positive candle.
+ // Only a strong final close above the entire warning candle's high can resolve it.
+ if(warning){
+  const last=bars.at(-1);
+  if(days>1&&Number(last[4])>Math.max(...bars.slice(start,-1).map(x=>Number(x[2])))&&Number(last[4])>eventHigh){
+   return {status:'eligible',reason:'突破期間曾有上影風險，最新收盤已突破全部先前K棒高點（仍須其他認證）'};
+  }
+  return {status:'watch',reason:warningReason};
+ }
+ return {status:'eligible',reason:'突破第一至第四根逐日量價未觸發已定義風險否決'};
 }
 const STRICT_BREAKOUT_STAGES=new Set(['first','second','third','fourth']);
 function strictBreakoutDecision(c,stage){
@@ -3421,7 +3442,7 @@ document.addEventListener('click',function(e){
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
  const BUILD_ID='R137-20261114';
- const BUILD_LABEL='r138 · 突破事件日期與二次轉弱驗證';
+ const BUILD_LABEL='r139 · 突破逐日量價風險驗證';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  const oldBadge=/r(?:60|1\d{2})\s*[·・]\s*(?:名單數量與觀察股分層|訊號衝突防呆|出貨訊號驗證|盤後判斷修正|統一版本顯示與風險篩選|突破認證風險一致性)/gi;
