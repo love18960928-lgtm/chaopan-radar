@@ -1,4 +1,5 @@
-/* CHAOPAN_RADAR_BUILD: r117-portfolio-verification-20261114 */
+/* CHAOPAN_RADAR_BUILD: r118-post-event-short-only-20261114 */
+/* r117-holding-verification retained, UI compacted; never re-enable intraday estimation */
 /* r116-preserve-original-detail-ui-20261114 retained for compatibility */
 /* r112-consistent-data-gates retained in regression history */
 /* r111-price-integrity-preflight-20261114 retained in regression history */
@@ -1470,41 +1471,95 @@ function r117StoreLegacyInputs(code,cost,qty){
  }catch(_){}}
 function r117HoldingControls(code,cost,qty){
  const valid=r117HoldingParts(cost,qty).valid,verified=r117HoldingVerified(code,cost,qty);
- return `<div class="r117-holding-check" style="display:grid;gap:8px;padding:10px;border:1px solid #49687c;border-radius:10px">
- <div class="r117-holding-status" role="status">${verified?'持股資料已由你確認（非券商同步）':valid?'舊資料待確認：尚不視為真實持股':'請輸入實際持股成本與股數，再按確認'}</div>
- <button type="button" class="r117-confirm-holding" ${verified?'hidden':''} ${valid?'':'disabled'} style="width:100%;min-height:40px;border-radius:8px;background:#2b7c7f;color:#fff;font-weight:600">確認這是我的實際持股</button>
- <small>若上方是舊測試數字，請修改或清空；未確認前不會產生個人損益或持股買賣股數。</small></div>`;
+ // R118: keep explicit opt-in, but do not replace the trading plan with a big warning box.
+ // Saved input is a simulation until acknowledged; never represent it as a broker position.
+ return `<div class="r117-holding-check" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:7px 0;border-top:1px solid #355466">
+  <span class="r117-holding-status" role="status" style="font-size:.88em;opacity:.86">${verified?'持股已確認（自行輸入）':valid?'持股試算・尚未確認':'未設定持股資料'}</span>
+  <button type="button" class="r117-confirm-holding" aria-label="確認這是我的實際持股" ${verified?'hidden':''} ${valid?'':'disabled'} style="border:1px solid #528b96;border-radius:8px;background:#164e58;color:#e8ffff;padding:6px 12px;font-size:.86em;min-height:34px">確認持股</button>
+ </div>`;
 }
 
+// R118: isolate all trading calculations to a continuous post-event price regime.
+// Do NOT copy pre-event necklines, breakout labels, corporate-action flags,
+// prior technical indicators, or unverified cross-event market action signals.
+function r118PostActionTradingContext(c,integrity,mode='medium'){
+ const bad=reason=>({ok:false,reason});
+ if(integrity?.code!=='CORPORATE_ACTION_UNADJUSTED'||!integrity.event)return bad('公司行動尚未確認');
+ const raw=r115PostActionBars(c,integrity.event);
+ if(raw.length<26)return bad(`除權息後只有${raw.length}根日K，至少需要26根才能計算短期防守`);
+ if(raw.at(-1)?.[0]!==String(c.date||''))return bad('除權息後日K與盤後資料日期不一致');
+ const ctx={code:String(c.code||''),name:String(c.name||''),market:c.market,date:c.date,
+  close:c.close,changePct:c.changePct,bars:raw.map(b=>b.slice(0,6))};
+ // This independent audit rejects any *new* source gap / implausible bar inside
+ // the post-action window. The pre-event break is no longer included here.
+ const clean=r111PriceIntegrity(ctx,120);
+ if(!clean.ok)return bad(`除權息後行情異常：${clean.why}`);
+ const quality=r101Quality(ctx,mode);
+ if(!quality.ok)return bad(`最新盤後資料待核對：${quality.why}`);
+ const plan=r82Plan(ctx);
+ if(!plan.ok)return bad(plan.reason||'近期交易條件未完整');
+ const risk=r80Decision(ctx);
+ const flow=r92Decision(ctx,mode);
+ if(!risk.ok||flow.status==='資料不足')return bad('短期量價或結構資料仍不足');
+ return {ok:true,ctx,bars:raw,plan,risk,flow};
+}
+function r118GenericPostActionCard(d,mode='medium'){
+ if(!d.ok)return `<div class="r99-action" role="status"><b>短期行情待核對</b><p>${esc(d.reason)}</p><small>沒有合格的盤後資料，不顯示交易方向或價位。</small></div>`;
+ const a=d.risk,p=d.plan,trend=d.flow;
+ const fmt=v=>Number.isFinite(v)&&v>0?price(v)+' 元':'待資料';
+ const ref=r103ConditionalLevels(d.ctx,{close:p.close,breakout:a.breakout,rebound:p.rebound});
+ const up=ref?.rebound??(Number.isFinite(a.pressure)&&a.pressure>p.close?a.pressure:null);
+ const low=ref?.defense??p.defense;
+ return `<div class="r118-short-plan" role="status" style="display:grid;gap:7px">
+  <strong>明日觀察｜${esc(a.status)}</strong>
+  <div>${esc(a.explain)}</div>
+  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><div><small>反彈／上檔壓力</small><b style="display:block">${fmt(up)}</b></div><div><small>近期防守觀察</small><b style="display:block">${fmt(low)}</b></div></div>
+  <small>以除權息後 ${d.bars.length} 根日K判斷｜${esc(trend.mode||mode)}趨勢 ${esc(trend.trend||'待核對')}｜尚未確認持股，僅顯示通用觀察價位。</small>
+ </div>`;
+}
 // R116: Preserve the usual battle-card UI for known events, without pretending
 // that raw cross-event necklines/stars are reliable. Portfolio inputs are saved.
 function r116GuardedBattleCard(c,integrity,options={}){
  const key=(options.source||'sector')+'|'+rowId(c);
+ const d=r118PostActionTradingContext(c,integrity,'medium');
  const raw=r115PostActionBars(c,integrity.event),closes=raw.map(x=>Number(x[4]));
  const ma=n=>closes.length>=n&&closes.slice(-n).every(x=>Number.isFinite(x)&&x>0)?closes.slice(-n).reduce((a,b)=>a+b,0)/n:null;
  const mini=[5,10,20,60].map(n=>`<span>MA${n} <b>${ma(n)===null?'資料不足':price(ma(n))}</b></span>`).join('');
- const info=`<section class="r116-action-warning" role="status" style="padding:12px;border:1px solid #4b7789;border-radius:12px;margin-bottom:12px"><strong>已核對公司行動｜${esc(integrity.event.date)} ${esc(integrity.event.kind)}</strong><p>原本分析功能保留；跨除權息的長期均線、歷史頸線、突破星號與買賣價位仍待還原驗證。</p><details><summary>查看除權息資料及核對依據</summary><p>除權息前收盤 ${price(integrity.event.previousClose)} 元，公開參考價約 ${price(integrity.event.referencePrice)} 元；不是無故跳空。原始日K尚未跨日還原。</p><small>${esc(integrity.event.source)}</small></details></section>`;
- const summary=`${info}<div class="sector-mini-status"><b>除權息後短期趨勢觀察</b><span class="sector-card-tag muted">長期關卡待核對</span></div><div class="sector-mini-stats">${mini}</div><div class="sector-six-dots"><span>六均線</span><span class="sector-ma-dot">5</span><span class="sector-ma-dot">10</span><span class="sector-ma-dot">20</span><span class="sector-ma-dot">60</span><span class="sector-ma-dot missing">120</span><span class="sector-ma-dot missing">240</span></div><p>僅使用除權息後 ${integer(raw.length)} 根日K計算短期均線。MA120／MA240不以未還原資料認證。</p>`;
- const read=(k)=>{try{return localStorage.getItem(k)||''}catch(e){return ''}};
+ const info=`<div class="r116-action-warning" role="status" style="font-size:.88em;opacity:.9;margin:3px 0 7px"><span>除權息後短期判斷${d.ok?'可用':'待核對'}｜跨事件 MA120／240、歷史大量K頸線待還原</span><details><summary>查看除權息來源與限制</summary><p>${esc(integrity.event.date)} ${esc(integrity.event.kind)}：前收 ${price(integrity.event.previousClose)} 元，參考價約 ${price(integrity.event.referencePrice)} 元；不是無故跳空。未還原的跨事件價格不得作為長期突破認證。</p><small>${esc(integrity.event.source)}</small></details></div>`;
+ const summary=`${info}<div class="sector-mini-status"><b>除權息後短期趨勢</b><span class="sector-card-tag muted">長期頸線待核對</span></div><div class="sector-mini-stats">${mini}</div><div class="sector-six-dots"><span>六均線</span><span class="sector-ma-dot">5</span><span class="sector-ma-dot">10</span><span class="sector-ma-dot">20</span><span class="sector-ma-dot">60</span><span class="sector-ma-dot missing">120</span><span class="sector-ma-dot missing">240</span></div><small>使用除權息後 ${integer(raw.length)} 根日K；突破第一～第三根認證仍需獨立重建，不能借用除權息前頸線。</small>`;
+ const read=k=>{try{return localStorage.getItem(k)||''}catch(_){return ''}};
  const cost=read('chaopan-r82-cost-'+c.code),qty=read('chaopan-r91-qty-'+c.code);
- const levels=`<section class="r82-decision r91-decision r116-guarded-plan" style="padding:16px;border:1px solid #385a6c;border-radius:14px;display:grid;gap:12px" data-code="${esc(c.code)}"><strong>明日持股操作｜待核對</strong><div class="r99-action"><b>暫停交易訊號</b><p>${esc(integrity.why)}</p><small>目前不提供突破買點、減碼價、出場價或建議股數。請勿用未還原的歷史關卡交易。</small></div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px"><label style="min-width:0">持股成本（元）<input class="r116-cost-input" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%"/></label><label style="min-width:0">實際持股（股）<input class="r116-qty-input" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%"/></label></div>${r117HoldingControls(c.code,cost,qty)}<div class="r116-pnl" role="status">持股資料尚未確認，暫不計算個人損益。</div><small>股價尚未完成跨除權息的長期技術資料還原，成本／股數仍會留存，後續驗證完成可延續使用。</small></section>`;
- return unifiedCardShell({key,rankText:options.rankText||'超盤手｜個股完整分析',stage:'價格資料待核對',code:c.code,name:c.name,industry:c.industry||c.market||'產業待核對',closeText:price(c.close),changeText:pct(c.changePct),changeClass:Number(c.changePct)>0?'rising':Number(c.changePct)<0?'falling':'',summary,levels,actions:options.source==='lookup-detail'?'':`<button type="button" data-card-detail="${esc(rowId(c))}">開啟走勢圖與關卡圖解</button>`});
+ const verified=r117HoldingVerified(c.code,cost,qty),p=r117HoldingParts(cost,qty);
+ const initial=d.ok&&verified?r99ActionHTML(r99Action(d.ctx,p.cost,p.qty,'medium'),d.ctx):r118GenericPostActionCard(d);
+ const levels=`<section class="r82-decision r91-decision r116-guarded-plan" style="padding:12px;border:1px solid #385a6c;border-radius:12px;display:grid;gap:9px" data-code="${esc(c.code)}">
+ <strong>明日持股操作｜${d.ok?'近期量價已核對':'待核對'}</strong>
+ <div class="r99-action">${initial}</div>
+ <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><label style="min-width:0">持股成本（元）<input class="r116-cost-input" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%"/></label><label style="min-width:0">持股股數（股）<input class="r116-qty-input" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%"/></label></div>
+ ${r117HoldingControls(c.code,cost,qty)}<div class="r116-pnl" role="status">${verified&&p.valid?'已確認持股，帳面損益將依最新收盤試算':'尚未確認持股；成本與股數僅作為試算資料'}</div>
+ <small>短期防守／反彈僅是盤後觀察條件，不是保證成交價；成本若跨除權息需自行換算實際調整後每股成本。不能用未還原的歷史頸線交易。</small></section>`;
+ return unifiedCardShell({key,rankText:options.rankText||'超盤手｜個股完整分析',stage:d.ok?'除權息後短期分析':'價格資料待核對',code:c.code,name:c.name,industry:c.industry||c.market||'產業待核對',closeText:price(c.close),changeText:pct(c.changePct),changeClass:Number(c.changePct)>0?'rising':Number(c.changePct)<0?'falling':'',summary,levels,actions:options.source==='lookup-detail'?'':`<button type="button" data-card-detail="${esc(rowId(c))}">開啟走勢圖與關卡圖解</button>`});
 }
 function r116BindGuardedHoldings(card,c){
  const cost=card?.querySelector('.r116-cost-input'),qty=card?.querySelector('.r116-qty-input'),out=card?.querySelector('.r116-pnl');
  const button=card?.querySelector('.r117-confirm-holding'),status=card?.querySelector('.r117-holding-status');
+ const action=card?.querySelector('.r116-guarded-plan .r99-action')||card?.querySelector('.r99-action');
  if(!cost||!qty||!out||!button||!status)return;
  const section=cost.closest?.('.r91-decision');if(section)section.dataset.r117Bound='1';
- const code=String(c.code||'');let sessionConfirmed=false;
+ const code=String(c.code||''),integrity=r111PriceIntegrity(c,120);let sessionConfirmed=false;
  const update=()=>{
   const p=r117HoldingParts(cost.value,qty.value),cl=Number(c.close);
   const confirmed=p.valid&&(sessionConfirmed||r117HoldingVerified(code,cost.value,qty.value));
-  status.textContent=confirmed?'持股資料已由你確認（非券商同步）':p.valid?'已找到舊資料或輸入值，尚未確認為實際持股':'請填寫實際持股成本與股數，再按確認';
+  status.textContent=confirmed?'持股已確認（自行輸入）':p.valid?'持股試算・尚未確認':'未設定持股資料';
   button.disabled=!p.valid||confirmed;button.hidden=confirmed;
-  if(confirmed&&Number.isFinite(cl)&&cl>0){
+  const d=r118PostActionTradingContext(c,integrity,'medium');
+  if(action)action.innerHTML=confirmed&&d.ok?r99ActionHTML(r99Action(d.ctx,p.cost,p.qty,'medium'),d.ctx):r118GenericPostActionCard(d);
+  if(confirmed&&Number.isFinite(cl)&&cl>0&&integrity.code==='CORPORATE_ACTION_UNADJUSTED'){
    const pnl=(cl-p.cost)*p.qty;
-   out.textContent=`以 ${c.date||'最近盤後'} 收盤 ${price(cl)} 元試算：帳面損益約 ${pnl>=0?'+':''}${Math.round(pnl).toLocaleString('zh-TW')} 元（未扣費稅、非成交價；不提供交易方向）`;
-  }else out.textContent=confirmed?'行情待核對，暫停個人損益計算':'尚未確認實際持股，不顯示個人損益或交易建議。';
+   out.textContent=`以 ${c.date||'最近盤後'} 收盤 ${price(cl)} 元試算：帳面損益約 ${pnl>=0?'+':''}${Math.round(pnl).toLocaleString('zh-TW')} 元（未扣費稅；已依自行輸入成本計算）`;
+  }else if(!confirmed&&p.valid&&Number.isFinite(cl)&&cl>0&&integrity.code==='CORPORATE_ACTION_UNADJUSTED'){
+   const pnl=(cl-p.cost)*p.qty;
+   out.textContent=`持股試算（未確認）：${pnl>=0?'+':''}${Math.round(pnl).toLocaleString('zh-TW')} 元；非真實持倉損益，未提供個人減碼股數。`;
+  }else out.textContent=confirmed?'行情待核對，個人損益暫停試算':'尚未確認持股，沒有個人買賣股數或損益認證。';
  };
  const change=()=>{sessionConfirmed=false;r117InvalidateHolding(code);r117StoreLegacyInputs(code,cost.value,qty.value);update()};
  cost.addEventListener('input',change);qty.addEventListener('input',change);
@@ -1728,7 +1783,7 @@ function r99ActionHTML(a,c){
  const level=n=>Number.isFinite(n)&&n>0?price(n)+' 元':'待核對';
  const color={success:'#6ee7c1',warning:'#f5bd67',danger:'#ff9c9c',muted:'#aab7c4'}[a.tone]||'#aab7c4';
  const box=(headline,detail,highlight=false)=>`<div style="padding:9px 0;border-top:1px solid #355466"><b style="color:${highlight?color:'inherit'}">${headline}</b><div style="font-size:.92em">${detail}</div></div>`;
- const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R117 明日操作</small>`;
+ const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R118 明日操作</small>`;
  if(!a.valid)return `<div style="border:2px solid ${color};border-radius:12px;padding:13px;display:grid;gap:8px" aria-live="polite">${base}<strong style="font-size:1.65em;color:${color}">${esc(a.title)}</strong><div>${esc(a.note||'請先核對資料')}</div><small>未提供操作價格或股數。</small></div>`;
  const lv=r103ConditionalLevels(c,a);
  const pct=n=>Number.isFinite(n)&&n>0?`（${(n/a.close-1)*100>=0?'+':''}${((n/a.close-1)*100).toFixed(2)}%）`:'';
@@ -1912,8 +1967,11 @@ function arrangeR41Detail(c){
   graph.querySelectorAll('.fib-toolbar,.fib-toggle,.gap-toggle,.r58-breakout-audit,.r64-direction,.range-status').forEach(el=>{el.hidden=true;el.style.display='none'});
   const legend=graph.querySelector('.chart-legend');if(legend)legend.innerHTML='<span>原始除權息後日K｜長期頸線、費波那契與缺口暫停核對</span>';
   const hint=graph.querySelector('.chart-zoom-hint');if(hint)hint.textContent='保留原本K線縮放與歷史查價；此圖只使用除權息後的日K，並非交易建議。';
+  const short=r118PostActionTradingContext(c,audited,'medium');
+  const levels=short.ok?r103ConditionalLevels(short.ctx,{close:short.plan.close,breakout:short.risk.breakout,rebound:short.plan.rebound}):null;
+  const fmt=v=>Number.isFinite(v)&&v>0?price(v)+' 元':'待核對';
   gates.replaceChildren();
-  gateIntro.innerHTML=`<div class="r41-gate-heading">關卡圖解 <small>${esc(c.date||'資料待核對')} · 非即時</small></div><div class="r41-gate-grid"><div><small>歷史大量K頸線</small><strong>待核對</strong></div><div><small>第一支撐</small><strong>待核對</strong></div><div><small>第二支撐</small><strong>待核對</strong></div><div><small>最後結構防守</small><strong>待核對</strong></div></div><p>已核對 ${esc(audited.event.date)} 除權息；跨事件歷史價格尚未還原，不顯示可能失真的關卡。${esc(audited.why)}</p>`;
+  gateIntro.innerHTML=`<div class="r41-gate-heading">關卡圖解 <small>${esc(c.date||'資料待核對')} · 盤後</small></div><div class="r41-gate-grid"><div><small>反彈／近期壓力</small><strong>${fmt(levels?.rebound??short.risk?.pressure)}</strong></div><div><small>第一防守（短期）</small><strong>${fmt(levels?.defense??short.plan?.defense)}</strong></div><div><small>第二防守（短期）</small><strong>${fmt(levels?.exit)}</strong></div><div><small>跨事件大量K頸線</small><strong>待核對</strong></div></div><p>${short.ok?'只用除權息後完整日K計算短期壓力與防守；未把歷史頸線、MA120／240或第一～第三根突破認證當作可用價位。':'短期資料仍未通過驗證：'+esc(short.reason)} </p>`;
   gates.append(gateIntro);
   state.r41Advanced=null;
  }else{
