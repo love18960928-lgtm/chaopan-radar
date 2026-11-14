@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R125-20261114-audit-ohlc */
+/* CHAOPAN_RADAR_BUILD: R126-20261114-freshness */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const state={r41Page:'card',r41Advanced:null,payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false,instMarket:'all',instAsset:'stock',instSort:'amount'};
@@ -506,17 +506,32 @@ function deskPlanHTML(c,small=false){
 // Guardrail: do not present an outdated EOD shortlist as today's trade plan.
 // Count weekdays since the snapshot; no holiday calendar is available, so if
 // uncertain we suppress the shortlist rather than imply fresh real-time data.
-function staleDeskSnapshot(asOf){
- if(!/^\d{4}-\d{2}-\d{2}$/.test(String(asOf||'')))return true;
- const todayParts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{
-  timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
- const today=`${todayParts.year}-${todayParts.month}-${todayParts.day}`;
- const nowUTC=Date.parse(today+'T00:00:00Z'),sourceUTC=Date.parse(asOf+'T00:00:00Z');
- if(!Number.isFinite(nowUTC)||!Number.isFinite(sourceUTC)||sourceUTC>nowUTC)return true;
- let business=0;for(let day=sourceUTC+86400000;day<=nowUTC;day+=86400000){const w=new Date(day).getUTCDay();if(w>0&&w<6)business++;}
- const dow=new Date(nowUTC).getUTCDay(),hour=Number(todayParts.hour);
- return business>1||(business>0&&dow>0&&dow<6&&hour>=16);
+// R126: one shared Taiwan EOD freshness gate. Optional official session dates must
+// be loaded by the data pipeline into ChaopanTradingCalendar.sessions (YYYY-MM-DD).
+// Without that calendar, weekdays are only a conservative approximation.
+function chaopanEodFreshness(asOf){
+ const iso=d=>/^\d{4}-\d{2}-\d{2}$/.test(String(d||''))&&Number.isFinite(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
+ if(!iso(asOf))return {stale:true,reason:'盤後日期無效'};
+ const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
+ const today=`${parts.year}-${parts.month}-${parts.day}`;
+ if(asOf>today)return {stale:true,reason:'盤後日期晚於台灣當日'};
+ const sessions=globalThis.ChaopanTradingCalendar?.sessions;
+ const valid=Array.isArray(sessions)&&sessions.length>0&&sessions.every(iso)&&sessions.includes(asOf);
+ // Calendar coverage must reach today (or most recent previous trading day),
+ // otherwise a partial/stale calendar cannot certify freshness.
+ const sorted=valid?[...new Set(sessions)].sort():[];
+ const coverageEnd=globalThis.ChaopanTradingCalendar?.coverageEnd;
+ const covered=valid&&iso(coverageEnd)&&coverageEnd>=today&&sorted[0]<=asOf;
+ const todayUTC=Date.parse(today+'T00:00:00Z'),sourceUTC=Date.parse(asOf+'T00:00:00Z');
+ let elapsed=0;
+ if(covered){elapsed=sorted.filter(d=>d>asOf&&d<=today).length;}
+ else for(let d=sourceUTC+86400000;d<=todayUTC;d+=86400000){const w=new Date(d).getUTCDay();if(w>0&&w<6)elapsed++;}
+ const weekday=new Date(todayUTC).getUTCDay(),hour=Number(parts.hour);
+ const stale=elapsed>1||(elapsed>0&&weekday>0&&weekday<6&&hour>=16);
+ return {stale,calendarVerified:covered,elapsed,reason:stale?(covered?'已超過可核對的交易日':'缺少完整交易日曆；依工作日保守判定資料可能過期'):''};
 }
+function staleDeskSnapshot(asOf){return chaopanEodFreshness(asOf).stale;}
+
 function renderSectorPulse(rows){
  const output=$('#sectorPulse');if(!output)return;
  const scan=r42Scan(),leaders=scan?.sectorLeaders||[];
@@ -1387,9 +1402,8 @@ function r101Quality(c,mode){
  if(Number(b.at(-1)?.[5])<=0)return {ok:false,why:'最新交易日無成交量或可能停牌，暫停買賣價位判斷'};
  // r105: stale EOD snapshots must never be presented as tomorrow's instruction.
  // Allow long weekends/holidays; do not guess the exchange holiday calendar.
- const now=new Date(),latest=new Date(prev+'T00:00:00+08:00');
- if(!Number.isFinite(latest.getTime())||latest.getTime()>now.getTime()+86400000)return {ok:false,why:'盤後日期異常，暫停操作建議'};
- if(now.getTime()-latest.getTime()>5*86400000)return {ok:false,why:'盤後資料已超過5個日曆天，請核對最新交易日後再提供明日操作建議'};
+ const freshness=chaopanEodFreshness(prev);
+ if(freshness.stale)return {ok:false,why:freshness.reason+'，請核對最新盤後資料後再提供明日操作建議'};
  return {ok:true};
 }
 function r99Action(c,cost,qty,mode='medium'){
@@ -2555,7 +2569,7 @@ function mainTrendResearchPanel(c){
  <p class="ma-structure-note">核心倉守原頸線、MA20與經核對的移動停利；操作倉分段檢核風險倍數。沒有實際持股成本及交易紀錄，不能計算真實停利與獲利。${pattern?' 次日成交價格／跳空及滑價必須重新核算。':''}</p></section>`;
 }
 function renderDetail(){const c=state.detail;if(!c)return;const starred=state.watch.has(c.market+'-'+c.code),cls=c.changePct>0?'rising':c.changePct<0?'falling':'neutral';
-  $('#modalContent').innerHTML=`<div class="detail-title"><div><div class="eyebrow">STOCK ANALYSIS / ${esc(c.market)} · R125</div><h2 id="modalTitle">${esc(c.code)} ${esc(c.name)}</h2><div class="breakout-star-line">${breakoutStarHTML(c)} ${breakoutQualityHTML(c)}</div>${breakoutQualityExplanation(c)}<div class="detail-sub">${esc(c.date)} 盤後資料${state.mode==='demo'?' · 示範':''}</div></div><div class="detail-price"><strong>${price(c.close)}</strong><div class="${cls}">${pct(c.changePct)}</div></div></div>${guidanceCard(c)}${globalThis.ChaopanMarketRegime?.badgeFor?.(c,state.marketIntel,state.payload?.asOf)||''}<div class="chart-area"><div class="chart-top"><strong>歷史K線／成交量／均線</strong><button type="button" class="chaopan-expand" onclick="globalThis.ChaopanExpandChart(this)" aria-label="橫向放大K線">⛶ 橫向放大</button><div class="chart-range"><button class="range-btn ${state.chartDays===20?'active':''}" data-days="20">20日</button><button class="range-btn ${state.chartDays===60?'active':''}" data-days="60">60日</button><button class="range-btn ${state.chartDays===120?'active':''}" data-days="120">120日</button><button type="button" class="zoom-btn" data-zoom="in" aria-label="K線放大">＋</button><button type="button" class="zoom-btn" data-zoom="out" aria-label="K線縮小">－</button></div></div><div class="chart-window-notice" role="status">${(c.bars||[]).length<state.chartDays?`⚠ 已選 ${state.chartDays} 日，目前只有 ${(c.bars||[]).length} 根可用K線；不得視為完整 ${state.chartDays} 日型態。`:`本圖使用最近 ${Math.min(state.chartDays,(c.bars||[]).length)} 根K線。`}</div><div class="fib-toolbar"><button type="button" class="fib-toggle" aria-pressed="${!globalThis.ChaopanFibHidden}" onclick="globalThis.ChaopanToggleFib(this)">${globalThis.ChaopanFibHidden?'費波那契：隱藏':'費波那契：顯示'}</button><small>紅黃綠三色區帶｜最近120根歷史資料為基準</small></div><button type="button" class="fib-toggle" aria-pressed="${!globalThis.ChaopanRangeHidden}" onclick="globalThis.ChaopanToggleRange(this)">${globalThis.ChaopanRangeHidden?'盤整框：隱藏':'盤整框：顯示'}</button><button type="button" class="fib-toggle gap-toggle" aria-pressed="${!globalThis.ChaopanGapHidden}" onclick="globalThis.ChaopanToggleGaps(this)">${globalThis.ChaopanGapHidden?'缺口：隱藏':'缺口：顯示'}</button><span class="r58-breakout-audit" role="status">${esc(auditConsolidationBreakout(c).text)}</span><span class="r64-direction" role="status">${esc(consolidationDirection(c).text)}</span><span class="range-status">${(()=>{const r=detectConsolidation(c.bars||[]);return r?`最近盤整：${r.age}根前，${price(r.lower)}～${price(r.upper)}（${r.state==='down'?'已跌破':r.state==='up'?'已突破':r.state==='retest'?'回測確認（價格）':r.state==='retest_pending'?'回測待確認':r.state==='continuation'?'突破延續':'區間內'}；上緣${r.upperTouches}次／下緣${r.lowerTouches}次獨立測試）`:(auditConsolidationBreakout(c).status==='data_gap'?'⚠ K線資料不足，盤整框待核對':'最近60根未找到有效盤整區間');})()}</span><div id="chartSvg" class="${[globalThis.ChaopanFibHidden?'fib-hidden':'',globalThis.ChaopanRangeHidden?'range-hidden':'',globalThis.ChaopanGapHidden?'gap-hidden':''].filter(Boolean).join(' ')}" aria-label="雙指捏合可縮放K線">${makeChart(c.bars||[],latestNeck(c),state.chartDays,supportLines(c),c.structureV23?.necklines||[],c.structureV23?.mainDefense,c.date)}</div><small class="chart-zoom-hint">日K以 ${esc(c.date)} 收盤為準；選定期間K棒決定價格縱軸，範圍外歷史頸線仍可在「關卡圖解」查看。非即時。</small><div class="chart-legend"><span>━━ 橘色：最新頸線</span><span style="color:#c8a5e8">━━ 淺紫：其他頸線／最後防守</span><span style="color:#3dd9ba">━━ 第一支撐</span><span style="color:#76abfa">━━ 第二支撐</span><span style="color:#ffd36e">━━ MA5</span><span style="color:#8dafff">━━ MA10</span><span style="color:#eaa8ec">━━ MA20</span><span style="color:#48b7c6">▰ 費波那契三色背景（可關閉）</span><span>紅漲綠跌</span><span>灰0：防守前兆｜橘1：第一根轉弱｜紅2：第二根轉弱（均為收盤後訊號）</span></div></div><details class="fin-r13-details"><summary>📊 公司研究｜營收、EPS及合理價情境</summary>${financialPanel(c)}</details>
+  $('#modalContent').innerHTML=`<div class="detail-title"><div><div class="eyebrow">STOCK ANALYSIS / ${esc(c.market)} · R126</div><h2 id="modalTitle">${esc(c.code)} ${esc(c.name)}</h2><div class="breakout-star-line">${breakoutStarHTML(c)} ${breakoutQualityHTML(c)}</div>${breakoutQualityExplanation(c)}<div class="detail-sub">${esc(c.date)} 盤後資料${state.mode==='demo'?' · 示範':''}</div></div><div class="detail-price"><strong>${price(c.close)}</strong><div class="${cls}">${pct(c.changePct)}</div></div></div>${guidanceCard(c)}${globalThis.ChaopanMarketRegime?.badgeFor?.(c,state.marketIntel,state.payload?.asOf)||''}<div class="chart-area"><div class="chart-top"><strong>歷史K線／成交量／均線</strong><button type="button" class="chaopan-expand" onclick="globalThis.ChaopanExpandChart(this)" aria-label="橫向放大K線">⛶ 橫向放大</button><div class="chart-range"><button class="range-btn ${state.chartDays===20?'active':''}" data-days="20">20日</button><button class="range-btn ${state.chartDays===60?'active':''}" data-days="60">60日</button><button class="range-btn ${state.chartDays===120?'active':''}" data-days="120">120日</button><button type="button" class="zoom-btn" data-zoom="in" aria-label="K線放大">＋</button><button type="button" class="zoom-btn" data-zoom="out" aria-label="K線縮小">－</button></div></div><div class="chart-window-notice" role="status">${(c.bars||[]).length<state.chartDays?`⚠ 已選 ${state.chartDays} 日，目前只有 ${(c.bars||[]).length} 根可用K線；不得視為完整 ${state.chartDays} 日型態。`:`本圖使用最近 ${Math.min(state.chartDays,(c.bars||[]).length)} 根K線。`}</div><div class="fib-toolbar"><button type="button" class="fib-toggle" aria-pressed="${!globalThis.ChaopanFibHidden}" onclick="globalThis.ChaopanToggleFib(this)">${globalThis.ChaopanFibHidden?'費波那契：隱藏':'費波那契：顯示'}</button><small>紅黃綠三色區帶｜最近120根歷史資料為基準</small></div><button type="button" class="fib-toggle" aria-pressed="${!globalThis.ChaopanRangeHidden}" onclick="globalThis.ChaopanToggleRange(this)">${globalThis.ChaopanRangeHidden?'盤整框：隱藏':'盤整框：顯示'}</button><button type="button" class="fib-toggle gap-toggle" aria-pressed="${!globalThis.ChaopanGapHidden}" onclick="globalThis.ChaopanToggleGaps(this)">${globalThis.ChaopanGapHidden?'缺口：隱藏':'缺口：顯示'}</button><span class="r58-breakout-audit" role="status">${esc(auditConsolidationBreakout(c).text)}</span><span class="r64-direction" role="status">${esc(consolidationDirection(c).text)}</span><span class="range-status">${(()=>{const r=detectConsolidation(c.bars||[]);return r?`最近盤整：${r.age}根前，${price(r.lower)}～${price(r.upper)}（${r.state==='down'?'已跌破':r.state==='up'?'已突破':r.state==='retest'?'回測確認（價格）':r.state==='retest_pending'?'回測待確認':r.state==='continuation'?'突破延續':'區間內'}；上緣${r.upperTouches}次／下緣${r.lowerTouches}次獨立測試）`:(auditConsolidationBreakout(c).status==='data_gap'?'⚠ K線資料不足，盤整框待核對':'最近60根未找到有效盤整區間');})()}</span><div id="chartSvg" class="${[globalThis.ChaopanFibHidden?'fib-hidden':'',globalThis.ChaopanRangeHidden?'range-hidden':'',globalThis.ChaopanGapHidden?'gap-hidden':''].filter(Boolean).join(' ')}" aria-label="雙指捏合可縮放K線">${makeChart(c.bars||[],latestNeck(c),state.chartDays,supportLines(c),c.structureV23?.necklines||[],c.structureV23?.mainDefense,c.date)}</div><small class="chart-zoom-hint">日K以 ${esc(c.date)} 收盤為準；選定期間K棒決定價格縱軸，範圍外歷史頸線仍可在「關卡圖解」查看。非即時。</small><div class="chart-legend"><span>━━ 橘色：最新頸線</span><span style="color:#c8a5e8">━━ 淺紫：其他頸線／最後防守</span><span style="color:#3dd9ba">━━ 第一支撐</span><span style="color:#76abfa">━━ 第二支撐</span><span style="color:#ffd36e">━━ MA5</span><span style="color:#8dafff">━━ MA10</span><span style="color:#eaa8ec">━━ MA20</span><span style="color:#48b7c6">▰ 費波那契三色背景（可關閉）</span><span>紅漲綠跌</span><span>灰0：防守前兆｜橘1：第一根轉弱｜紅2：第二根轉弱（均為收盤後訊號）</span></div></div><details class="fin-r13-details"><summary>📊 公司研究｜營收、EPS及合理價情境</summary>${financialPanel(c)}</details>
  ${mainTrendResearchPanel(c)}<details class="research-fold"><summary>▥ 均線強弱、六條均線與趨勢結構</summary>${maPanel(c)}${sixMaPanel(c)}${trendModePanel(c)}</details>
  <details class="research-fold"><summary>▥ 突破紅綠K、量價與續強證據</summary>${breakoutTrackPanel(c)}${liquidityPanel(c)}${continuationPanel(c)}${confirmedStrengthPanel(c)}${phasePanel(c)}</details>
  <details class="research-fold"><summary>▥ 法人與籌碼風險</summary>${ChaopanIntel.chipPanel(state.marketIntel,c,deskEvidence(c))}</details>
@@ -3190,11 +3204,11 @@ document.addEventListener('click',function(e){
 },true);
 
 // R123: front-end build indicator; the home page's static r60 text may live in index.html.
-// This updates only the exact build badge when this script is loaded on that page.
+// The index.html static version still requires a separate update.
 (function(){
- const BUILD='r125 · 判斷清單與K線防呆';
- globalThis.CHAOPAN_DETAIL_BUILD='R125-20261114';
- if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild='R125-20261114';
+ const BUILD='r126 · 盤後交易日檢查';
+ globalThis.CHAOPAN_DETAIL_BUILD='R126-20261114';
+ if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild='R126-20261114';
  function updateBadge(){
   const root=document.body;if(!root)return;
   const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
