@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R132-20261114-screen-evidence */
+/* CHAOPAN_RADAR_BUILD: R135-20261114-version-consistency */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const state={r41Page:'card',r41Advanced:null,payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false,instMarket:'all',instAsset:'stock',instSort:'amount'};
@@ -777,6 +777,11 @@ function strictBreakoutDecision(c,stage){
  const pending=(reason)=>({eligible:false,pending:true,reason});
  if(!STRICT_BREAKOUT_STAGES.has(stage))return pass('非突破續攻階段');
  if(!c)return pending('個股資料尚未載入');
+ // R134: strict breakout lists and unified screener share the same candle/volume veto.
+ const gate=r133RiskGate(c);
+ if(gate.status==='risk')return fail('K棒／量價風險排除：'+gate.reasons.join('、'));
+ if(gate.status==='watch')return pending('長上影待後續確認：'+gate.reasons.join('、'));
+ if(gate.status==='unknown')return pending('資料品質待確認：'+gate.reasons.join('、'));
  // Match the certified event to the displayed star stage BEFORE checking price/volume.
  // A day-2 candidate must never qualify as ★1 merely because its candles are strong.
  const seq=c.breakoutSequence;
@@ -903,7 +908,7 @@ function sectorDirectory(){
  };
  const qualifiedRows=stage=>STRICT_BREAKOUT_STAGES.has(stage)
   ?candidatesForStage(stage).filter(c=>strictBreakoutDecision(c,stage).eligible).map(c=>({row:c,stage,sector:c.sector||'產業待核對',compactStatus:'已認證｜'+strictBreakoutDecision(c,stage).reason}))
-  :radar.watch.filter(o=>o.stage===stage&&strictBreakoutDecision(o.row,stage).eligible);
+  :radar.watch.filter(o=>o.stage===stage&&strictBreakoutDecision(o.row,stage).eligible&&r133RiskGate(o.row).status==='eligible');
  // Keep certified nonempty groups visible. Pending is not zero: it remains
  // visible for data-quality review. Empty groups fold into the idle section.
  const stagePending=stage=>STRICT_BREAKOUT_STAGES.has(stage)&&candidatesForStage(stage).some(c=>strictBreakoutDecision(c,stage).pending);
@@ -1596,7 +1601,7 @@ function r99ActionHTML(a,c){
  const level=n=>Number.isFinite(n)&&n>0?price(n)+' 元':'待核對';
  const color={success:'#6ee7c1',warning:'#f5bd67',danger:'#ff9c9c',muted:'#aab7c4'}[a.tone]||'#aab7c4';
  const box=(headline,detail,highlight=false)=>`<div style="padding:9px 0;border-top:1px solid #355466"><b style="color:${highlight?color:'inherit'}">${headline}</b><div style="font-size:.92em">${detail}</div></div>`;
- const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R130 明日操作</small>`;
+ const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R135 明日操作</small>`;
  if(!a.valid)return `<div style="border:2px solid ${color};border-radius:12px;padding:13px;display:grid;gap:8px" aria-live="polite">${base}<strong style="font-size:1.65em;color:${color}">${esc(a.title)}</strong><div>${esc(a.note||'請先核對資料')}</div><small>未提供操作價格或股數。</small></div>`;
  const lv=a.levelsVerified===false?null:r103ConditionalLevels(c,a);
  const pct=n=>Number.isFinite(n)&&n>0?`（${(n/a.close-1)*100>=0?'+':''}${((n/a.close-1)*100).toFixed(2)}%）`:'';
@@ -1805,6 +1810,7 @@ function autoQualifiedEntries(){
     !state.universe||state.universe.asOf!==asOf||staleDeskSnapshot(asOf))return autoQualifiedCache;
  const feed=verifiedAutoFeed(asOf);if(!feed)return autoQualifiedCache;
  for(const c of rows){
+  if(r133RiskGate(c).status!=='eligible')continue;
   if(c.date!==asOf||c.riskFirst||['high','medium'].includes(c.riskLevel)||
       c.possiblePriceAdjustment||c.overextended||c.onePriceLimit||
       /假突破|跌破|出貨|賣壓|轉弱|突破失敗|不宜追價/.test([c.followStatus,c.unifiedStage,c.trading?.status].join(' ')) ||
@@ -2249,13 +2255,20 @@ function r133RiskGate(c){
  const last=b.at(-1), prev=b.at(-2);
  const num=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v):null;
  const result={status:'unknown',reasons:[]};
+ if(c?.possiblePriceAdjustment===true)return {...result,reasons:['公司行動價格尚未還原']};
+ if(c?.date&&Array.isArray(last)&&String(last[0])!==String(c.date))return {...result,reasons:['日K與股票日期不一致']};
  if(!Array.isArray(last)||last.length<6)return {...result,reasons:['缺少完整日K']};
  const o=num(last[1]),h=num(last[2]),l=num(last[3]),cl=num(last[4]),v=num(last[5]);
  if([o,h,l,cl,v].some(x=>x===null)||h<l||o>h||o<l||cl>h||cl<l||v<0||h<=0)return {...result,reasons:['日K資料異常']};
  const range=h-l,upper=h-Math.max(o,cl),body=Math.abs(cl-o);
  const upperPct=range>0?upper/range:0;
  const prior=b.slice(-21,-1).map(x=>Array.isArray(x)?num(x[5]):null);
- const volReady=prior.length===20&&prior.every(x=>x!==null&&x>=0);
+ const validBar=x=>{if(!Array.isArray(x)||x.length<6)return false;
+  const z=[x[1],x[2],x[3],x[4],x[5]].map(num);
+  return z.every(t=>t!==null)&&z[2]>0&&z[1]>=z[2]&&z[0]>=z[2]&&z[0]<=z[1]&&z[3]>=z[2]&&z[3]<=z[1]&&z[4]>=0;
+ };
+ const priorBars=b.slice(-21,-1);
+ const volReady=prior.length===20&&prior.every(x=>x!==null&&x>=0)&&priorBars.every(validBar);
  const avg=volReady?prior.reduce((a,x)=>a+x,0)/20:null;
  const volRatio=avg>0?v/avg:null;
  const text=[c?.unifiedStage,c?.followStatus,c?.trading?.status,c?.riskLevel].filter(Boolean).join(' ');
@@ -2268,7 +2281,7 @@ function r133RiskGate(c){
  if(!volReady||avg<=0)return {status:'unknown',reasons:['前20日有效成交量不足']};
  if(longUpper)return {status:'watch',reasons:['長上影線，上攻受阻待確認']};
  if(!volReady||avg<=0)return {status:'unknown',reasons:['前20日有效成交量不足']};
- if(!Array.isArray(prev)||prev.length<6)return {status:'unknown',reasons:['前一交易日資料不足']};
+ if(!validBar(prev))return {status:'unknown',reasons:['前一交易日日K資料異常']};
  return {status:'eligible',reasons:['量價未觸發已定義的高風險排除條件']};
 }
 function r133ScreenerClass(c){
@@ -2288,7 +2301,7 @@ function r131Mount(){
  const host=document.querySelector('.advanced-radar')||document.querySelector('#candidateList')?.parentElement;
  if(!host||document.querySelector('#r131Screener'))return;
  const panel=document.createElement('section');panel.id='r131Screener';panel.style.cssText='margin:12px 0;padding:14px;border:1px solid #35576b;border-radius:14px;background:#0c2432;color:#e7f5fa';
- panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R133</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">可追蹤強勢候選（非買點）</option><option value="watch">長上影／待確認</option><option value="risk">出貨疑慮／轉弱警戒</option><option value="unknown">資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
+ panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R134</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">可追蹤強勢候選（非買點）</option><option value="watch">長上影／待確認</option><option value="risk">出貨疑慮／轉弱警戒</option><option value="unknown">資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
  host.insertBefore(panel,host.firstChild);
  panel.querySelector('#r131Condition').addEventListener('change',e=>{r131Condition=e.target.value;r132Page=0;r131Render()});
  panel.querySelector('#r133Bucket').addEventListener('change',e=>{r133Bucket=e.target.value;r132Page=0;r131Render()});
@@ -3367,27 +3380,29 @@ document.addEventListener('click',function(e){
  }
 },true);
 
-// R123: front-end build indicator; the home page's static r60 text may live in index.html.
-// The index.html static version still requires a separate update.
+// R135: one runtime build identifier for the detail script and visible home badge.
+// A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD='r130 · 名單數量與觀察股分層';
- globalThis.CHAOPAN_DETAIL_BUILD='R128-20261114';
- if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild='R128-20261114';
+ const BUILD_ID='R135-20261114';
+ const BUILD_LABEL='r135 · 統一版本顯示與風險篩選';
+ globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
+ if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
+ const oldBadge=/r(?:60|1\d{2})\s*[·・]\s*(?:名單數量與觀察股分層|訊號衝突防呆|出貨訊號驗證|盤後判斷修正|統一版本顯示與風險篩選)/gi;
  function updateBadge(){
-  const root=document.body;if(!root)return;
-  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
-  let node,changed=0;
+  if(!document.body)return;
+  const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+  let node;
   while((node=walker.nextNode())){
    const raw=node.nodeValue||'';
-   if(!/r(?:60|1(?:10|1[0-9]|2[0-5]))\s*[·・]\s*(?:訊號衝突防呆|出貨訊號驗證|盤後判斷修正)/i.test(raw))continue;
-   node.nodeValue=raw.replace(/r(?:60|1(?:10|1[0-9]|2[0-5]))\s*[·・]\s*(?:訊號衝突防呆|出貨訊號驗證|盤後判斷修正)/gi,BUILD);changed++;
-   if(changed>=3)break;
+   if(!oldBadge.test(raw)){oldBadge.lastIndex=0;continue;}
+   oldBadge.lastIndex=0;
+   const next=raw.replace(oldBadge,BUILD_LABEL);
+   if(next!==raw)node.nodeValue=next;
   }
  }
  function start(){
   updateBadge();
-  const obs=new MutationObserver(()=>updateBadge());
-  obs.observe(document.body,{childList:true,subtree:true});
+  new MutationObserver(updateBadge).observe(document.body,{childList:true,subtree:true,characterData:true});
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});
  else start();
