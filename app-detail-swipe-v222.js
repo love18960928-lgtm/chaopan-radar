@@ -1,4 +1,5 @@
-/* CHAOPAN_RADAR_BUILD: r116-preserve-original-detail-ui-20261114 */
+/* CHAOPAN_RADAR_BUILD: r117-portfolio-verification-20261114 */
+/* r116-preserve-original-detail-ui-20261114 retained for compatibility */
 /* r112-consistent-data-gates retained in regression history */
 /* r111-price-integrity-preflight-20261114 retained in regression history */
 'use strict';
@@ -1438,6 +1439,43 @@ function r115KnownActionHTML(c,integrity){
  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">${cells}</div>
  <p>MA120／MA240、跨除權息的大量K頸線、第一至第三根認證及明日操作：<b>待正式還原行情與來源重新驗證</b>。</p><small>來源：${esc(event.source)}；此版僅內建已查證的 7610 案例，其餘公司行動仍會保守阻擋。</small></section>`;
 }
+// R117: Old browser storage is not proof that a person owns these shares.
+// Never delete a legacy position on load. Require a deliberate verification
+// whose fingerprint matches the exact per-stock cost AND quantity.
+function r117HoldingParts(cost,qty){
+ const a=cost===null||cost===undefined||String(cost).trim()===''?NaN:Number(cost);
+ const b=qty===null||qty===undefined||String(qty).trim()===''?NaN:Number(qty);
+ return {cost:a,qty:b,valid:Number.isFinite(a)&&a>0&&Number.isSafeInteger(b)&&b>0&&b<=100000000};
+}
+function r117HoldingKey(code){return 'chaopan-r117-confirmed-position-'+String(code||'')}
+function r117HoldingVerified(code,cost,qty){
+ const p=r117HoldingParts(cost,qty);if(!p.valid)return false;
+ try{const v=JSON.parse(localStorage.getItem(r117HoldingKey(code))||'null');
+  return !!v&&v.source==='explicit-user-confirmation'&&v.cost===p.cost&&v.qty===p.qty;
+ }catch(_){return false}
+}
+function r117ConfirmHolding(code,cost,qty){
+ const p=r117HoldingParts(cost,qty);if(!p.valid)return false;
+ try{localStorage.setItem(r117HoldingKey(code),JSON.stringify({source:'explicit-user-confirmation',cost:p.cost,qty:p.qty,confirmedAt:new Date().toISOString()}));
+  return r117HoldingVerified(code,cost,qty);
+ }catch(_){return false}
+}
+function r117InvalidateHolding(code){try{localStorage.removeItem(r117HoldingKey(code))}catch(_){}}
+function r117StoreLegacyInputs(code,cost,qty){
+ const p=r117HoldingParts(cost,qty);
+ try{
+  const costKey='chaopan-r82-cost-'+String(code||''),qtyKey='chaopan-r91-qty-'+String(code||'');
+  if(Number.isFinite(p.cost)&&p.cost>0)localStorage.setItem(costKey,String(p.cost));else localStorage.removeItem(costKey);
+  if(Number.isSafeInteger(p.qty)&&p.qty>0&&p.qty<=100000000)localStorage.setItem(qtyKey,String(p.qty));else localStorage.removeItem(qtyKey);
+ }catch(_){}}
+function r117HoldingControls(code,cost,qty){
+ const valid=r117HoldingParts(cost,qty).valid,verified=r117HoldingVerified(code,cost,qty);
+ return `<div class="r117-holding-check" style="display:grid;gap:8px;padding:10px;border:1px solid #49687c;border-radius:10px">
+ <div class="r117-holding-status" role="status">${verified?'持股資料已由你確認（非券商同步）':valid?'舊資料待確認：尚不視為真實持股':'請輸入實際持股成本與股數，再按確認'}</div>
+ <button type="button" class="r117-confirm-holding" ${verified?'hidden':''} ${valid?'':'disabled'} style="width:100%;min-height:40px;border-radius:8px;background:#2b7c7f;color:#fff;font-weight:600">確認這是我的實際持股</button>
+ <small>若上方是舊測試數字，請修改或清空；未確認前不會產生個人損益或持股買賣股數。</small></div>`;
+}
+
 // R116: Preserve the usual battle-card UI for known events, without pretending
 // that raw cross-event necklines/stars are reliable. Portfolio inputs are saved.
 function r116GuardedBattleCard(c,integrity,options={}){
@@ -1449,20 +1487,31 @@ function r116GuardedBattleCard(c,integrity,options={}){
  const summary=`${info}<div class="sector-mini-status"><b>除權息後短期趨勢觀察</b><span class="sector-card-tag muted">長期關卡待核對</span></div><div class="sector-mini-stats">${mini}</div><div class="sector-six-dots"><span>六均線</span><span class="sector-ma-dot">5</span><span class="sector-ma-dot">10</span><span class="sector-ma-dot">20</span><span class="sector-ma-dot">60</span><span class="sector-ma-dot missing">120</span><span class="sector-ma-dot missing">240</span></div><p>僅使用除權息後 ${integer(raw.length)} 根日K計算短期均線。MA120／MA240不以未還原資料認證。</p>`;
  const read=(k)=>{try{return localStorage.getItem(k)||''}catch(e){return ''}};
  const cost=read('chaopan-r82-cost-'+c.code),qty=read('chaopan-r91-qty-'+c.code);
- const levels=`<section class="r82-decision r91-decision r116-guarded-plan" style="padding:16px;border:1px solid #385a6c;border-radius:14px;display:grid;gap:12px" data-code="${esc(c.code)}"><strong>明日持股操作｜待核對</strong><div class="r99-action"><b>暫停交易訊號</b><p>${esc(integrity.why)}</p><small>目前不提供突破買點、減碼價、出場價或建議股數。請勿用未還原的歷史關卡交易。</small></div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px"><label style="min-width:0">持股成本（元）<input class="r116-cost-input" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%"/></label><label style="min-width:0">實際持股（股）<input class="r116-qty-input" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%"/></label></div><div class="r116-pnl" role="status">帳面損益需輸入有效成本與股數；不是交易建議。</div><small>股價尚未完成跨除權息的長期技術資料還原，成本／股數仍會留存，後續驗證完成可延續使用。</small></section>`;
+ const levels=`<section class="r82-decision r91-decision r116-guarded-plan" style="padding:16px;border:1px solid #385a6c;border-radius:14px;display:grid;gap:12px" data-code="${esc(c.code)}"><strong>明日持股操作｜待核對</strong><div class="r99-action"><b>暫停交易訊號</b><p>${esc(integrity.why)}</p><small>目前不提供突破買點、減碼價、出場價或建議股數。請勿用未還原的歷史關卡交易。</small></div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px"><label style="min-width:0">持股成本（元）<input class="r116-cost-input" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%"/></label><label style="min-width:0">實際持股（股）<input class="r116-qty-input" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%"/></label></div>${r117HoldingControls(c.code,cost,qty)}<div class="r116-pnl" role="status">持股資料尚未確認，暫不計算個人損益。</div><small>股價尚未完成跨除權息的長期技術資料還原，成本／股數仍會留存，後續驗證完成可延續使用。</small></section>`;
  return unifiedCardShell({key,rankText:options.rankText||'超盤手｜個股完整分析',stage:'價格資料待核對',code:c.code,name:c.name,industry:c.industry||c.market||'產業待核對',closeText:price(c.close),changeText:pct(c.changePct),changeClass:Number(c.changePct)>0?'rising':Number(c.changePct)<0?'falling':'',summary,levels,actions:options.source==='lookup-detail'?'':`<button type="button" data-card-detail="${esc(rowId(c))}">開啟走勢圖與關卡圖解</button>`});
 }
 function r116BindGuardedHoldings(card,c){
  const cost=card?.querySelector('.r116-cost-input'),qty=card?.querySelector('.r116-qty-input'),out=card?.querySelector('.r116-pnl');
- if(!cost||!qty||!out)return;
+ const button=card?.querySelector('.r117-confirm-holding'),status=card?.querySelector('.r117-holding-status');
+ if(!cost||!qty||!out||!button||!status)return;
+ const section=cost.closest?.('.r91-decision');if(section)section.dataset.r117Bound='1';
+ const code=String(c.code||'');let sessionConfirmed=false;
  const update=()=>{
-  const a=cost.value.trim()===''?NaN:Number(cost.value),b=qty.value.trim()===''?NaN:Number(qty.value),cl=Number(c.close);
-  const valid=Number.isFinite(a)&&a>0&&Number.isSafeInteger(b)&&b>0&&b<=100000000&&Number.isFinite(cl)&&cl>0;
-  if(valid){const pnl=(cl-a)*b;out.textContent=`以 ${esc(c.date||'最近盤後')} 收盤 ${price(cl)} 元試算：帳面損益約 ${pnl>=0?'+':''}${Math.round(pnl).toLocaleString('zh-TW')} 元（未扣費稅、非成交價；不提供交易方向）`;}
-  else out.textContent='請輸入有效持股成本與股數；不提供未驗證的減碼或出場價。';
-  try{if(Number.isFinite(a)&&a>0)localStorage.setItem('chaopan-r82-cost-'+c.code,String(a));if(Number.isSafeInteger(b)&&b>0&&b<=100000000)localStorage.setItem('chaopan-r91-qty-'+c.code,String(b));}catch(e){}
+  const p=r117HoldingParts(cost.value,qty.value),cl=Number(c.close);
+  const confirmed=p.valid&&(sessionConfirmed||r117HoldingVerified(code,cost.value,qty.value));
+  status.textContent=confirmed?'持股資料已由你確認（非券商同步）':p.valid?'已找到舊資料或輸入值，尚未確認為實際持股':'請填寫實際持股成本與股數，再按確認';
+  button.disabled=!p.valid||confirmed;button.hidden=confirmed;
+  if(confirmed&&Number.isFinite(cl)&&cl>0){
+   const pnl=(cl-p.cost)*p.qty;
+   out.textContent=`以 ${c.date||'最近盤後'} 收盤 ${price(cl)} 元試算：帳面損益約 ${pnl>=0?'+':''}${Math.round(pnl).toLocaleString('zh-TW')} 元（未扣費稅、非成交價；不提供交易方向）`;
+  }else out.textContent=confirmed?'行情待核對，暫停個人損益計算':'尚未確認實際持股，不顯示個人損益或交易建議。';
  };
- cost.addEventListener('input',update);qty.addEventListener('input',update);update();
+ const change=()=>{sessionConfirmed=false;r117InvalidateHolding(code);r117StoreLegacyInputs(code,cost.value,qty.value);update()};
+ cost.addEventListener('input',change);qty.addEventListener('input',change);
+ button.addEventListener('click',()=>{const p=r117HoldingParts(cost.value,qty.value);if(!p.valid)return;
+  sessionConfirmed=true;r117StoreLegacyInputs(code,cost.value,qty.value);r117ConfirmHolding(code,cost.value,qty.value);update();
+ });
+ update();
 }
 // r111: Fail closed on suspicious unadjusted corporate-action / source gaps.
 // This does NOT fix raw data or assert that a split actually occurred.
@@ -1679,7 +1728,7 @@ function r99ActionHTML(a,c){
  const level=n=>Number.isFinite(n)&&n>0?price(n)+' 元':'待核對';
  const color={success:'#6ee7c1',warning:'#f5bd67',danger:'#ff9c9c',muted:'#aab7c4'}[a.tone]||'#aab7c4';
  const box=(headline,detail,highlight=false)=>`<div style="padding:9px 0;border-top:1px solid #355466"><b style="color:${highlight?color:'inherit'}">${headline}</b><div style="font-size:.92em">${detail}</div></div>`;
- const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R116 明日操作</small>`;
+ const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R117 明日操作</small>`;
  if(!a.valid)return `<div style="border:2px solid ${color};border-radius:12px;padding:13px;display:grid;gap:8px" aria-live="polite">${base}<strong style="font-size:1.65em;color:${color}">${esc(a.title)}</strong><div>${esc(a.note||'請先核對資料')}</div><small>未提供操作價格或股數。</small></div>`;
  const lv=r103ConditionalLevels(c,a);
  const pct=n=>Number.isFinite(n)&&n>0?`（${(n/a.close-1)*100>=0?'+':''}${((n/a.close-1)*100).toFixed(2)}%）`:'';
@@ -1725,35 +1774,49 @@ function nextSessionDefenseCard(c){
  // r102: compute initial P/L plan before rendering; r101 referenced an undefined `plan`.
  let initialPlan=null;
  let cost='',qty='',mode='medium';try{const savedMode=localStorage.getItem(modeKey);if(['short','medium','long'].includes(savedMode))mode=savedMode;const stored=localStorage.getItem(key),q=localStorage.getItem(qtyKey);if(stored!==null&&Number(stored)>0)cost=String(Number(stored));if(q!==null&&Number.isSafeInteger(Number(q))&&Number(q)>0&&Number(q)<=100000000)qty=String(Number(q))}catch(e){}
- if(cost!=='' && Number.isFinite(Number(cost)) && Number(cost)>0 && r111PriceIntegrity(c,120).ok){
+ const holdingVerified=r117HoldingVerified(code,cost,qty);
+ if(holdingVerified && cost!=='' && Number.isFinite(Number(cost)) && Number(cost)>0 && r111PriceIntegrity(c,120).ok){
   try{initialPlan=r91ProfitPlan(v,Number(cost));}catch(e){initialPlan=null;}
  }
  return `<section class="r82-decision r91-decision" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
- <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>明日持股操作 <small style="font-size:.65em;opacity:.7">R116</small></strong></div>
- <div class="r99-action">${r99ActionHTML(r99Action(c,cost===''?NaN:Number(cost),qty===''?NaN:Number(qty),mode),c)}</div>
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>明日持股操作 <small style="font-size:.65em;opacity:.7">R117</small></strong></div>
+ <div class="r99-action">${r99ActionHTML(r99Action(c,holdingVerified?Number(cost):NaN,holdingVerified?Number(qty):NaN,mode),c)}</div>
  <label>持有週期 <select class="r92-mode" style="font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"><option value="short" ${mode==='short'?'selected':''}>短線｜5、10日趨勢</option><option value="medium" ${mode==='medium'?'selected':''}>中期｜20日趨勢</option><option value="long" ${mode==='long'?'selected':''}>長期｜60日趨勢</option></select></label>
  <div style="font-size:.9em;opacity:.85">${esc(v.date)} 收盤 ${price(v.close)} 元</div>
  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
  <label style="min-width:0">持股成本（元）<input class="r82-cost-input" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
  <label style="min-width:0">實際持股（股）<input class="r91-qty-input" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
  </div>
- <div class="r91-pnl" style="padding:10px;border:1px solid #385a6c;border-radius:10px">${initialPlan&&qty!==''?`目前帳面報酬 ${initialPlan.gain.toFixed(2)}%；帳面損益約 ${Math.round(initialPlan.unrealizedPerShare*Number(qty)).toLocaleString('zh-TW')} 元`:'請輸入有效成本與實際持股股數，查看明日決策'}</div>
+ ${r117HoldingControls(code,cost,qty)}
+ <div class="r91-pnl" style="padding:10px;border:1px solid #385a6c;border-radius:10px">${holdingVerified&&initialPlan&&qty!==''?`目前帳面報酬 ${initialPlan.gain.toFixed(2)}%；帳面損益約 ${Math.round(initialPlan.unrealizedPerShare*Number(qty)).toLocaleString('zh-TW')} 元`:'持股資料尚未確認，暫不產生個人損益或減碼股數'}</div>
 
  </section>`;
 }
 function r82BindCost(card,c){
  const input=card.querySelector('.r82-cost-input'),qtyInput=card.querySelector('.r91-qty-input'),pnl=card.querySelector('.r91-pnl'),modeInput=card.querySelector('.r92-mode'),actionEl=card.querySelector('.r99-action');
- if(!input||!qtyInput||!pnl||!actionEl)return;
- const v=r82Plan(c),key='chaopan-r82-cost-'+String(c.code||''),qtyKey='chaopan-r91-qty-'+String(c.code||''),modeKey='chaopan-r92-mode-'+String(c.code||'');
+ const button=card.querySelector('.r117-confirm-holding'),status=card.querySelector('.r117-holding-status');
+ if(!input||!qtyInput||!pnl||!actionEl||!button||!status)return;
+ const section=input.closest?.('.r91-decision');if(section)section.dataset.r117Bound='1';
+ const v=r82Plan(c),code=String(c.code||''),modeKey='chaopan-r92-mode-'+code;
+ let sessionConfirmed=false;
  const update=()=>{
-  const cost=input.value.trim()===''?NaN:Number(input.value),qty=qtyInput.value.trim()===''?NaN:Number(qtyInput.value);
-  actionEl.innerHTML=r99ActionHTML(r99Action(c,cost,qty,modeInput?.value||'medium'),c);
-  const valid=Number.isSafeInteger(qty)&&qty>0&&qty<=100000000;
-  const plan=Number.isFinite(cost)&&cost>0&&v.ok&&r111PriceIntegrity(c,120).ok?r91ProfitPlan(v,cost):null;
-  pnl.textContent=plan&&valid?`帳面報酬 ${plan.gain.toFixed(2)}%｜帳面損益 ${Math.round(plan.unrealizedPerShare*qty).toLocaleString('zh-TW')} 元`:'輸入有效成本與持股股數，立即顯示損益及明日決策';
-  try{if(plan)localStorage.setItem(key,String(cost));else localStorage.removeItem(key);if(valid)localStorage.setItem(qtyKey,String(qty));if(modeInput)localStorage.setItem(modeKey,modeInput.value)}catch(e){}
+  const p=r117HoldingParts(input.value,qtyInput.value);
+  const confirmed=p.valid&&(sessionConfirmed||r117HoldingVerified(code,input.value,qtyInput.value));
+  status.textContent=confirmed?'持股資料已由你確認（非券商同步）':p.valid?'舊版持股資料尚未確認，請先核對':'請輸入實際成本與股數，再按確認';
+  button.disabled=!p.valid||confirmed;button.hidden=confirmed;
+  // Never turn legacy localStorage values into personalized sale instructions.
+  actionEl.innerHTML=r99ActionHTML(r99Action(c,confirmed?p.cost:NaN,confirmed?p.qty:NaN,modeInput?.value||'medium'),c);
+  const plan=confirmed&&v.ok&&r111PriceIntegrity(c,120).ok?r91ProfitPlan(v,p.cost):null;
+  pnl.textContent=plan?`帳面報酬 ${plan.gain.toFixed(2)}%｜帳面損益 ${Math.round(plan.unrealizedPerShare*p.qty).toLocaleString('zh-TW')} 元`:'持股資料尚未確認或盤後行情待核對；暫不提供個人損益／操作股數';
+  try{if(modeInput)localStorage.setItem(modeKey,modeInput.value)}catch(e){}
  };
- input.addEventListener('input',update);qtyInput.addEventListener('input',update);if(modeInput)modeInput.addEventListener('change',update);update();
+ const change=()=>{sessionConfirmed=false;r117InvalidateHolding(code);r117StoreLegacyInputs(code,input.value,qtyInput.value);update()};
+ input.addEventListener('input',change);qtyInput.addEventListener('input',change);
+ button.addEventListener('click',()=>{const p=r117HoldingParts(input.value,qtyInput.value);if(!p.valid)return;
+  sessionConfirmed=true;r117StoreLegacyInputs(code,input.value,qtyInput.value);r117ConfirmHolding(code,input.value,qtyInput.value);update();
+ });
+ if(modeInput)modeInput.addEventListener('change',update);
+ update();
 }
 
 function defenseHistory(bars, maxBars=60){
@@ -2885,7 +2948,7 @@ function renderDetail(){const c=state.detail;if(!c)return;const starred=state.wa
   if(globalThis.ChaopanChartExpanded) globalThis.ChaopanApplyExpandedChart?.();
   wireValuationScenario(c);
   wireForwardValuation(c);
-  // 盤中價量試算已停用，避免舊功能重新掛載。
+  // Retired intraday estimation hooks stay disabled; EOD only.
 
   $$('.range-btn').forEach(b=>b.onclick=()=>{state.chartDays=b.dataset.days==='120'?120:Number(b.dataset.days);renderDetail()});
   const zoom=(dir)=>{const audit=r111PriceIntegrity(c,120),total=audit.code==='CORPORATE_ACTION_UNADJUSTED'?r115PostActionBars(c,audit.event).length:(c.bars||[]).length;state.chartDays=Math.min(Math.max(12,total),Math.max(12,Math.min(total,Math.round(state.chartDays*(dir==='in'?.76:1.32)))));renderDetail()};
@@ -3352,7 +3415,19 @@ function initQuickStockSearch(){
  result.addEventListener('click',e=>{const b=e.target.closest('[data-quick-code]');if(b)quickOpen(b.dataset.quickMarket,b.dataset.quickCode)});
  loadQuickDirectory();
 }
-function wire(){loadWatch();setupSixtyToolbar();setupDetailSwipe();initQuickStockSearch();$('#deskDisclosure')?.addEventListener('toggle',e=>{if(e.target.open&&state.payload)renderTradeDesk(true)});document.addEventListener('click',unifiedCardEvents);
+// Candidate/ranking cards are injected dynamically; bind their holding controls
+// on the first interaction, without installing a page-wide DOM observer.
+function r117BindDynamicHoldings(e){
+ const target=e.target?.closest?.('.r117-confirm-holding,.r82-cost-input,.r91-qty-input,.r92-mode');
+ const section=target?.closest?.('.r91-decision');
+ if(!section||section.dataset.r117Bound==='1')return;
+ const root=section.closest('.unified-battle-card');if(!root)return;
+ const code=String(section.dataset.code||'');
+ const c=allRows().find(x=>String(x.code||'')===code&&(!state.payload?.asOf||x.date===state.payload.asOf));
+ if(!c)return; // Unknown or stale stock data must not generate a personal trade plan.
+ r82BindCost(root,c);
+}
+function wire(){loadWatch();setupSixtyToolbar();setupDetailSwipe();initQuickStockSearch();$('#deskDisclosure')?.addEventListener('toggle',e=>{if(e.target.open&&state.payload)renderTradeDesk(true)});document.addEventListener('click',unifiedCardEvents);['focusin','pointerdown','click','input'].forEach(type=>document.addEventListener(type,r117BindDynamicHoldings,true));
  // r87: delegated input binding supports cost inputs in dynamically rendered candidate cards.
  document.addEventListener('input',e=>{
   const input=e.target.closest?.('.unified-battle-card .r82-cost-input');
@@ -3362,9 +3437,10 @@ function wire(){loadWatch();setupSixtyToolbar();setupDetailSwipe();initQuickStoc
   const code=String(input.closest('.r82-decision')?.dataset.code||'');
   const v=Number(input.closest('.r82-decision')?.dataset.reduction||NaN);
   const cost=Number(input.value);
-  if(!input.value||!Number.isFinite(cost)||cost<=0||!Number.isFinite(v)||v<=0){profit.textContent='輸入成本後顯示';profit.style.color='';}
-  else{const pnl=Math.round((v-cost)*1000);profit.textContent=pnl.toLocaleString('zh-TW')+' 元';profit.style.color=pnl>=0?'#79dfbd':'#ff909b';}
-  if(code){try{if(input.value&&cost>0)localStorage.setItem('chaopan-r82-cost-'+code,String(cost));else localStorage.removeItem('chaopan-r82-cost-'+code)}catch(_){}}
+  // A separate old candidate estimate assumed 1000 shares without verification.
+  // Do not display this as someone's personal profit or save it as a holding.
+  profit.textContent='此欄未核對持股股數，請至明日操作確認實際持倉';profit.style.color='';
+  // Auxiliary estimate inputs do not update the authenticated holding record.
  });document.addEventListener('toggle',e=>{if(e.target.matches?.('details.r30-stock-entry'))r30StockToggle(e.target);},true);
  $$('.lens-scope').forEach(b=>b.onclick=()=>{state.rankLens=b.dataset.lens;state.rankView='20';state.stageView='all';state.tab='all';state.query='';$('#searchBox').value='';state.visible=30;renderList()});const liquidityToggle=$('#onlyLiquid');if(liquidityToggle){liquidityToggle.checked=state.liquidityOnly;liquidityToggle.addEventListener('change',e=>{state.liquidityOnly=e.target.checked;state.visible=30;renderList()})}$$('.rank-scope').forEach(b=>b.onclick=()=>{state.rankView=b.dataset.scope;state.visible=30;state.tab='all';renderList()});$$('.stage-scope').forEach(b=>b.onclick=()=>{state.stageView=b.dataset.stage;state.visible=30;state.tab='all';state.query='';$('#searchBox').value='';renderList()});const sort=$('#sortFilter');if(sort){sort.insertAdjacentHTML('afterbegin','<option value="trade">操盤品質與追高風險（預設）</option><option value="launch">第一根發動優先</option><option value="priority">基本面投資優先度</option>');sort.value='trade';state.sort='trade';}$$('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.stat-card').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$$('.nav-item').forEach(b=>b.onclick=()=>navTo(b.dataset.page));$('#searchBox').oninput=e=>{state.query=e.target.value;state.visible=30;renderList()};$('#showMore').onclick=()=>{state.visible+=30;renderList()};$('#refreshBtn').onclick=()=>loadData();$('.advanced-radar')?.addEventListener('toggle',e=>{if(e.target.open&&state.payload){state.rankListDirty=false;renderList()}});$('#closeModal').onclick=()=>hideDetails();$('#modalOverlay').onclick=e=>{if(e.target===$('#modalOverlay'))hideDetails()};window.onkeydown=e=>{if(e.key==='Escape')hideDetails()};window.addEventListener('popstate',()=>{if(state.detail||state.etfDetail)hideDetails(true)});loadData();if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(console.warn)}}
 document.addEventListener('DOMContentLoaded',wire);
