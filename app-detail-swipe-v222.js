@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: r109-next-session-one-page-20261114 */
+/* CHAOPAN_RADAR_BUILD: r110-provisional-profit-guard-20261114 */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const state={r41Page:'card',r41Advanced:null,payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false,instMarket:'all',instAsset:'stock',instSort:'amount'};
@@ -1397,23 +1397,53 @@ function r99Action(c,cost,qty,mode='medium'){
  const volumeRatio=Number.parseFloat(d.volume);
  const distributionRisk=Number.isFinite(volumeRatio)&&volumeRatio>=1.4&&closeLocation<=.3&&close<Number(last[1]);
  const riskCount=Number(distributionRisk)+Number(breakdown20)+Number(twoDayWeak)+Number(d.institutionalSelling);
- // A single bad candle is not sufficient for full liquidation. Confirm market structure first.
- // r104: align one headline with actual trend, and use only confirmed EOD evidence.
- // Profit protection uses rolling market highs as a proxy, not an investor-specific peak.
+ // r110: independent profit give-back alert must be considered BEFORE a bullish
+ // headline. 60-session market highs are NOT the investor's actual holding peak.
+ const profitable=close>cost;
+ const onceHadProfit=rollingHigh>=cost*1.08;
+ const profitGiveback=onceHadProfit&&drawdown<=-8&&riskCount>=1;
+ const priorCloses=bars.map(b=>Number(b[4]));
+ const mean=(arr)=>arr.reduce((s,x)=>s+x,0)/arr.length;
+ const ma20=mean(priorCloses.slice(-20));
+ const ma60=bars.length>=65?mean(priorCloses.slice(-60)):null;
+ const ma60past=bars.length>=65?mean(priorCloses.slice(-65,-5)):null;
+ const longTrendIntact=ma60!==null&&ma60past!==null&&close>=ma60&&ma60>=ma60past;
+ const longTrendBroken=ma60!==null&&ma60past!==null&&close<ma60&&ma60<ma60past;
  const failedTrend=d.trend==='轉弱';
  const hardBreak=breakdown20&&(failedTrend||distributionRisk||d.institutionalSelling);
- const severe=hardBreak&&riskCount>=2&&failedTrend;
- const reduce=!severe&&(d.status==='趨勢破壞'||d.status==='減碼警戒'||(drawdown<=-12&&riskCount>=2));
- const profitable=close>cost;
+ // Full exit requires a broken long-term structure, or an unusually sharp
+ // multi-evidence break. Short-term weakness alone is never a forced liquidation.
+ const urgentBreak=breakdown20&&riskCount>=3&&close<ma20*.94&&close<Number(prior[4])*.94;
+ const severe=hardBreak&&riskCount>=2&&failedTrend&&(longTrendBroken||urgentBreak);
+ const reduce=!severe&&(
+  d.status==='趨勢破壞'||d.status==='減碼警戒'||
+  (drawdown<=-12&&riskCount>=2)||
+  (profitGiveback&&riskCount>=2)
+ );
  let title='盤整等待',tone='warning',fraction=0,trigger=null,condition='尚未達確認條件，等待盤後重新評估',note='暫不加碼';
- if(severe){title='止血出場';tone='danger';fraction=1;condition='重要支撐失守且多項風險訊號確認，評估剩餘部位出場';note='隔日可能跳空，不能保證依防守價成交';}
- else if(reduce){title=profitable?'獲利減碼':'風險減碼';tone='warning';fraction=riskCount>=2?.5:.25;condition='多項風險訊號成立，規劃條件式減碼';note='需觸發價位，非開盤無條件賣出';}
- else if(d.trend==='偏多'&&(d.status==='多頭續抱'||d.status==='突破續抱')){
-  title='偏多續抱';tone='success';trigger=breakout;condition='所選週期維持偏多，未確認減碼訊號';note='突破後仍須檢查量價與收盤站穩';
+ if(severe){
+  title='止血出場';tone='danger';fraction=1;
+  condition='中長期結構破壞並伴隨多項賣壓，下一交易日優先評估出場';
+  note='隔日可能跳空，不能保證依收盤價成交';
+ }else if(reduce){
+  title=profitable?'獲利減碼':'風險減碼';tone='warning';
+  // Preserve a core position when the long trend is intact; avoid turning
+  // ordinary short-term retracements into 100% liquidation.
+  fraction=longTrendIntact ? 0.25 : (riskCount>=2 ? 0.5 : 0.25);
+  condition=longTrendIntact?'短線轉弱但長期趨勢未壞，先評估部分減碼':'多項風險訊號成立，規劃條件式減碼';
+  note='反彈與跌破情境擇一執行，不是開盤直接賣';
+ }else if(profitGiveback){
+  // A past profit is NOT a currently realizable profit. Never label a loss as
+  // a confirmed profit-taking sale.
+  title=profitable?'獲利保護':'風險觀察';tone='warning';trigger=defense;
+  condition='近60日高點明顯回落，但減碼證據尚未確認';
+  note='先觀察防守價；目前沒有確認減碼訊號';
+ }else if(d.trend==='偏多'&&(d.status==='多頭續抱'||d.status==='突破續抱')){
+  title='偏多續抱';tone='success';trigger=breakout;
+  condition='所選週期維持偏多，尚未確認減碼訊號';note='突破後仍須檢查量價與收盤站穩';
  }else if(d.trend==='偏多'&&v.highVolume&&!d.institutionalSelling){
-  title='加碼觀察';tone='success';trigger=breakout;condition='突破壓力且盤後量價確認後，再評估加碼';note='尚未觸發加碼';
- }else if(profitable&&drawdown<=-8&&riskCount>=1){
-  title='獲利保護';tone='warning';trigger=defense;condition='近60日高點回落，注意防守價';note='尚未確認減碼';
+  title='加碼觀察';tone='success';trigger=breakout;
+  condition='突破壓力且盤後量價確認後，再評估加碼';note='尚未觸發加碼';
  }
  // Prevent a 'bullish hold' headline when the selected timeframe is not bullish.
  if((title==='偏多續抱'||title==='加碼觀察')&&d.trend!=='偏多'){
@@ -1422,7 +1452,7 @@ function r99Action(c,cost,qty,mode='medium'){
  const shares=fraction===1?qty:fraction>0?Math.max(1,Math.floor(qty*fraction)):0;
  if(shares>0&&fraction<1){const provisional={close,rebound,breakout};const levels=r103ConditionalLevels(c,provisional);if(!levels||!(levels.defense>0&&levels.defense<close))return wait('盤後已發現減碼風險，但防守價尚未驗證，暫不提供賣出股數或委託價','風險警戒｜價位待核對');}
  const value=shares*close,pnl=shares*(close-cost);
- return {title,tone,trigger,stop:defense,rebound,breakout,shares,value,pnl,close,cost,condition,note,asOf:v.date,valid:true,profit:profitable,qty,rollingHigh,drawdown,riskCount};
+ return {title,tone,trigger,stop:defense,rebound,breakout,shares,value,pnl,close,cost,condition,note,asOf:v.date,valid:true,profit:profitable,qty,rollingHigh,drawdown,riskCount,longTrendIntact,longTrendBroken,profitGiveback};
 }
 // r103: derive next-session conditional prices solely from completed EOD bars.
 // Prices are alert thresholds, not executable orders or inferred intraday signals.
@@ -1463,7 +1493,7 @@ function r99ActionHTML(a,c){
  const level=n=>Number.isFinite(n)&&n>0?price(n)+' 元':'待核對';
  const color={success:'#6ee7c1',warning:'#f5bd67',danger:'#ff9c9c',muted:'#aab7c4'}[a.tone]||'#aab7c4';
  const box=(headline,detail,highlight=false)=>`<div style="padding:9px 0;border-top:1px solid #355466"><b style="color:${highlight?color:'inherit'}">${headline}</b><div style="font-size:.92em">${detail}</div></div>`;
- const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R109 明日操作</small>`;
+ const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R110 明日操作</small>`;
  if(!a.valid)return `<div style="border:2px solid ${color};border-radius:12px;padding:13px;display:grid;gap:8px" aria-live="polite">${base}<strong style="font-size:1.65em;color:${color}">${esc(a.title)}</strong><div>${esc(a.note||'請先核對資料')}</div><small>未提供操作價格或股數。</small></div>`;
  const lv=r103ConditionalLevels(c,a);
  const pct=n=>Number.isFinite(n)&&n>0?`（${(n/a.close-1)*100>=0?'+':''}${((n/a.close-1)*100).toFixed(2)}%）`:'';
@@ -1478,6 +1508,7 @@ function r99ActionHTML(a,c){
  if(isExit){
   body=box('明日優先：評估出場 '+money(a.shares)+' 股','已由收盤資料確認結構轉弱；下一交易日依實際可成交價格處理，不用再等跌破更低價',true);
   body+=box('以昨收試算（不是委託價）',`回收約 ${money(a.close*a.shares)} 元｜損益約 ${a.pnl>=0?'+':''}${money(a.pnl)} 元`);
+  if(Number.isFinite(a.breakout)&&a.breakout>a.close)body+=box('重新轉強觀察',`<b>${level(a.breakout)} ${pct(a.breakout)}</b>｜出場後如重新站穩，再重新評估進場，不代表當下買回`);
   body+='<small>若跳空開低，昨收與防守價都不保證成交；注意流動性及價格限制。</small>';
  }else if(hasSale){
   body=box('明日優先：減碼 '+money(a.shares)+' 股','盤後風險訊號已成立；反彈與跌破是同一筆減碼的替代執行情境，不可重複賣出',true);
@@ -1488,7 +1519,7 @@ function r99ActionHTML(a,c){
   }else body+=box('減碼價尚未驗證','保留已確認風險警告，但不提供未核對的委託價格');
   body+='<small>若明日價格介於兩個價位之間，風險仍未解除；盤中是否轉強需人工確認，系統不會即時判定或自動下單。</small>';
  }else{
-  body=box('明日優先：'+(a.title==='偏多續抱'?'續抱、不急著賣':a.title==='加碼觀察'?'觀察突破，尚未加碼':a.title==='獲利保護'?'守住獲利防線':'等待，不新增部位'),esc(a.condition||a.note||''),true);
+  body=box('明日優先：'+(a.title==='偏多續抱'?'續抱、不急著賣':a.title==='加碼觀察'?'觀察突破，尚未加碼':a.title==='獲利保護'?'守住獲利防線':a.title==='風險觀察'?'注意高點回落，暫不急賣':'等待，不新增部位'),esc(a.condition||a.note||''),true);
   if(lv){
    const up=Number.isFinite(a.breakout)&&a.breakout>a.close?a.breakout:null;
    if(up)body+=box('上攻關卡',`<b>${level(up)} ${pct(up)}</b>｜收盤確認量價後才評估加碼或續抱`);
@@ -1512,7 +1543,7 @@ function nextSessionDefenseCard(c){
   try{initialPlan=r91ProfitPlan(v,Number(cost));}catch(e){initialPlan=null;}
  }
  return `<section class="r82-decision r91-decision" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
- <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>明日持股操作 <small style="font-size:.65em;opacity:.7">R109</small></strong></div>
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>明日持股操作 <small style="font-size:.65em;opacity:.7">R110</small></strong></div>
  <div class="r99-action">${r99ActionHTML(r99Action(c,cost===''?NaN:Number(cost),qty===''?NaN:Number(qty),mode),c)}</div>
  <label>持有週期 <select class="r92-mode" style="font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"><option value="short" ${mode==='short'?'selected':''}>短線｜5、10日趨勢</option><option value="medium" ${mode==='medium'?'selected':''}>中期｜20日趨勢</option><option value="long" ${mode==='long'?'selected':''}>長期｜60日趨勢</option></select></label>
  <div style="font-size:.9em;opacity:.85">${esc(v.date)} 收盤 ${price(v.close)} 元</div>
@@ -1520,7 +1551,7 @@ function nextSessionDefenseCard(c){
  <label style="min-width:0">持股成本（元）<input class="r82-cost-input" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
  <label style="min-width:0">實際持股（股）<input class="r91-qty-input" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" placeholder="自行輸入" style="box-sizing:border-box;width:100%;font-size:1.1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"/></label>
  </div>
- <div class="r91-pnl" style="padding:10px;border:1px solid #385a6c;border-radius:10px">${initialPlan?`目前帳面報酬 ${initialPlan.gain.toFixed(2)}%；帳面損益約 ${Math.round(initialPlan.unrealizedPerShare*Number(qty)).toLocaleString('zh-TW')} 元`:'輸入成本後，顯示報酬率與獲利保護條件'}</div>
+ <div class="r91-pnl" style="padding:10px;border:1px solid #385a6c;border-radius:10px">${initialPlan&&qty!==''?`目前帳面報酬 ${initialPlan.gain.toFixed(2)}%；帳面損益約 ${Math.round(initialPlan.unrealizedPerShare*Number(qty)).toLocaleString('zh-TW')} 元`:'請輸入有效成本與實際持股股數，查看明日決策'}</div>
 
  </section>`;
 }
