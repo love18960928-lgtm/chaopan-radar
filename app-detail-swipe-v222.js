@@ -770,6 +770,38 @@ function sectorRadar(){
 }
 // r46: only a verified backend EOD decision can enter a strict breakout continuation list.
 // Missing values are NOT interpreted as a positive institutional/technical confirmation.
+// R137: a clean last candle cannot erase distribution evidence on the breakout candle.
+// This is a conservative veto for breakout certification, NOT proof of insider selling.
+function r137BreakoutHistoryGate(c,stage){
+ const bars=Array.isArray(c?.bars)?c.bars:[];
+ const days={first:1,second:2,third:3,fourth:4}[stage]||1;
+ if(bars.length<20+days)return {status:'unknown',reason:'突破事件前20日量能歷史不足'};
+ const valid=x=>Array.isArray(x)&&x.length>=6&&[1,2,3,4,5].every(i=>x[i]!==null&&x[i]!==''&&Number.isFinite(Number(x[i])))&&
+   Number(x[3])>0&&Number(x[2])>=Number(x[3])&&Number(x[1])>=Number(x[3])&&Number(x[1])<=Number(x[2])&&
+   Number(x[4])>=Number(x[3])&&Number(x[4])<=Number(x[2])&&Number(x[5])>=0;
+ const start=bars.length-days;
+ // Do not infer a valid breakout event merely from a phase label. If the actual
+ // event date is present it must agree with the candle selected for that stage.
+ const eventDate=c?.breakoutEvent?.date||c?.breakoutEvent?.asOf||null;
+ if(eventDate&&String(bars[start]?.[0])!==String(eventDate))return {status:'unknown',reason:'突破事件日期與日K不一致'};
+ const sample=bars.slice(start-20);
+ if(sample.length!==20+days||!sample.every(valid))return {status:'unknown',reason:'突破期間或前20日K線資料異常'};
+ const event=bars[start],eventHigh=Number(event[2]),eventLow=Number(event[3]);
+ const avg=bars.slice(start-20,start).reduce((sum,x)=>sum+Number(x[5]),0)/20;
+ if(!(avg>0))return {status:'unknown',reason:'突破前20日均量不可計算'};
+ const o=Number(event[1]),h=Number(event[2]),l=Number(event[3]),close=Number(event[4]),vol=Number(event[5]);
+ const upper=h-Math.max(o,close),range=h-l,body=Math.abs(close-o);
+ const eventDistribution=range>0&&upper/range>=0.4&&upper>body&&close<=o&&vol/avg>=1.5;
+ const follow=bars.slice(start+1);
+ if(follow.some(x=>Number(x[4])<eventLow))return {status:'risk',reason:'突破後曾收盤跌破訊號K低點'};
+ if(eventDistribution){
+  // A later close above the event high with non-decreasing price can resolve
+  // the provisional candle warning, but not establish a certified buy point.
+  const reclaimed=follow.some(x=>Number(x[4])>eventHigh);
+  if(!reclaimed)return {status:'watch',reason:'突破當日放量長上影收低，尚未收復訊號K高點'};
+ }
+ return {status:'eligible',reason:'突破事件歷史K棒未觸發定義的風險否決'};
+}
 const STRICT_BREAKOUT_STAGES=new Set(['first','second','third','fourth']);
 function strictBreakoutDecision(c,stage){
  const pass=(reason)=>({eligible:true,pending:false,reason});
@@ -782,6 +814,9 @@ function strictBreakoutDecision(c,stage){
  if(gate.status==='risk')return fail('K棒／量價風險排除：'+gate.reasons.join('、'));
  if(gate.status==='watch')return pending('長上影待後續確認：'+gate.reasons.join('、'));
  if(gate.status==='unknown')return pending('資料品質待確認：'+gate.reasons.join('、'));
+ const eventRisk=r137BreakoutHistoryGate(c,stage);
+ if(eventRisk.status==='risk')return fail(eventRisk.reason);
+ if(eventRisk.status==='watch'||eventRisk.status==='unknown')return pending(eventRisk.reason);
  // Match the certified event to the displayed star stage BEFORE checking price/volume.
  // A day-2 candidate must never qualify as ★1 merely because its candles are strong.
  const seq=c.breakoutSequence;
@@ -2300,7 +2335,7 @@ function r131Mount(){
  const host=document.querySelector('.advanced-radar')||document.querySelector('#candidateList')?.parentElement;
  if(!host||document.querySelector('#r131Screener'))return;
  const panel=document.createElement('section');panel.id='r131Screener';panel.style.cssText='margin:12px 0;padding:14px;border:1px solid #35576b;border-radius:14px;background:#0c2432;color:#e7f5fa';
- panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R136</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">可追蹤強勢候選（非買點）</option><option value="watch">長上影／待確認</option><option value="risk">出貨疑慮／轉弱警戒</option><option value="unknown">資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
+ panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R137</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">可追蹤強勢候選（非買點）</option><option value="watch">長上影／待確認</option><option value="risk">出貨疑慮／轉弱警戒</option><option value="unknown">資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
  host.insertBefore(panel,host.firstChild);
  panel.querySelector('#r131Condition').addEventListener('change',e=>{r131Condition=e.target.value;r132Page=0;r131Render()});
  panel.querySelector('#r133Bucket').addEventListener('change',e=>{r133Bucket=e.target.value;r132Page=0;r131Render()});
@@ -3382,8 +3417,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R136-20261114';
- const BUILD_LABEL='r136 · 突破認證風險一致性';
+ const BUILD_ID='R137-20261114';
+ const BUILD_LABEL='r137 · 突破事件全程風險驗證';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  const oldBadge=/r(?:60|1\d{2})\s*[·・]\s*(?:名單數量與觀察股分層|訊號衝突防呆|出貨訊號驗證|盤後判斷修正|統一版本顯示與風險篩選|突破認證風險一致性)/gi;
