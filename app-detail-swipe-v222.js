@@ -1258,7 +1258,8 @@ function r92Decision(c,mode='medium'){
  const closes=bars.map(b=>Number(b[4]));
  const vols=bars.map(b=>Number(b[5]));
  const ma=n=>closes.length>=n&&closes.slice(-n).every(x=>Number.isFinite(x)&&x>0)?closes.slice(-n).reduce((a,b)=>a+b,0)/n:null;
- const avgVol=vols.slice(-21,-1).every(x=>Number.isFinite(x)&&x>=0)?vols.slice(-21,-1).reduce((a,b)=>a+b,0)/20:null;
+ const priorVols=vols.slice(-21,-1);
+ const avgVol=priorVols.length===20&&priorVols.every(x=>Number.isFinite(x)&&x>=0)?priorVols.reduce((a,b)=>a+b,0)/20:null;
  if(!Number.isFinite(close)||close<=0||!Number.isFinite(high)||!Number.isFinite(low)||high<low||!Number.isFinite(vol)||vol<0||String(last[0])!==String(c.date))return {status:'資料不足',tone:'muted',reasons:['日K欄位或日期未核對'],institution:'待核對',trend:'待核對',volume:'待核對'};
  const m5=ma(5),m10=ma(10),m20=ma(20),m60=ma(60),m120=ma(120);
  const m20prev=closes.length>=21?closes.slice(-21,-1).reduce((a,b)=>a+b,0)/20:null;
@@ -1295,10 +1296,10 @@ function r92Decision(c,mode='medium'){
  // Institutional totals are in SHARES; EOD volume can be shares or lots.
  // Only use a sell-pressure ratio when the bar unit is independently confirmed
  // against the stock's displayed lot count. Otherwise mark it unknown.
- const reportedLots=Number(c.lots);
+ const reportedLots=(c.lots===null||c.lots===undefined||c.lots==='')?NaN:Number(c.lots);
  const barIsLots=Number.isFinite(reportedLots)&&reportedLots>0&&Math.abs(vol/reportedLots-1)<.03;
  const barIsShares=Number.isFinite(reportedLots)&&reportedLots>0&&Math.abs(vol/(reportedLots*1000)-1)<.03;
- const volumeShares=barIsLots?vol*1000:barIsShares?vol:null;
+ const volumeShares=(barIsLots!==barIsShares)?(barIsLots?vol*1000:vol):null;
  const institutionalSelling=validIns&&volumeShares!==null&&foreign<0&&trust<0&&(-foreign-trust)/volumeShares>=.08;
  const reasons=[];
  if(trendStrong)reasons.push('所選週期趨勢仍健康');
@@ -1309,7 +1310,7 @@ function r92Decision(c,mode='medium'){
  if(failedBreak)reasons.push('盤中突破前5日高點但收盤未站穩');
  if(riskBreak)reasons.push('收盤跌破前5日已知低點');
  if(institutionalSelling)reasons.push('同日外資與投信同步賣超且占量偏高');
- else if(validIns&&foreign<0&&trust<0)reasons.push('同日外資與投信同步賣超，但未確認達高占量警戒');
+ else if(validIns&&foreign<0&&trust<0)reasons.push('同日外資與投信同步賣超，但未確認達高占量警戒（量能單位未核對時不得視為低風險）');
  else if(!validIns)reasons.push('法人資料不足，不推定出貨');
  let status='震盪觀察',tone='warning';
  if(trendWeak&&(sellPressure||riskBreak||repeatedSelling)){status=mode==='long'&&!longWeak?'減碼警戒':'趨勢破壞';tone='danger'}
@@ -1462,7 +1463,7 @@ function r99Action(c,cost,qty,mode='medium'){
  }else if(d.trend==='偏多'&&(d.status==='多頭續抱'||d.status==='突破續抱')){
   title='偏多續抱';tone='success';trigger=breakout;
   condition='所選週期維持偏多，尚未確認減碼訊號';note='突破後仍須檢查量價與收盤站穩';
- }else if(d.trend==='偏多'&&v.highVolume&&!d.institutionalSelling){
+ }else if(d.trend==='偏多'&&d.status==='多頭續抱'&&v.highVolume&&!d.institutionalSelling&&!d.repeatedSelling&&!failedBreakRisk){
   title='加碼觀察';tone='success';trigger=breakout;
   condition='突破壓力且盤後量價確認後，再評估加碼';note='尚未觸發加碼';
  }
