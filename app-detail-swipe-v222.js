@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R135-20261114-version-consistency */
+/* CHAOPAN_RADAR_BUILD: R136-20261114-version-consistency */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const state={r41Page:'card',r41Advanced:null,payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false,instMarket:'all',instAsset:'stock',instSort:'amount'};
@@ -907,17 +907,17 @@ function sectorDirectory(){
   return [...byCode.values()];
  };
  const qualifiedRows=stage=>STRICT_BREAKOUT_STAGES.has(stage)
-  ?candidatesForStage(stage).filter(c=>strictBreakoutDecision(c,stage).eligible).map(c=>({row:c,stage,sector:c.sector||'產業待核對',compactStatus:'已認證｜'+strictBreakoutDecision(c,stage).reason}))
+  ?candidatesForStage(stage).filter(c=>strictBreakoutDecision(c,stage).eligible&&r133RiskGate(c).status==='eligible').map(c=>({row:c,stage,sector:c.sector||'產業待核對',compactStatus:'已認證｜'+strictBreakoutDecision(c,stage).reason}))
   :radar.watch.filter(o=>o.stage===stage&&strictBreakoutDecision(o.row,stage).eligible&&r133RiskGate(o.row).status==='eligible');
  // Keep certified nonempty groups visible. Pending is not zero: it remains
  // visible for data-quality review. Empty groups fold into the idle section.
- const stagePending=stage=>STRICT_BREAKOUT_STAGES.has(stage)&&candidatesForStage(stage).some(c=>strictBreakoutDecision(c,stage).pending);
+ const stagePending=stage=>STRICT_BREAKOUT_STAGES.has(stage)&&candidatesForStage(stage).some(c=>strictBreakoutDecision(c,stage).pending||strictBreakoutDecision(c,stage).eligible&&r133RiskGate(c).status!=='eligible');
  const activeStages=ordered.filter(stage=>qualifiedRows(stage).length>0||stagePending(stage));
  const inactiveStages=ordered.filter(stage=>!activeStages.includes(stage));
  const stageBlock=stage=>{
   const arr=qualifiedRows(stage),strict=STRICT_BREAKOUT_STAGES.has(stage);
   const candidates=strict?candidatesForStage(stage):[];
-  const pendingCount=strict?candidates.filter(c=>strictBreakoutDecision(c,stage).pending).length:0;
+  const pendingCount=strict?candidates.filter(c=>strictBreakoutDecision(c,stage).pending||strictBreakoutDecision(c,stage).eligible&&r133RiskGate(c).status!=='eligible').length:0;
   const failedCount=strict?candidates.filter(c=>!strictBreakoutDecision(c,stage).eligible&&!strictBreakoutDecision(c,stage).pending).length:0;
   const displayCount=stage==='trend'&&maxBars<245?'資料不足，待MA240認證':
    strict&&arr.length===0&&pendingCount>0?'待認證':`${arr.length} 檔`;
@@ -928,7 +928,7 @@ function sectorDirectory(){
   // R130: the headline counts certified stocks only. Uncertified candidates
   // live in a separate CLOSED disclosure with their own explicit count.
   // Never render raw candidates as direct siblings of certified rows.
-  const rawMarkup=rawOnly.length?`<details class="r130-pending-group" data-r130-stage="${esc(stage)}"><summary>其他未認證觀察股（${rawOnly.length} 檔）｜點此展開</summary><p class="r23-note">以下股票未通過完整量價續攻認證，僅供觀察，不列入上方已認證檔數。</p>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,compactStatus:'觀察｜'+strictBreakoutDecision(c,stage).reason,reason:strictBreakoutDecision(c,stage).reason})))}</details>`:'';
+  const rawMarkup=rawOnly.length?`<details class="r130-pending-group" data-r130-stage="${esc(stage)}"><summary>其他未認證觀察股（${rawOnly.length} 檔）｜點此展開</summary><p class="r23-note">以下股票未通過完整量價續攻認證，僅供觀察，不列入上方已認證檔數。</p>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,compactStatus:'觀察｜'+(r133RiskGate(c).status==='eligible'?strictBreakoutDecision(c,stage).reason:r133RiskGate(c).reasons.join('；')),reason:r133RiskGate(c).status==='eligible'?strictBreakoutDecision(c,stage).reason:r133RiskGate(c).reasons.join('；')})))}</details>`:'';
   return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${displayCount}</span><span class="sector-arrow">⌄</span></summary>${auditNote}${r26GroupMarkup('stage-'+stage,arr)}${rawMarkup}</details>`;
  };
  out.innerHTML=
@@ -2280,7 +2280,6 @@ function r133RiskGate(c){
  if(explicitRisk||distribution)return {status:'risk',reasons:result.reasons};
  if(!volReady||avg<=0)return {status:'unknown',reasons:['前20日有效成交量不足']};
  if(longUpper)return {status:'watch',reasons:['長上影線，上攻受阻待確認']};
- if(!volReady||avg<=0)return {status:'unknown',reasons:['前20日有效成交量不足']};
  if(!validBar(prev))return {status:'unknown',reasons:['前一交易日日K資料異常']};
  return {status:'eligible',reasons:['量價未觸發已定義的高風險排除條件']};
 }
@@ -2301,7 +2300,7 @@ function r131Mount(){
  const host=document.querySelector('.advanced-radar')||document.querySelector('#candidateList')?.parentElement;
  if(!host||document.querySelector('#r131Screener'))return;
  const panel=document.createElement('section');panel.id='r131Screener';panel.style.cssText='margin:12px 0;padding:14px;border:1px solid #35576b;border-radius:14px;background:#0c2432;color:#e7f5fa';
- panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R134</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">可追蹤強勢候選（非買點）</option><option value="watch">長上影／待確認</option><option value="risk">出貨疑慮／轉弱警戒</option><option value="unknown">資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
+ panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R136</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">可追蹤強勢候選（非買點）</option><option value="watch">長上影／待確認</option><option value="risk">出貨疑慮／轉弱警戒</option><option value="unknown">資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
  host.insertBefore(panel,host.firstChild);
  panel.querySelector('#r131Condition').addEventListener('change',e=>{r131Condition=e.target.value;r132Page=0;r131Render()});
  panel.querySelector('#r133Bucket').addEventListener('change',e=>{r133Bucket=e.target.value;r132Page=0;r131Render()});
@@ -3383,11 +3382,11 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R135-20261114';
- const BUILD_LABEL='r135 · 統一版本顯示與風險篩選';
+ const BUILD_ID='R136-20261114';
+ const BUILD_LABEL='r136 · 突破認證風險一致性';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
- const oldBadge=/r(?:60|1\d{2})\s*[·・]\s*(?:名單數量與觀察股分層|訊號衝突防呆|出貨訊號驗證|盤後判斷修正|統一版本顯示與風險篩選)/gi;
+ const oldBadge=/r(?:60|1\d{2})\s*[·・]\s*(?:名單數量與觀察股分層|訊號衝突防呆|出貨訊號驗證|盤後判斷修正|統一版本顯示與風險篩選|突破認證風險一致性)/gi;
  function updateBadge(){
   if(!document.body)return;
   const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
