@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R145-20261115-cache-consistency */
+/* CHAOPAN_RADAR_BUILD: R146-20261115-historical-stage-observation */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const state={r41Page:'card',r41Advanced:null,payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false,instMarket:'all',instAsset:'stock',instSort:'amount'};
@@ -1002,6 +1002,39 @@ function r140ReconstructEvent(c,stage){
   return {status:'not_breakout',reason:'未符合前60交易日高點首次收盤突破'};
  return {status:'derived',event:{date:String(event[0]),level},reason:'依前60交易日最高價重建的候選突破事件（非大量K頸線認證）'};
 }
+// R146: Recover a transparently labelled breakout OBSERVATION stage from raw OHLCV.
+// A 60-session closing breakout is NOT equivalent to the historical 60–120-day
+// heavy-volume K neckline. This function never authorizes a new-entry order.
+// No future candle contributes to the reference high: all levels are computed
+// from the 60 trading sessions strictly BEFORE the candidate event date.
+function r146HistoricalStage(c,asOf){
+ const parsed=R143StrictRisk.parse(c,asOf||c?.date);
+ if(parsed.status!=='ok')return {status:'unknown',reason:parsed.reasons.join('；')};
+ const a=parsed.bars;
+ if(a.length<64)return {status:'unknown',reason:'至少64根有效歷史K棒才能尋找第一至第四根'};
+ const phases={1:'first',2:'second',3:'third',4:'fourth'};
+ for(let days=4;days>=1;days--){
+  const eventIndex=a.length-days;
+  if(eventIndex<60)continue;
+  const old=a.slice(eventIndex-60,eventIndex);
+  const level=Math.max(...old.map(b=>b.h));
+  const event=a[eventIndex],prior=a[eventIndex-1];
+  if(!(level>0&&prior.c<=level&&event.c>level&&event.h>level))continue;
+  // If another close had already crossed this exact level among the lookback,
+  // the event is not its first close above the reference high.
+  if(old.slice(0,-1).some(b=>b.c>level))continue;
+  const follow=a.slice(eventIndex+1);
+  const failed=follow.some(b=>b.c<level||b.c<event.l);
+  const last=a.at(-1);
+  return {status:'candidate',stage:phases[days],days,date:event.date,
+   level,failed,priceNow:last.c,
+   source:'prior60-high',
+   reason:failed?'前60日高點候選突破後曾失守，僅列警戒觀察':
+    `前60日高點的第${days}根候選，尚未核對60～120日大量K頸線及續攻資格`};
+ }
+ return {status:'none',reason:'最近四個交易日無前60日高點首次收盤突破事件'};
+}
+
 function r137BreakoutHistoryGate(c,stage){
  const bars=Array.isArray(c?.bars)?c.bars:[];
  const days={first:1,second:2,third:3,fourth:4}[stage]||1;
@@ -1083,7 +1116,12 @@ function strictBreakoutDecision(c,stage){
  // Match the certified event to the displayed star stage BEFORE checking price/volume.
  // A day-2 candidate must never qualify as ★1 merely because its candles are strong.
  const seq=c.breakoutSequence;
- if(!seq||typeof seq!=='object')return pending('突破階段資料尚未更新');
+ if(!seq||typeof seq!=='object'){
+  const observed=r146HistoricalStage(c,c.date);
+  return pending(observed.status==='candidate'&&observed.stage===stage?
+   '歷史日K已重建'+(OBS_STAGE[stage]||stage)+'；仍缺原始大量K頸線及盤後續攻資格，不可列為已認證':
+   '突破階段資料尚未更新');
+ }
  const phase=seq.phase,cycle=c.cycle;
  let actualStage=null;
  if(phase==='first'||phase==='second')actualStage=phase;
@@ -1185,6 +1223,14 @@ function sectorDirectory(){
   if(phase==='second')rawStageRows.second.push(c);
   if(phase==='third'||(phase==='follow'&&c.cycle?.firstHistoricalBreakout===true&&c.cycle?.daysSinceFirst===2))rawStageRows.third.push(c);
   if(phase==='fourth'||(phase==='follow'&&c.cycle?.firstHistoricalBreakout===true&&c.cycle?.daysSinceFirst===3))rawStageRows.fourth.push(c);
+  // Historical reconstruction is visible for otherwise unlabeled stocks,
+  // but NEVER placed in certified groups without the original EOD evidence.
+  const hasBackendStage=['first','second','third','fourth'].includes(phase)||
+   phase==='follow'&&c.cycle?.firstHistoricalBreakout===true;
+  if(!hasBackendStage){
+   const candidate=r146HistoricalStage(c,state.payload.asOf);
+   if(candidate.status==='candidate')rawStageRows[candidate.stage].push(c);
+  }
  }
  for(const k of Object.keys(rawStageRows))rawAudit[k]=rawStageRows[k].length;
  const ordered=['ready','ma510','reentry','maPullback','first','second','third','fourth','launch','hold','trend'];
@@ -1232,7 +1278,10 @@ function sectorDirectory(){
   // R130: the headline counts certified stocks only. Uncertified candidates
   // live in a separate CLOSED disclosure with their own explicit count.
   // Never render raw candidates as direct siblings of certified rows.
-  const rawMarkup=rawOnly.length?`<details class="r130-pending-group" data-r130-stage="${esc(stage)}"><summary>待補／賣壓警戒／認證未通過（${rawOnly.length} 檔）｜展開查看原因</summary><p class="r23-note">以下股票有資料不足、健康整理待確認或疑似出貨警戒，不列入通過數；請看每檔原因。</p>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,compactStatus:'觀察｜'+(r133RiskGate(c).status==='eligible'?strictBreakoutDecision(c,stage).reason:r133RiskGate(c).reasons.join('；')),reason:r133RiskGate(c).status==='eligible'?strictBreakoutDecision(c,stage).reason:r133RiskGate(c).reasons.join('；')})))}</details>`:'';
+  const rawMarkup=rawOnly.length?`<details class="r130-pending-group" data-r130-stage="${esc(stage)}"><summary>待補／賣壓警戒／認證未通過（${rawOnly.length} 檔）｜展開查看原因</summary><p class="r23-note">以下股票有資料不足、健康整理待確認或疑似出貨警戒，不列入通過數；請看每檔原因。</p>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,
+   compactStatus:(!c.breakoutSequence?.phase&&r146HistoricalStage(c,state.payload.asOf).status==='candidate'?'歷史K候選｜':'觀察｜')+
+    (r133RiskGate(c).status==='eligible'?strictBreakoutDecision(c,stage).reason:r133RiskGate(c).reasons.join('；')),
+   reason:r133RiskGate(c).status==='eligible'?strictBreakoutDecision(c,stage).reason:r133RiskGate(c).reasons.join('；')})))}</details>`:'';
   return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${displayCount}</span><span class="sector-arrow">⌄</span></summary>${auditNote}${r26GroupMarkup('stage-'+stage,arr)}${rawMarkup}</details>`;
  };
  out.innerHTML=
@@ -3701,11 +3750,11 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R145-20261115';
- const BUILD_LABEL='r145 · 全篩選資料修正即時重算';
+ const BUILD_ID='R146-20261115';
+ const BUILD_LABEL='r146 · 歷史突破候選重建與嚴格風險認證';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
- const oldBadge=/r(?:60|1\d{2})\s*[·・]\s*(?:名單數量與觀察股分層|訊號衝突防呆|出貨訊號驗證|盤後判斷修正|統一版本顯示與風險篩選|突破認證風險一致性|突破逐日量價風險驗證|突破事件重建與逐日風險驗證|全篩選嚴格出貨風險驗證|四階段漏選及風險快取修正|全篩選資料修正即時重算)/gi;
+ const oldBadge=/r(?:60|1\d{2})\s*[·・]\s*(?:名單數量與觀察股分層|訊號衝突防呆|出貨訊號驗證|盤後判斷修正|統一版本顯示與風險篩選|突破認證風險一致性|突破逐日量價風險驗證|突破事件重建與逐日風險驗證|全篩選嚴格出貨風險驗證|四階段漏選及風險快取修正|全篩選資料修正即時重算|歷史突破候選重建與嚴格風險認證)/gi;
  function updateBadge(){
   if(!document.body)return;
   const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
