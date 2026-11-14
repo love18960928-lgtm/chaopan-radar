@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: r113-OHLC-percent-star-date-audit-20261114 */
+/* CHAOPAN_RADAR_BUILD: r115-verified-action-safe-horizon-20261114 */
 /* r112-consistent-data-gates retained in regression history */
 /* r111-price-integrity-preflight-20261114 retained in regression history */
 'use strict';
@@ -353,10 +353,24 @@ function breakoutReadoutCore(c){
      assessment:'尚未突破；明日觀察能否形成第一根',tone:'watch',reasons:[]};
  return {phase:'none',label:'一般觀察',assessment:'尚未形成可驗證的第一根事件',tone:'neutral',reasons:[]};
 }
+// R114: only the stage actually certified by the backend can receive a breakout star.
+// A legacy `follow` sequence needs an explicitly recorded historical first event.
+function r114CertifiedStarPhase(c){
+ const phase=String(c?.breakoutSequence?.phase||'').toLowerCase();
+ const direct={first:'first',second:'second',third:'third',fourth:'fourth_plus'};
+ if(direct[phase])return direct[phase];
+ if(phase==='follow'&&c?.cycle?.firstHistoricalBreakout===true&&Number.isInteger(c.cycle.daysSinceFirst)){
+  if(c.cycle.daysSinceFirst===2)return 'third';
+  if(c.cycle.daysSinceFirst===3)return 'fourth_plus';
+ }
+ return null;
+}
 // Star labels are derived only from confirmed backend event data.
 // A prior screening appearance is shown only when stageHistory is present.
 function breakoutStar(c){
  if(!r111PriceIntegrity(c,120).ok)return null;
+ // Invalidated breakout evidence must not keep a bullish certification badge.
+ if(c.breakoutQuality==='invalid'||c.starPhase==='invalid')return null;
  // The official EOD star state is authoritative; no star survives a close below its event neckline.
  const close=numeric(c.close);
  const eventLevel=numeric(c.breakoutEvent?.level);
@@ -366,9 +380,8 @@ function breakoutStar(c){
  const officialMarks={ready:'☆',first:'★1',second:'★2',third:'★3',fourth_plus:'★4+'};
  if(official){
    if(!officialMarks[official])return null;
-   const expectedPhase={first:'first',second:'second',third:'third',fourth_plus:'fourth'}[official];
-   const reportedPhase=String(c.breakoutSequence?.phase||'').toLowerCase();
-   if(expectedPhase&&reportedPhase&&['first','second','third','fourth'].includes(reportedPhase)&&reportedPhase!==expectedPhase)return null;
+   // A missing/legacy/mismatched sequence cannot validate a new certified ★.
+   if(official!=='ready'&&r114CertifiedStarPhase(c)!==official)return null;
    // An unrelated fallback neckline is not proof that a certified star exists.
    if(official!=='ready'&&!(eventLevel>0))return null;
    if(official!=='ready'&&!(neck>0&&(official==='first'?close>neck:close>=neck)))return null;
@@ -793,7 +806,8 @@ function strictBreakoutDecision(c,stage){
  if(!actualStage)return fail('不是有效的首次突破延續事件');
  if(actualStage!==stage)return fail('突破階段不符：實際為'+(OBS_STAGE[actualStage]||actualStage));
  const starStage={first:'first',second:'second',third:'third',fourth:'fourth_plus'}[stage];
- if(c.starPhase&&c.starPhase!=='none'&&c.starPhase!==starStage)return pending('星號與突破序列階段不一致，待盤後重新核對');
+ if(!c.starPhase||c.starPhase==='none')return pending('缺少正式盤後突破星號，不可列為已認證突破');
+ if(c.starPhase!==starStage||r114CertifiedStarPhase(c)!==starStage)return pending('星號與突破序列階段不一致，待盤後重新核對');
  const level=Number(c.breakoutEvent?.level),close=Number(c.close);
  if(!c.breakoutEvent||!Number.isFinite(level)||level<=0)return pending('缺少有效突破事件頸線');
  if(!Number.isFinite(close)||close<=0)return pending('收盤價格待核對');
@@ -1381,6 +1395,45 @@ function r98Structure(c){
   top,bottom,close,volumeRatio:vr,topShift,bottomShift,slope20,slope60,breakout,trendOK,volumeOK,closeOK};
 }
 
+// R115: an explicitly audited event, NOT an unrestricted "ignore 13%" switch.
+// Sources for the event: MOPS release 2026-06-26, TWSE-ex-rights calendar
+// (secondary published reference: Goodinfo 2210 on 2026-07-13).
+// No global adjustment is inferred from a large jump; unknown symbols remain blocked.
+const R115_VERIFIED_ACTIONS={
+ '7610|2026-07-13': Object.freeze({code:'7610',date:'2026-07-13',kind:'除權息',
+  previousClose:2650,referencePrice:2210,cashDividend:0.50,stockDividend:2.00059869,
+  releaseDate:'2026-06-26',source:'公開資訊觀測站公司公告（2026-06-26）／除權參考價公開行情交叉核對'})
+};
+function r115ConfirmedPriceEvent(c,row,previous){
+ if(!c||!Array.isArray(row)||!previous)return null;
+ const entry=R115_VERIFIED_ACTIONS[String(c.code||'')+'|'+String(row[0]||'')];
+ if(!entry)return null;
+ const close=Number(previous.close),ref=entry.referencePrice;
+ // This record is for RAW unadjusted quotes only. Never apply it to an
+ // already-adjusted feed, a different previous close, or a wrong stock/date.
+ if(!Number.isFinite(close)||Math.abs(close-entry.previousClose)>.5)return null;
+ const ohlc=[1,2,3,4].map(k=>Number(row[k]));
+ if(!ohlc.every(v=>Number.isFinite(v)&&v>=ref*.898&&v<=ref*1.102))return null;
+ return entry;
+}
+function r115PostActionBars(c,event){
+ if(!event||!Array.isArray(c?.bars))return [];
+ const bars=c.bars.filter(row=>Array.isArray(row)&&row[0]>=event.date);
+ return bars;
+}
+function r115KnownActionHTML(c,integrity){
+ const event=integrity?.event;
+ if(integrity?.code!=='CORPORATE_ACTION_UNADJUSTED'||!event)return '';
+ const bars=r115PostActionBars(c,event),closes=bars.map(b=>Number(b[4]));
+ const ma=n=>closes.length>=n?closes.slice(-n).reduce((a,b)=>a+b,0)/n:null;
+ const cells=[5,10,20,60].map(n=>`<div style="padding:10px;border:1px solid #3a596a;border-radius:8px"><small>除權息後 MA${n}</small><strong style="display:block;margin-top:6px">${ma(n)===null?'歷史不足':price(ma(n))}</strong></div>`).join('');
+ return `<section class="r115-confirmed-event" role="status" style="padding:16px;border:1px solid #4b7789;border-radius:14px;background:#102536;display:grid;gap:12px;max-width:100%;box-sizing:border-box">
+ <strong>已核對公司行動｜${esc(event.date)} ${esc(event.kind)}</strong>
+ <p>${esc(c.code)} 這一天不是無故跳空：除權息前收盤 ${price(event.previousClose)} 元，公開參考價約 ${price(event.referencePrice)} 元。原始日K尚未進行跨日還原；不可直接使用除權息前的價格計算長期均線／歷史頸線。</p>
+ <p>目前只提供<b>除權息後原始交易日K</b>的短線均線觀察（已載入 ${integer(bars.length)} 根）。不是突破認證、減碼建議或回測績效。</p>
+ <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">${cells}</div>
+ <p>MA120／MA240、跨除權息的大量K頸線、第一至第三根認證及明日操作：<b>待正式還原行情與來源重新驗證</b>。</p><small>來源：${esc(event.source)}；此版僅內建已查證的 7610 案例，其餘公司行動仍會保守阻擋。</small></section>`;
+}
 // r111: Fail closed on suspicious unadjusted corporate-action / source gaps.
 // This does NOT fix raw data or assert that a split actually occurred.
 // TWSE ordinary price-limit moves generally stay within ~10% per session;
@@ -1390,13 +1443,13 @@ function r98Structure(c){
 function r111PriceIntegrity(c,window=120){
  const fail=why=>({ok:false,why});
  if(!c||typeof c!=='object')return fail('缺少個股資料，暫停交易與選股認證');
- if(c.possiblePriceAdjustment===true)return fail('資料來源已標示疑似除權息／股票分割／調整價位，需先與官方還原行情核對');
+ // Defer source adjustment warning until independently audited corporate actions are classified.
  const b=c.bars;
  if(!Array.isArray(b)||b.length<2)return fail('至少需要連續2筆可核對日K，暫停交易與選股認證');
  // Price integrity must cover the oldest bar used by the MA240 display, not just the 120-day event window.
  const n=Math.max(240,Math.min(10000,Number.isFinite(Number(window))?Math.floor(Number(window)):240));
  const start=Math.max(0,b.length-n-1);
- let previous=null;
+ let previous=null,confirmedAction=null;
  const isValue=x=>x!==null&&x!==undefined&&x!==''&&Number.isFinite(Number(x));
  for(let i=start;i<b.length;i++){
   const row=b[i];
@@ -1411,21 +1464,34 @@ function r111PriceIntegrity(c,window=120){
   const [open,high,low,close,volume]=row.slice(1,6).map(Number);
   if(low<=0||high<low||open<low||open>high||close<low||close>high||volume<0)return fail(`${date} 日K價格區間或成交量不合理，暫停認證`);
   if(previous){
-   const overnight=open/previous.close,closeToClose=close/previous.close;
-   // Even when the close is normal, a corrupt intraday high/low can create fake breakouts.
-   if(high/previous.close>1.13||low/previous.close<.87)
-    return fail(`${date} 最高價／最低價偏離前收盤超過13%，疑似價格欄位或除權息異常；暫停交易訊號並核對官方資料`);
-   if(overnight<.87||overnight>1.13||closeToClose<.87||closeToClose>1.13){
-    const change=(closeToClose-1)*100;
-    return {ok:false,why:`${date} 與前一筆K線價差異常（收盤變化 ${change>=0?'+':''}${change.toFixed(1)}%），疑似除權息、分割、缺漏交易日或資料錯誤；暫停交易訊號，先核對官方資料`,date,change};
+   const confirmed=r115ConfirmedPriceEvent(c,row,previous);
+   if(confirmed){
+    // A real ex-rights session is compared to its published reference price.
+    // It is not a corrupt candle. We STILL block unadjusted long-window signals below.
+    confirmedAction=confirmed;
+   }else{
+    const overnight=open/previous.close,closeToClose=close/previous.close;
+    // Even when close is normal, corrupted high/low must fail closed.
+    if(high/previous.close>1.13||low/previous.close<.87)
+     return fail(`${date} 最高價／最低價偏離前收盤超過13%，疑似價格欄位或除權息異常；暫停交易訊號並核對官方資料`);
+    if(overnight<.87||overnight>1.13||closeToClose<.87||closeToClose>1.13){
+     const change=(closeToClose-1)*100;
+     return {ok:false,why:`${date} 與前一筆K線價差異常（收盤變化 ${change>=0?'+':''}${change.toFixed(1)}%），疑似除權息、分割、缺漏交易日或資料錯誤；暫停交易訊號，先核對官方資料`,date,change};
+    }
    }
   }
   previous={date,close,volume};
  }
  const last=b.at(-1),close=Number(last[4]);
  // Compare Taiwanese-local dates; reject impossible future EOD bars without guessing holidays.
- const taipeiToday=new Date(Date.now()+8*60*60000).toISOString().slice(0,10);
+ const taipeiNow=new Date(Date.now()+8*60*60000);
+ const taipeiToday=taipeiNow.toISOString().slice(0,10);
  if(last[0]>taipeiToday)return fail(`${last[0]} 是未來交易日，尚無可核對盤後日K，暫停認證`);
+ // TWSE common trading ends 13:30, with possible close extensions to 13:33.
+ // Use 14:00 as a conservative EOD readiness floor; official source freshness
+ // still needs separate backend verification before full live acceptance.
+ const taipeiMinutes=taipeiNow.getUTCHours()*60+taipeiNow.getUTCMinutes();
+ if(last[0]===taipeiToday&&taipeiMinutes<14*60)return fail(`${last[0]} 當日尚未到盤後資料核對時點（14:00後），不可將盤中K線視為已收盤認證`);
  if(b.length>1&&c.changePct!==undefined&&c.changePct!==null&&c.changePct!==''){
   if(!isValue(c.changePct))return fail('個股顯示漲跌幅不是有效數值，暫停認證');
   const expected=(close/Number(b.at(-2)[4])-1)*100;
@@ -1436,6 +1502,9 @@ function r111PriceIntegrity(c,window=120){
  if(c.close!==undefined&&c.close!==null){
   if(!isValue(c.close)||Math.abs(Number(c.close)-close)>Math.max(.02,close*.001))return fail('個股顯示收盤價與最後一筆日K不一致，暫停認證');
  }
+ if(confirmedAction)return {ok:false,code:'CORPORATE_ACTION_UNADJUSTED',event:confirmedAction,
+  why:`${confirmedAction.date} 已核對公司除權息（非無故跳空）；原始長期價格尚未還原，跨事件均線、頸線及交易認證暫停。`};
+ if(c.possiblePriceAdjustment===true)return fail('資料來源已標示疑似除權息／股票分割／調整價位，需先與官方還原行情核對');
  return {ok:true};
 }
 // r99: actionable after-close position decision. Uses completed EOD bars only.
@@ -1580,7 +1649,7 @@ function r99ActionHTML(a,c){
  const level=n=>Number.isFinite(n)&&n>0?price(n)+' 元':'待核對';
  const color={success:'#6ee7c1',warning:'#f5bd67',danger:'#ff9c9c',muted:'#aab7c4'}[a.tone]||'#aab7c4';
  const box=(headline,detail,highlight=false)=>`<div style="padding:9px 0;border-top:1px solid #355466"><b style="color:${highlight?color:'inherit'}">${headline}</b><div style="font-size:.92em">${detail}</div></div>`;
- const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R113 明日操作</small>`;
+ const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R115 明日操作</small>`;
  if(!a.valid)return `<div style="border:2px solid ${color};border-radius:12px;padding:13px;display:grid;gap:8px" aria-live="polite">${base}<strong style="font-size:1.65em;color:${color}">${esc(a.title)}</strong><div>${esc(a.note||'請先核對資料')}</div><small>未提供操作價格或股數。</small></div>`;
  const lv=r103ConditionalLevels(c,a);
  const pct=n=>Number.isFinite(n)&&n>0?`（${(n/a.close-1)*100>=0?'+':''}${((n/a.close-1)*100).toFixed(2)}%）`:'';
@@ -1630,7 +1699,7 @@ function nextSessionDefenseCard(c){
   try{initialPlan=r91ProfitPlan(v,Number(cost));}catch(e){initialPlan=null;}
  }
  return `<section class="r82-decision r91-decision" style="position:relative;clear:both;box-sizing:border-box;border:1px solid #385a6c;border-radius:14px;padding:16px;margin:12px 0;display:grid;gap:12px;max-width:100%" data-code="${esc(code)}">
- <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>明日持股操作 <small style="font-size:.65em;opacity:.7">R113</small></strong></div>
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>明日持股操作 <small style="font-size:.65em;opacity:.7">R115</small></strong></div>
  <div class="r99-action">${r99ActionHTML(r99Action(c,cost===''?NaN:Number(cost),qty===''?NaN:Number(qty),mode),c)}</div>
  <label>持有週期 <select class="r92-mode" style="font-size:1em;background:#0d2230;color:#e6f5ff;border:1px solid #4b7487;border-radius:7px;padding:8px"><option value="short" ${mode==='short'?'selected':''}>短線｜5、10日趨勢</option><option value="medium" ${mode==='medium'?'selected':''}>中期｜20日趨勢</option><option value="long" ${mode==='long'?'selected':''}>長期｜60日趨勢</option></select></label>
  <div style="font-size:.9em;opacity:.85">${esc(v.date)} 收盤 ${price(v.close)} 元</div>
@@ -1737,7 +1806,18 @@ function arrangeR41Detail(c){
  gates.prepend(gateIntro);
  if(!sameDay)gates.insertAdjacentHTML('beforeend','<p class="r41-missing-chart">行情日期或歷史 K 棒不一致：價位待認證，請先更新盤後資料。</p>');
  
- state.r41Advanced={code:c.code,date:c.date,html:advanced.join('')};
+ // R115: a confirmed raw ex-rights event is NOT permission to trust old necklines.
+ // Preserve the familiar three-tab layout but replace the misleading old cards.
+ const audited=r111PriceIntegrity(c,120);
+ if(audited.code==='CORPORATE_ACTION_UNADJUSTED'){
+  card.innerHTML=r115KnownActionHTML(c,audited);
+  const post=r115PostActionBars(c,audited.event);
+  graph.innerHTML=`<section class="chart-area" style="padding:12px"><h3>除權息後日K（僅歷史價量）</h3><p>從 ${esc(audited.event.date)} 起的原始日K，不跨除權息前的價格畫線，也不顯示未還原的長期頸線或買賣訊號。</p>${post.length>=5?makeChart(post,null,Math.min(60,post.length),[],[],null,c.date):'<p>除權息後K線不足，暫不繪製。</p>'}</section>`;
+  gates.innerHTML=`<section class="r41-gate-overview"><h3>歷史關卡待核對</h3><p>${esc(audited.why)}請先由來源端完成除權息調整與第一至第三根訊號重算。</p></section>`;
+  state.r41Advanced=null;
+ }else{
+  state.r41Advanced={code:c.code,date:c.date,html:advanced.join('')};
+ }
  const tabs=document.createElement('nav');tabs.className='r41-detail-tabs';tabs.setAttribute('aria-label','個股三個獨立頁面');tabs.setAttribute('role','tablist');
  tabs.innerHTML=[['card','作戰字卡'],['chart','走勢圖'],['gates','關卡圖解']].map(([id,label])=>`<button type="button" role="tab" aria-controls="r41-page-${id}" data-r41-tab="${id}">${label}</button>`).join('');
  // r79: avoid the sticky tabs covering content while scrolling on mobile.
