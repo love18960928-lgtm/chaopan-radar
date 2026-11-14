@@ -1273,6 +1273,15 @@ function r92Decision(c,mode='medium'){
  const trendWeak=mode==='short'?shortWeak:mode==='long'?longWeak:mediumWeak;
  const trendStrong=mode==='short'?close>m5&&m5>=m10:mode==='long'?m60!==null&&close>m60&&m60prev!==null&&m60>=m60prev:close>m20&&m20prev!==null&&m20>=m20prev;
  const sellPressure=volumeRatio!==null&&volumeRatio>=1.4&&closeLocation<=.3&&close<open;
+ // r119: repeated distribution-like candles are a warning, never proof of a specific seller.
+ const prior20Vols=vols.slice(-21,-1);
+ const baseline=prior20Vols.length===20&&prior20Vols.every(x=>Number.isFinite(x)&&x>=0)?prior20Vols.reduce((a,b)=>a+b,0)/20:null;
+ const recentDistribution=baseline>0?bars.slice(-5).filter(b=>{
+  const o=Number(b[1]),h=Number(b[2]),l=Number(b[3]),cl=Number(b[4]),v=Number(b[5]);
+  return [o,h,l,cl,v].every(Number.isFinite)&&h>l&&cl<o&&((cl-l)/(h-l))<=.35&&v>=baseline*1.4;
+ }).length:0;
+ const repeatedSelling=recentDistribution>=2;
+
  const failedBreak=high>Math.max(...bars.slice(-6,-1).map(b=>Number(b[2])))&&close<Math.max(...bars.slice(-6,-1).map(b=>Number(b[2])))&&closeLocation<=.35;
  const ins=c.institutional,insDate=String(ins?.date||'').replace(/[^0-9]/g,'');
  const barDate=String(last[0]).replace(/[^0-9]/g,'');
@@ -1292,15 +1301,16 @@ function r92Decision(c,mode='medium'){
  else if(trendWeak)reasons.push('所選週期均線轉弱');
  else reasons.push('趨勢尚未確認');
  if(sellPressure)reasons.push('放量收低且收黑，留意賣壓');
+ if(repeatedSelling)reasons.push('近5日多次放量收低，疑似連續賣壓（非主力出貨證據）');
  if(failedBreak)reasons.push('盤中突破前5日高點但收盤未站穩');
  if(riskBreak)reasons.push('收盤跌破前5日已知低點');
  if(institutionalSelling)reasons.push('同日外資與投信同步賣超且占量偏高');
  else if(!validIns)reasons.push('法人資料不足，不推定出貨');
  let status='震盪觀察',tone='warning';
- if(trendWeak&&(sellPressure||riskBreak)){status=mode==='long'&&!longWeak?'減碼警戒':'趨勢破壞';tone='danger'}
- else if((trendWeak||riskBreak)&&(sellPressure||failedBreak||institutionalSelling)){status='減碼警戒';tone='danger'}
- else if(trendStrong&&!sellPressure&&!riskBreak){status='多頭續抱';tone='success'}
- return {status,tone,reasons,institution,trend:trendStrong?'偏多':trendWeak?'轉弱':'整理',volume:volumeRatio===null?'待核對':volumeRatio.toFixed(2)+'倍',institutionalSelling,validIns,close,mode};
+ if(trendWeak&&(sellPressure||riskBreak||repeatedSelling)){status=mode==='long'&&!longWeak?'減碼警戒':'趨勢破壞';tone='danger'}
+ else if((trendWeak||riskBreak)&&(sellPressure||failedBreak||institutionalSelling||repeatedSelling)){status='減碼警戒';tone='danger'}
+ else if(trendStrong&&!sellPressure&&!riskBreak&&!repeatedSelling){status='多頭續抱';tone='success'}
+ return {status,tone,reasons,repeatedSelling,recentDistribution,institution,trend:trendStrong?'偏多':trendWeak?'轉弱':'整理',volume:volumeRatio===null?'待核對':volumeRatio.toFixed(2)+'倍',institutionalSelling,validIns,close,mode};
 }
 // r95: pure, cost-aware EOD scenario calculator; no implied execution.
 function r95PositionScenario(cost,qty,close,defense,sellPrice,sellQty){
@@ -1396,12 +1406,15 @@ function r99Action(c,cost,qty,mode='medium'){
  const twoDayWeak=close<Number(prior[4])&&Number(prior[4])<Number(bars.at(-3)[4]);
  const volumeRatio=Number.parseFloat(d.volume);
  const distributionRisk=Number.isFinite(volumeRatio)&&volumeRatio>=1.4&&closeLocation<=.3&&close<Number(last[1]);
- const riskCount=Number(distributionRisk)+Number(breakdown20)+Number(twoDayWeak)+Number(d.institutionalSelling);
+ const riskCount=Number(distributionRisk)+Number(breakdown20)+Number(twoDayWeak)+Number(d.institutionalSelling)+Number(!!d.repeatedSelling);
  // r110: independent profit give-back alert must be considered BEFORE a bullish
  // headline. 60-session market highs are NOT the investor's actual holding peak.
  const profitable=close>cost;
- const onceHadProfit=rollingHigh>=cost*1.08;
- const profitGiveback=onceHadProfit&&drawdown<=-8&&riskCount>=1;
+ // A 60-session high may predate the user's entry; it must never be called realized or held profit.
+ const heldPeak=Number(c?.holdingPeakPrice);
+ const heldPeakVerified=c?.holdingPeakVerified===true&&Number.isFinite(heldPeak)&&heldPeak>=close&&heldPeak>=cost;
+ const heldDrawdown=heldPeakVerified?(close/heldPeak-1)*100:null;
+ const profitGiveback=heldPeakVerified&&heldPeak>=cost*1.08&&heldDrawdown<=-8&&riskCount>=1;
  const priorCloses=bars.map(b=>Number(b[4]));
  const mean=(arr)=>arr.reduce((s,x)=>s+x,0)/arr.length;
  const ma20=mean(priorCloses.slice(-20));
@@ -1417,7 +1430,7 @@ function r99Action(c,cost,qty,mode='medium'){
  const severe=hardBreak&&riskCount>=2&&failedTrend&&(longTrendBroken||urgentBreak);
  const reduce=!severe&&(
   d.status==='趨勢破壞'||d.status==='減碼警戒'||
-  (drawdown<=-12&&riskCount>=2)||
+  (drawdown<=-12&&riskCount>=2&&failedTrend)||
   (profitGiveback&&riskCount>=2)
  );
  let title='盤整等待',tone='warning',fraction=0,trigger=null,condition='尚未達確認條件，等待盤後重新評估',note='暫不加碼';
@@ -1436,7 +1449,7 @@ function r99Action(c,cost,qty,mode='medium'){
   // A past profit is NOT a currently realizable profit. Never label a loss as
   // a confirmed profit-taking sale.
   title=profitable?'獲利保護':'風險觀察';tone='warning';trigger=defense;
-  condition='近60日高點明顯回落，但減碼證據尚未確認';
+  condition='已核對持有期間高點回落，但減碼證據尚未確認';
   note='先觀察防守價；目前沒有確認減碼訊號';
  }else if(d.trend==='偏多'&&(d.status==='多頭續抱'||d.status==='突破續抱')){
   title='偏多續抱';tone='success';trigger=breakout;
@@ -1452,7 +1465,7 @@ function r99Action(c,cost,qty,mode='medium'){
  const shares=fraction===1?qty:fraction>0?Math.max(1,Math.floor(qty*fraction)):0;
  if(shares>0&&fraction<1){const provisional={close,rebound,breakout};const levels=r103ConditionalLevels(c,provisional);if(!levels||!(levels.defense>0&&levels.defense<close))return wait('盤後已發現減碼風險，但防守價尚未驗證，暫不提供賣出股數或委託價','風險警戒｜價位待核對');}
  const value=shares*close,pnl=shares*(close-cost);
- return {title,tone,trigger,stop:defense,rebound,breakout,shares,value,pnl,close,cost,condition,note,asOf:v.date,valid:true,profit:profitable,qty,rollingHigh,drawdown,riskCount,longTrendIntact,longTrendBroken,profitGiveback};
+ return {title,tone,trigger,stop:defense,rebound,breakout,shares,value,pnl,close,cost,condition,note,asOf:v.date,valid:true,profit:profitable,qty,rollingHigh,drawdown,riskCount,longTrendIntact,longTrendBroken,profitGiveback,heldPeakVerified,heldDrawdown};
 }
 // r103: derive next-session conditional prices solely from completed EOD bars.
 // Prices are alert thresholds, not executable orders or inferred intraday signals.
