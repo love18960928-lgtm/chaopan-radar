@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: r110-provisional-profit-guard-20261114 */
+/* CHAOPAN_RADAR_BUILD: R123-20261114-badge-and-signal-audit */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const state={r41Page:'card',r41Advanced:null,payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false,instMarket:'all',instAsset:'stock',instSort:'amount'};
@@ -1463,9 +1463,7 @@ function r99Action(c,cost,qty,mode='medium'){
  }else if(d.trend==='偏多'&&(d.status==='多頭續抱'||d.status==='突破續抱')){
   title='偏多續抱';tone='success';trigger=breakout;
   condition='所選週期維持偏多，尚未確認減碼訊號';note='突破後仍須檢查量價與收盤站穩';
- }else if(d.trend==='偏多'&&d.status==='多頭續抱'&&v.highVolume&&!d.institutionalSelling&&!d.repeatedSelling&&!failedBreakRisk){
-  title='加碼觀察';tone='success';trigger=breakout;
-  condition='突破壓力且盤後量價確認後，再評估加碼';note='尚未觸發加碼';
+
  }
  // Prevent a 'bullish hold' headline when the selected timeframe is not bullish.
  if((title==='偏多續抱'||title==='加碼觀察')&&d.trend!=='偏多'){
@@ -3332,3 +3330,28 @@ document.addEventListener('click',function(e){
   document.documentElement.classList.remove('chaopan-chart-expanded');
  }
 },true);
+
+// R123: front-end build indicator; the home page's static r60 text may live in index.html.
+// This updates only the exact build badge when this script is loaded on that page.
+(function(){
+ const BUILD='r123 · 出貨訊號驗證';
+ globalThis.CHAOPAN_DETAIL_BUILD='R123-20261114';
+ function updateBadge(){
+  const root=document.body;if(!root)return;
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+  let node,changed=0;
+  while((node=walker.nextNode())){
+   const raw=node.nodeValue||'';
+   if(!/r60\s*[·・]\s*訊號衝突防呆/.test(raw))continue;
+   node.nodeValue=raw.replace(/r60\s*[·・]\s*訊號衝突防呆/g,BUILD);changed++;
+   if(changed>=3)break;
+  }
+ }
+ function start(){
+  updateBadge();
+  const obs=new MutationObserver(()=>updateBadge());
+  obs.observe(document.body,{childList:true,subtree:true});
+ }
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});
+ else start();
+})();
