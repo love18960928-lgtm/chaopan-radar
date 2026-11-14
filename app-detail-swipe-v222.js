@@ -1533,38 +1533,58 @@ function r103ConditionalLevels(c,a){
 // r109: one glance next-session plan. Every hypothetical sale scenario uses
 // ITS OWN price to calculate proceeds/P&L; no default position or implied fill.
 // R128: EOD-only candle event tracker. Observations, not proof of market manipulation.
+function r129ValidCandle(x){
+ if(!Array.isArray(x)||x.length<6)return false;
+ const [o,h,l,cl,v]=[1,2,3,4,5].map(k=>Number(x[k]));
+ return [o,h,l,cl,v].every(Number.isFinite)&&l>0&&h>=l&&o>=l&&o<=h&&cl>=l&&cl<=h&&v>=0;
+}
+// R129: EOD-only historical event evidence; event ordering is preserved.
 function r128CandleEvents(c){
  const b=c?.bars;
- if(!Array.isArray(b)||b.length<26)return {ok:false,reason:'至少需要26根有效日K'};
+ if(!Array.isArray(b)||b.length<26)return {ok:false,reason:'至少需要26根日K'};
  const events=[];
+ // Include a signal five *completed* trading bars ago, not just the latest six bars accidentally truncated.
  for(let i=Math.max(20,b.length-6);i<b.length;i++){
-  const x=b[i],o=Number(x[1]),h=Number(x[2]),l=Number(x[3]),cl=Number(x[4]),v=Number(x[5]);
-  if(![o,h,l,cl,v].every(Number.isFinite)||l<=0||h<l||o<l||o>h||cl<l||cl>h||v<0)continue;
+  const x=b[i];
+  if(!r129ValidCandle(x))continue;
+  const prior=b.slice(i-20,i);
+  if(prior.length!==20||!prior.every(r129ValidCandle))continue;
+  const prev=b[i-1];
+  const o=Number(x[1]),h=Number(x[2]),l=Number(x[3]),cl=Number(x[4]),v=Number(x[5]);
   const span=h-l;if(span<=0)continue;
   const upper=(h-Math.max(o,cl))/span,lower=(Math.min(o,cl)-l)/span,body=Math.abs(cl-o)/span;
-  const avg=b.slice(i-20,i).reduce((s,y)=>s+Number(y[5]||0),0)/20;
+  const avg=prior.reduce((sum,y)=>sum+Number(y[5]),0)/20;
   const ratio=avg>0?v/avg:null;
-  let type=null;
-  if(body<=.1)type='十字線候選';
-  else if(upper>=.45&&body<=.35)type='長上影線候選';
-  else if(lower>=.45&&body<=.35)type='長下影線候選';
-  const prev=b[i-1];
-  if(prev&&Number(prev[1])>Number(prev[4])&&cl>o&&o<=Number(prev[4])&&cl>=Number(prev[1]))type='多頭吞噬候選';
-  if(prev&&Number(prev[4])>Number(prev[1])&&cl<o&&o>=Number(prev[4])&&cl<=Number(prev[1]))type='空頭吞噬候選';
-  if(!type)continue;
+  const types=[];
+  if(body<=.1)types.push('十字線候選');
+  if(upper>=.45&&body<=.35)types.push('長上影線候選');
+  if(lower>=.45&&body<=.35)types.push('長下影線候選');
+  if(r129ValidCandle(prev)){
+   if(Number(prev[1])>Number(prev[4])&&cl>o&&o<=Number(prev[4])&&cl>=Number(prev[1]))types.push('多頭吞噬候選');
+   if(Number(prev[4])>Number(prev[1])&&cl<o&&o>=Number(prev[4])&&cl<=Number(prev[1]))types.push('空頭吞噬候選');
+  }
+  if(!types.length)continue;
   const later=b.slice(i+1,Math.min(b.length,i+6));
-  const brokeHigh=later.some(y=>Number(y[4])>h),brokeLow=later.some(y=>Number(y[4])<l);
-  const status=later.length===0?'尚待後續交易日':brokeHigh&&brokeLow?'後續雙向突破，訊號混合':brokeHigh?'後續收盤突破訊號高點':brokeLow?'後續收盤跌破訊號低點':'尚未突破訊號高低點';
-  events.push({date:x[0],type,status,days:later.length,volumeRatio:ratio});
+  const badAt=later.findIndex(y=>!r129ValidCandle(y));
+  const verified=badAt<0?later:later.slice(0,badAt);
+  let firstHigh=-1,firstLow=-1;
+  verified.forEach((y,j)=>{if(firstHigh<0&&Number(y[4])>h)firstHigh=j+1;if(firstLow<0&&Number(y[4])<l)firstLow=j+1;});
+  let status='尚未突破訊號高低點';
+  if(badAt>=0)status='後續K棒資料異常，停止確認';
+  else if(firstHigh>0&&firstLow>0)status=firstHigh<firstLow?'先突破高點、後跌破低點（突破失敗警戒）':'先跌破低點、後突破高點（反轉待確認）';
+  else if(firstHigh>0)status='後續收盤突破訊號高點';
+  else if(firstLow>0)status='後續收盤跌破訊號低點';
+  else if(!verified.length)status='尚待後續交易日';
+  for(const type of types)events.push({date:x[0],type,status,days:verified.length,volumeRatio:ratio,firstHigh,firstLow});
  }
- return {ok:true,events:events.slice(-4)};
+ return {ok:true,events};
 }
 function r128CandleEventsHTML(c){
  const q=r101Quality(c,'short');
  if(!q.ok)return `<details><summary>近5日K棒事件｜資料待核對</summary><small>${esc(q.why)}</small></details>`;
  const r=r128CandleEvents(c);
  if(!r.ok)return `<details><summary>近5日K棒事件｜資料不足</summary><small>${esc(r.reason)}</small></details>`;
- const rows=r.events.length?r.events.map(e=>`<div style="padding:6px 0;border-top:1px solid #355466"><b>${esc(e.date)} ${esc(e.type)}</b>｜${esc(e.status)}<small style="display:block;opacity:.75">後續${e.days}個交易日｜當日量比 ${e.volumeRatio===null?'未知':e.volumeRatio.toFixed(2)+'倍'}</small></div>`).join(''):'<small>最近6根日K未出現本模組定義的候選型態。</small>';
+ const rows=r.events.length?r.events.map(e=>`<div style="padding:6px 0;border-top:1px solid #355466"><b>${esc(e.date)} ${esc(e.type)}</b>｜${esc(e.status)}<small style="display:block;opacity:.75">後續${e.days}個有效交易日｜當日量比 ${e.volumeRatio===null?'未知':e.volumeRatio.toFixed(2)+'倍'}</small></div>`).join(''):'<small>最近6根日K未出現本模組定義的候選型態。</small>';
  return `<details style="border-top:1px solid #355466;padding-top:8px"><summary>近5日K棒事件追蹤（觀察，不直接交易）</summary>${rows}<small>型態閾值尚未回測；仙人指路、洗盤與出貨不能由單根K棒證實。事件最多追蹤後續5個交易日。</small></details>`;
 }
 
@@ -1573,7 +1593,7 @@ function r99ActionHTML(a,c){
  const level=n=>Number.isFinite(n)&&n>0?price(n)+' 元':'待核對';
  const color={success:'#6ee7c1',warning:'#f5bd67',danger:'#ff9c9c',muted:'#aab7c4'}[a.tone]||'#aab7c4';
  const box=(headline,detail,highlight=false)=>`<div style="padding:9px 0;border-top:1px solid #355466"><b style="color:${highlight?color:'inherit'}">${headline}</b><div style="font-size:.92em">${detail}</div></div>`;
- const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R128 明日操作</small>`;
+ const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R129 明日操作</small>`;
  if(!a.valid)return `<div style="border:2px solid ${color};border-radius:12px;padding:13px;display:grid;gap:8px" aria-live="polite">${base}<strong style="font-size:1.65em;color:${color}">${esc(a.title)}</strong><div>${esc(a.note||'請先核對資料')}</div><small>未提供操作價格或股數。</small></div>`;
  const lv=a.levelsVerified===false?null:r103ConditionalLevels(c,a);
  const pct=n=>Number.isFinite(n)&&n>0?`（${(n/a.close-1)*100>=0?'+':''}${((n/a.close-1)*100).toFixed(2)}%）`:'';
@@ -3245,7 +3265,7 @@ document.addEventListener('click',function(e){
 // R123: front-end build indicator; the home page's static r60 text may live in index.html.
 // The index.html static version still requires a separate update.
 (function(){
- const BUILD='r128 · 品質先於決策';
+ const BUILD='r129 · K棒事件驗證';
  globalThis.CHAOPAN_DETAIL_BUILD='R128-20261114';
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild='R128-20261114';
  function updateBadge(){
