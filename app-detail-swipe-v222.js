@@ -772,8 +772,30 @@ function sectorRadar(){
 // Missing values are NOT interpreted as a positive institutional/technical confirmation.
 // R137: a clean last candle cannot erase distribution evidence on the breakout candle.
 // This is a conservative veto for breakout certification, NOT proof of insider selling.
-// R139: evaluate EVERY candle of the breakout event, not just the breakout day.
+// R140: evaluate EVERY candle of the breakout event, not just the breakout day.
 // Status is a conservative certification gate, not a claim about actual seller identity.
+// R140: reconstruct a candidate event from actual daily bars, never from a label alone.
+// The 60-session prior-high neckline is a transparent candidate, not a certified
+// historical large-volume neckline. Missing bars remain unknown.
+function r140ReconstructEvent(c,stage){
+ const days={first:1,second:2,third:3,fourth:4}[stage];
+ const bars=Array.isArray(c?.bars)?c.bars:[];
+ if(!days||bars.length<60+days)return {status:'unknown',reason:'重建突破事件需至少60根前置日K及完整追蹤K棒'};
+ const valid=x=>Array.isArray(x)&&x.length>=6&&Number.isFinite(Date.parse(String(x[0])))&&
+  [1,2,3,4,5].every(i=>x[i]!==''&&x[i]!=null&&Number.isFinite(Number(x[i])))&&
+  Number(x[3])>0&&Number(x[2])>=Math.max(Number(x[1]),Number(x[4]))&&
+  Number(x[3])<=Math.min(Number(x[1]),Number(x[4]))&&Number(x[5])>=0;
+ const sample=bars.slice(-(60+days));
+ if(!sample.every(valid)||sample.some((x,i)=>i>0&&String(x[0])<=String(sample[i-1][0])))
+  return {status:'unknown',reason:'重建突破事件的歷史日K品質或日期異常'};
+ const eventIndex=bars.length-days;
+ const previous=bars.slice(eventIndex-60,eventIndex);
+ const level=Math.max(...previous.map(x=>Number(x[2])));
+ const event=bars[eventIndex],prior=bars[eventIndex-1];
+ if(!(Number(prior[4])<=level&&Number(event[4])>level&&Number(event[2])>level))
+  return {status:'not_breakout',reason:'未符合前60交易日高點首次收盤突破'};
+ return {status:'derived',event:{date:String(event[0]),level},reason:'依前60交易日最高價重建的候選突破事件（非大量K頸線認證）'};
+}
 function r137BreakoutHistoryGate(c,stage){
  const bars=Array.isArray(c?.bars)?c.bars:[];
  const days={first:1,second:2,third:3,fourth:4}[stage]||1;
@@ -838,7 +860,14 @@ function strictBreakoutDecision(c,stage){
  if(gate.status==='risk')return fail('K棒／量價風險排除：'+gate.reasons.join('、'));
  if(gate.status==='watch')return pending('長上影待後續確認：'+gate.reasons.join('、'));
  if(gate.status==='unknown')return pending('資料品質待確認：'+gate.reasons.join('、'));
- const eventRisk=r137BreakoutHistoryGate(c,stage);
+ // Reconstruct missing event fields, but never silently certify a different neckline definition.
+ let eventRow=c;
+ if(!c.breakoutEvent?.date||!(Number(c.breakoutEvent?.level)>0)){
+  const rebuilt=r140ReconstructEvent(c,stage);
+  if(rebuilt.status!=='derived')return pending('突破事件資料待補：'+rebuilt.reason);
+  eventRow={...c,breakoutEvent:rebuilt.event};
+ }
+ const eventRisk=r137BreakoutHistoryGate(eventRow,stage);
  if(eventRisk.status==='risk')return fail(eventRisk.reason);
  if(eventRisk.status==='watch'||eventRisk.status==='unknown')return pending(eventRisk.reason);
  // Match the certified event to the displayed star stage BEFORE checking price/volume.
@@ -855,8 +884,8 @@ function strictBreakoutDecision(c,stage){
  }
  if(!actualStage)return fail('不是有效的首次突破延續事件');
  if(actualStage!==stage)return fail('突破階段不符：實際為'+(OBS_STAGE[actualStage]||actualStage));
- const level=Number(c.breakoutEvent?.level),close=Number(c.close);
- if(!c.breakoutEvent||!Number.isFinite(level)||level<=0)return pending('缺少有效突破事件頸線');
+ const level=Number(eventRow.breakoutEvent?.level),close=Number(c.close);
+ if(!Number.isFinite(level)||level<=0)return pending('缺少有效突破事件頸線');
  if(!Number.isFinite(close)||close<=0)return pending('收盤價格待核對');
  if(stage==='first'&&close<=level)return fail('首次突破未收盤站上頸線');
  if(stage!=='first'&&close<level)return fail('收盤跌破突破頸線');
@@ -872,6 +901,7 @@ function strictBreakoutDecision(c,stage){
  if(rangeAudit.status==='data_gap')return pending('盤整框K線資料不完整，突破證據待核對');
  if(stage!=='first'&&c.abovePrevHigh===false)return fail('未收盤突破昨日高點');
  if(stage!=='first'&&c.abovePrevHigh!==true)return pending('昨日高點比較資料待核對');
+ if(eventRow!==c)return pending('已重建60日高點候選事件；尚需核對大量K頸線與原始突破事件');
  return pass('突破事件與量價續攻條件已確認');
 }
 const OBS_STAGE={tomorrow:'明日續攻候選（待隔日驗證）',r42pullback:'量縮回測再起（待隔日驗證）',r42pre:'頸線前蓄勢（提前布局觀察）',qualified:'大盤與個股條件已核對',leader:'強勢族群／短中期轉強個股',ready:'預備突破頸線',ma510:'突破前站上MA5／MA10',first:'突破第一根觀察',second:'突破第二根追蹤（非認證買點）',third:'突破第三根追蹤（非認證買點）',fourth:'突破第四根追蹤（非認證買點）',hold:'沿MA5／MA10趨勢追蹤（非追價買點）',maPullback:'沿MA5／MA10上漲後回測防守',launch:'量價啟動（未破大量K頸線）',reentry:'量縮回測／再度轉強觀察',trend:'六線確認／主升延續觀察'};
@@ -979,7 +1009,7 @@ function sectorDirectory(){
   const pendingCount=strict?candidates.filter(c=>strictBreakoutDecision(c,stage).pending||strictBreakoutDecision(c,stage).eligible&&r133RiskGate(c).status!=='eligible').length:0;
   const failedCount=strict?candidates.filter(c=>!strictBreakoutDecision(c,stage).eligible&&!strictBreakoutDecision(c,stage).pending).length:0;
   const displayCount=stage==='trend'&&maxBars<245?'資料不足，待MA240認證':
-   strict&&arr.length===0&&pendingCount>0?'待認證':`${arr.length} 檔`;
+   strict?`${arr.length} 已認證｜${pendingCount} 待補｜${failedCount} 未通過`:`${arr.length} 檔`;
   const auditNote=strict?`<p class="r23-note">僅顯示已認證檔數；${pendingCount?'部分股票資料待認證。':''}${failedCount?'未通過者保留在觀察區。':''}不代表買進建議。</p>`:
    stage==='trend'&&maxBars<245?`<p class="r23-note">日K不足以核算MA240，資料待認證。</p>`:'';
   const rawOnly=strict?candidates.filter(c=>!arr.some(o=>o.row?.code===c.code)):[];
