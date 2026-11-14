@@ -920,7 +920,10 @@ function sectorDirectory(){
    stage==='trend'&&maxBars<245?`<p class="r23-note">日K不足以核算MA240，資料待認證。</p>`:'';
   const rawOnly=strict?candidates.filter(c=>!arr.some(o=>o.row?.code===c.code)):[];
   const rawGroup='raw-stage-'+stage;
-  const rawMarkup=rawOnly.length?`<div class="r44-raw-stage-visible"><p class="r23-note">其他觀察股｜點選股票可展開分析（非認證買點）</p>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,compactStatus:'觀察｜'+strictBreakoutDecision(c,stage).reason,reason:strictBreakoutDecision(c,stage).reason})))}</div>`:'';
+  // R130: the headline counts certified stocks only. Uncertified candidates
+  // live in a separate CLOSED disclosure with their own explicit count.
+  // Never render raw candidates as direct siblings of certified rows.
+  const rawMarkup=rawOnly.length?`<details class="r130-pending-group" data-r130-stage="${esc(stage)}"><summary>其他未認證觀察股（${rawOnly.length} 檔）｜點此展開</summary><p class="r23-note">以下股票未通過完整量價續攻認證，僅供觀察，不列入上方已認證檔數。</p>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,compactStatus:'觀察｜'+strictBreakoutDecision(c,stage).reason,reason:strictBreakoutDecision(c,stage).reason})))}</details>`:'';
   return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${displayCount}</span><span class="sector-arrow">⌄</span></summary>${auditNote}${r26GroupMarkup('stage-'+stage,arr)}${rawMarkup}</details>`;
  };
  out.innerHTML=
@@ -1593,7 +1596,7 @@ function r99ActionHTML(a,c){
  const level=n=>Number.isFinite(n)&&n>0?price(n)+' 元':'待核對';
  const color={success:'#6ee7c1',warning:'#f5bd67',danger:'#ff9c9c',muted:'#aab7c4'}[a.tone]||'#aab7c4';
  const box=(headline,detail,highlight=false)=>`<div style="padding:9px 0;border-top:1px solid #355466"><b style="color:${highlight?color:'inherit'}">${headline}</b><div style="font-size:.92em">${detail}</div></div>`;
- const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R129 明日操作</small>`;
+ const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R130 明日操作</small>`;
  if(!a.valid)return `<div style="border:2px solid ${color};border-radius:12px;padding:13px;display:grid;gap:8px" aria-live="polite">${base}<strong style="font-size:1.65em;color:${color}">${esc(a.title)}</strong><div>${esc(a.note||'請先核對資料')}</div><small>未提供操作價格或股數。</small></div>`;
  const lv=a.levelsVerified===false?null:r103ConditionalLevels(c,a);
  const pct=n=>Number.isFinite(n)&&n>0?`（${(n/a.close-1)*100>=0?'+':''}${((n/a.close-1)*100).toFixed(2)}%）`:'';
@@ -3265,7 +3268,7 @@ document.addEventListener('click',function(e){
 // R123: front-end build indicator; the home page's static r60 text may live in index.html.
 // The index.html static version still requires a separate update.
 (function(){
- const BUILD='r129 · K棒事件驗證';
+ const BUILD='r130 · 名單數量與觀察股分層';
  globalThis.CHAOPAN_DETAIL_BUILD='R128-20261114';
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild='R128-20261114';
  function updateBadge(){
