@@ -1471,9 +1471,16 @@ function r99Action(c,cost,qty,mode='medium'){
   title='盤整等待';tone='warning';fraction=0;condition='所選週期尚未確認偏多';note='不加碼';
  }
  const shares=fraction===1?qty:fraction>0?Math.max(1,Math.floor(qty*fraction)):0;
- if(shares>0&&fraction<1){const provisional={close,rebound,breakout};const levels=r103ConditionalLevels(c,provisional);if(!levels||!(levels.defense>0&&levels.defense<close))return wait('盤後已發現減碼風險，但防守價尚未驗證，暫不提供賣出股數或委託價','風險警戒｜價位待核對');}
+ // r121: a missing conditional price must not erase a confirmed risk alert or share estimate.
+ // Retain a risk-labelled decision, but explicitly suppress unverified execution levels.
+ let levelsVerified=true;
+ if(shares>0&&fraction<1){
+  const levels=r103ConditionalLevels(c,{close,rebound,breakout});
+  levelsVerified=!!(levels&&Number.isFinite(levels.defense)&&levels.defense>0&&levels.defense<close);
+  if(!levelsVerified){title='減碼警戒｜價位待核對';tone='warning';condition='減碼風險訊號成立，但條件價格未通過驗證';note='股數僅為風險部位試算，暫不提供委託價格';}
+ }
  const value=shares*close,pnl=shares*(close-cost);
- return {title,tone,trigger,stop:defense,rebound,breakout,shares,value,pnl,close,cost,condition,note,asOf:v.date,valid:true,profit:profitable,qty,rollingHigh,drawdown,riskCount,longTrendIntact,longTrendBroken,profitGiveback,heldPeakVerified,heldDrawdown};
+ return {title,tone,trigger,stop:defense,rebound,breakout,shares,value,pnl,close,cost,condition,note,asOf:v.date,valid:true,profit:profitable,qty,rollingHigh,drawdown,riskCount,longTrendIntact,longTrendBroken,profitGiveback,heldPeakVerified,heldDrawdown,levelsVerified};
 }
 // r103: derive next-session conditional prices solely from completed EOD bars.
 // Prices are alert thresholds, not executable orders or inferred intraday signals.
@@ -1514,9 +1521,9 @@ function r99ActionHTML(a,c){
  const level=n=>Number.isFinite(n)&&n>0?price(n)+' 元':'待核對';
  const color={success:'#6ee7c1',warning:'#f5bd67',danger:'#ff9c9c',muted:'#aab7c4'}[a.tone]||'#aab7c4';
  const box=(headline,detail,highlight=false)=>`<div style="padding:9px 0;border-top:1px solid #355466"><b style="color:${highlight?color:'inherit'}">${headline}</b><div style="font-size:.92em">${detail}</div></div>`;
- const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R110 明日操作</small>`;
+ const base=`<small style="opacity:.85">${esc(a.asOf||'資料待確認')} 盤後｜R121 明日操作</small>`;
  if(!a.valid)return `<div style="border:2px solid ${color};border-radius:12px;padding:13px;display:grid;gap:8px" aria-live="polite">${base}<strong style="font-size:1.65em;color:${color}">${esc(a.title)}</strong><div>${esc(a.note||'請先核對資料')}</div><small>未提供操作價格或股數。</small></div>`;
- const lv=r103ConditionalLevels(c,a);
+ const lv=a.levelsVerified===false?null:r103ConditionalLevels(c,a);
  const pct=n=>Number.isFinite(n)&&n>0?`（${(n/a.close-1)*100>=0?'+':''}${((n/a.close-1)*100).toFixed(2)}%）`:'';
  const scenario=(name,n,shares,remark)=>{
   if(!Number.isFinite(n)||n<=0)return box(name,'價位待核對；不能將收盤價當成委託價');
@@ -1532,7 +1539,7 @@ function r99ActionHTML(a,c){
   if(Number.isFinite(a.breakout)&&a.breakout>a.close)body+=box('重新轉強觀察',`<b>${level(a.breakout)} ${pct(a.breakout)}</b>｜出場後如重新站穩，再重新評估進場，不代表當下買回`);
   body+='<small>若跳空開低，昨收與防守價都不保證成交；注意流動性及價格限制。</small>';
  }else if(hasSale){
-  body=box('明日優先：減碼 '+money(a.shares)+' 股','盤後風險訊號已成立；反彈與跌破是同一筆減碼的替代執行情境，不可重複賣出',true);
+  body=box(a.levelsVerified===false?'減碼警戒：試算 '+money(a.shares)+' 股':'明日優先：減碼 '+money(a.shares)+' 股',a.levelsVerified===false?'已有風險證據，但價格未核對，股數僅供風險評估，不能直接當作賣出指令':'盤後風險訊號已成立；反彈與跌破是同一筆減碼的替代執行情境，不可重複賣出',true);
   if(lv){
    body+=scenario('開高／反彈遇壓',lv.rebound,a.shares,'觸及壓力且轉弱時評估；強勢突破不要機械式賣出');
    body+=scenario('開低／跌破防守',lv.defense,a.shares,'跌破時優先控管風險；跳空下跌不能保證此價成交');
