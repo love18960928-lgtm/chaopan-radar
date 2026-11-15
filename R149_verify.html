@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>超盤手 R149 技術階段修復檢查</title>
+<style>body{margin:0;background:#0b1320;color:#e6f0fa;font-family:system-ui,"Noto Sans TC",sans-serif;line-height:1.6}main{max-width:760px;margin:auto;padding:22px 16px}h1{font-size:1.35rem}section{padding:16px;margin:12px 0;background:#152237;border-radius:14px;border:1px solid #34455d}small{color:#a9b9ca}b.ok{color:#67d9a6}b.bad{color:#ffa3aa}code{overflow-wrap:anywhere}a{color:#9bdcff}</style></head>
+<body><main><h1>超盤手 RADAR｜R149 技術階段修復檢查</h1>
+<section><p>這個頁面檢查 GitHub Pages 是否能讀到 R149 主程式，以及「技術階段空值保護」是否存在。<strong>檢查頁成功不代表首頁畫面已完成實測。</strong></p></section>
+<div id="results"><section>正在核對網站上的 JavaScript…</section></div>
+<section><b>回到首頁</b><p><a href="./">開啟超盤手首頁</a>，確認「技術階段｜盤後分類」以及第一至第四根、其他無訊號階段是否正常顯示。</p><small>如果 JS 已是 R149、首頁仍不見階段，請檢查 index.html、sw.js 快取或資料日期；資料不足應顯示原因而非整區空白。</small></section>
+</main>
+<script>
+(async function(){
+ const host=document.getElementById('results');const h=x=>String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const blocks=[];
+ try{
+  const url=new URL('./app-detail-swipe-v222.js',location.href);url.searchParams.set('verify','R149-stage-hotfix');
+  const response=await fetch(url.toString(),{cache:'no-store'});if(!response.ok)throw Error('HTTP '+response.status);
+  const s=await response.text(),build=s.match(/const BUILD_ID\s*=\s*['"]([^'"]+)/)?.[1]||'找不到',marker=s.match(/CHAOPAN_RADAR_BUILD:\s*([^*\n]+)/)?.[1]?.trim()||'找不到';
+  const good=build==='R149-20261115',guard=s.includes("candidate?.status==='candidate'"),banner=s.includes('r149-stage-banner');
+  blocks.push(`<section><b class="${good?'ok':'bad'}">主程式版本：${good?'R149 正確':'尚未更新 R149'}</b><p>BUILD_ID：<code>${h(build)}</code><br>標記：<code>${h(marker)}</code></p></section>`);
+  blocks.push(`<section><b class="${guard&&banner?'ok':'bad'}">技術階段修復：${guard&&banner?'空值保護與狀態區存在':'必要修復條件不足'}</b><p>候選空值保護：${guard?'已找到':'未找到'}<br>階段狀態標題：${banner?'已找到':'未找到'}</p></section>`);
+ }catch(error){blocks.push(`<section><b class="bad">無法核對主程式</b><p>${h(error.message)}</p></section>`)}
+ try{const r=await fetch(new URL('./index.html?verify=R149',location.href),{cache:'no-store'});const s=await r.text();blocks.push(`<section><b>首頁容器</b><p>${r.ok&&/id\s*=\s*["']sectorDirectory["']/.test(s)?'首頁原始碼有技術階段容器':'無法在首頁原始碼找到 #sectorDirectory；需核對 index.html'}</p></section>`)}catch(error){blocks.push(`<section>首頁原始碼檢查失敗：${h(error.message)}</section>`)}
+ host.innerHTML=blocks.join('');
+})();
+</script></body></html>
