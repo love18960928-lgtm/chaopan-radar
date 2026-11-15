@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R147-20261115-cross-screener-risk-sync */
+/* CHAOPAN_RADAR_BUILD: R148-20261115-heavy-volume-independent-audit */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const state={r41Page:'card',r41Advanced:null,payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false,instMarket:'all',instAsset:'stock',instSort:'amount'};
@@ -1007,8 +1007,8 @@ function r140ReconstructEvent(c,stage){
 // heavy-volume K neckline. This function never authorizes a new-entry order.
 // No future candle contributes to the reference high: all levels are computed
 // from the 60 trading sessions strictly BEFORE the candidate event date.
-function r146HistoricalStage(c,asOf){
- const parsed=R143StrictRisk.parse(c,asOf||c?.date);
+function r146HistoricalStage(c,asOf,parsedContext){
+ const parsed=parsedContext||R143StrictRisk.parse(c,asOf||c?.date);
  if(parsed.status!=='ok')return {status:'unknown',reason:parsed.reasons.join('；')};
  const a=parsed.bars;
  if(a.length<64)return {status:'unknown',reason:'至少64根有效歷史K棒才能尋找第一至第四根'};
@@ -1035,6 +1035,69 @@ function r146HistoricalStage(c,asOf){
  return {status:'none',reason:'最近四個交易日無前60日高點首次收盤突破事件'};
 }
 
+// R148: Independently find a historical 60–120 trading-session *high-volume K*
+// anchor from verified OHLCV. This is observation evidence, NEVER EOD buy
+// certification. It intentionally remains distinct from a prior-60-day high.
+function r148HeavyVolumeStage(c,asOf,parsedContext){
+ const parsed=parsedContext||R143StrictRisk.parse(c,asOf||c?.date);
+ if(parsed.status!=='ok')return {status:'unknown',reason:parsed.reasons.join('；')};
+ const a=parsed.bars,N=a.length;
+ if(N<81)return {status:'unknown',reason:'核對60～120日大量K需至少81根有效日K'};
+ const found=[];
+ const volumePrefix=new Float64Array(N+1);
+ for(let k=0;k<N;k++)volumePrefix[k+1]=volumePrefix[k]+a[k].v;
+ for(let days=1;days<=4;days++){
+  const i=N-days,first=a[i],prev=a[i-1];
+  if(i<80||!first||!prev)continue;
+  const eventMean=(volumePrefix[i]-volumePrefix[i-20])/20;
+  const eventRatio=eventMean>0?first.v/eventMean:null;
+  for(let age=60;age<=120;age++){
+   const j=i-age;
+   if(j<20)continue;
+   const anchor=a[j];
+   const baseline=(volumePrefix[j]-volumePrefix[j-20])/20;
+   if(!(baseline>0&&anchor.v/baseline>=1.8))continue;
+   const neck=anchor.h;
+   if(!(prev.c<=neck&&first.c>neck&&first.h>neck))continue;
+   // Never retrospectively call a later return above an already-broken
+   // neckline the 'first breakout' of this exact anchor.
+   if(a.slice(j+1,i).some(b=>b.c>neck))continue;
+   const follow=a.slice(i+1);
+   const failed=follow.some(b=>b.c<neck||b.c<first.l);
+   const healthy=follow.some((b,k)=>b.c<a[i+k].c&&b.c>=neck&&b.c>=first.l&&
+     b.v<.85*((volumePrefix[i+k+1]-volumePrefix[i+k-19])/20));
+   found.push({status:'candidate',stage:['','first','second','third','fourth'][days],days,
+    date:first.date,level:neck,anchorDate:anchor.date,anchorAge:age,
+    anchorVolumeRatio:+(anchor.v/baseline).toFixed(3),
+    eventVolumeRatio:eventRatio===null?null:+eventRatio.toFixed(3),
+    source:'volume-k-60-120',failed,healthyPullback:healthy,
+    low:first.l,priceNow:a.at(-1).c});
+  }
+ }
+ if(!found.length)return {status:'none',reason:'近四日未找到可核對的60～120日大量K候選頸線突破'};
+ // If separate breakout days or materially different anchor necklines fit the
+ // same window, withhold an authoritative stage/neckline classification.
+ const eventDays=new Set(found.map(x=>x.date));
+ const mostRecent=found.slice().sort((x,y)=>x.days-y.days||y.level-x.level||y.anchorVolumeRatio-x.anchorVolumeRatio)[0];
+ const same=found.filter(x=>x.date===mostRecent.date);
+ const highest=same.slice().sort((x,y)=>y.level-x.level||y.anchorVolumeRatio-x.anchorVolumeRatio)[0];
+ const ambiguous=eventDays.size>1||same.some(x=>Math.abs(x.level-highest.level)/highest.level>.005);
+ return {...highest,ambiguous,possibleEventCount:eventDays.size,possibleAnchorCount:same.length,
+  reason:ambiguous?'出現不同突破日期或多組價差明顯的大量K頸線，禁止直接認證':
+   highest.failed?'歷史大量K候選突破後曾失守頸線／訊號K低點':
+   highest.healthyPullback?'量縮回測守住歷史大量K候選頸線，續強待確認':
+   '歷史大量K候選頸線已由日K核對，正式盤後事件資格仍待核對'};
+}
+function r148ObservedBreakout(c,asOf){
+ const parsed=R143StrictRisk.parse(c,asOf||c?.date);
+ const heavy=r148HeavyVolumeStage(c,asOf,parsed);
+ if(heavy.status==='candidate')return heavy;
+ const high=r146HistoricalStage(c,asOf,parsed);
+ if(heavy.status==='unknown'&&high.status==='candidate')return {...high,
+  heavyVolumeUnverified:true,reason:high.reason+'；大量K錨點資料不足'};
+ return high;
+}
+
 // R147: The same UNLABELLED historical breakout observation must affect every
 // bullish screener, not only the four breakout-stage observation panels.
 // This is a conservative candidate veto; a prior-60-day high is NOT a
@@ -1053,14 +1116,15 @@ function r147HistoricalBreakoutGate(c,asOf){
   c.breakoutSequence,c.cycle,c.bars.slice(-160)]);
  const cached=r147HistoricalGateCache.get(c);
  if(cached?.key===key)return cached.value;
- const observation=r146HistoricalStage(c,asOf||c.date);
+ const observation=r148ObservedBreakout(c,asOf||c.date);
  let result=null;
  if(observation.status==='candidate'){
-  const label='前60交易日高點第'+observation.days+'根候選（'+observation.date+'，參考價'+observation.level+'）';
-  result=observation.failed?
+  const label=(observation.source==='volume-k-60-120'?'60～120日大量K候選':'前60交易日高點候選')+'第'+observation.days+'根（'+observation.date+'，參考價'+observation.level+'）';
+  result=observation.ambiguous?
+   {status:'watch',reasons:[label+'存在不同突破日期或頸線歧義，需人工核對，不得自動認證'],signals:['historical_candidate_ambiguous'],evidence:observation}:observation.failed?
    {status:'risk',reasons:[label+'後續曾收盤失守參考價或突破K棒低點，列候選突破失敗警戒（非實際出貨證明）'],
     signals:['historical_candidate_failed'],evidence:observation}:
-   {status:'watch',reasons:[label+'仍未核對60～120日歷史大量K頸線，僅列觀察不列入自動合格'],
+   {status:'watch',reasons:[label+(observation.source==='volume-k-60-120'?'已由OHLCV重建大量K候選，仍缺正式盤後事件及續攻資料；僅列觀察':'仍未核對60～120日歷史大量K頸線，僅列觀察不列入自動合格')],
     signals:['historical_candidate_unverified'],evidence:observation};
  }
  r147HistoricalGateCache.set(c,{key,value:result});
@@ -1158,7 +1222,7 @@ function strictBreakoutDecision(c,stage){
  // A day-2 candidate must never qualify as ★1 merely because its candles are strong.
  const seq=c.breakoutSequence;
  if(!seq||typeof seq!=='object'){
-  const observed=r146HistoricalStage(c,c.date);
+  const observed=r148ObservedBreakout(c,c.date);
   return pending(observed.status==='candidate'&&observed.stage===stage?
    '歷史日K已重建'+(OBS_STAGE[stage]||stage)+'；仍缺原始大量K頸線及盤後續攻資格，不可列為已認證':
    '突破階段資料尚未更新');
@@ -1269,7 +1333,7 @@ function sectorDirectory(){
   const hasBackendStage=['first','second','third','fourth'].includes(phase)||
    phase==='follow'&&c.cycle?.firstHistoricalBreakout===true;
   if(!hasBackendStage){
-   const candidate=r146HistoricalStage(c,state.payload.asOf);
+   const candidate=r147HistoricalBreakoutGate(c,state.payload.asOf)?.evidence;
    if(candidate.status==='candidate')rawStageRows[candidate.stage].push(c);
   }
  }
@@ -1320,7 +1384,7 @@ function sectorDirectory(){
   // live in a separate CLOSED disclosure with their own explicit count.
   // Never render raw candidates as direct siblings of certified rows.
   const rawMarkup=rawOnly.length?`<details class="r130-pending-group" data-r130-stage="${esc(stage)}"><summary>待補／賣壓警戒／認證未通過（${rawOnly.length} 檔）｜展開查看原因</summary><p class="r23-note">以下股票有資料不足、健康整理待確認或疑似出貨警戒，不列入通過數；請看每檔原因。</p>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,
-   compactStatus:(!c.breakoutSequence?.phase&&r146HistoricalStage(c,state.payload.asOf).status==='candidate'?'歷史K候選｜':'觀察｜')+
+   compactStatus:(!c.breakoutSequence?.phase&&r147HistoricalBreakoutGate(c,state.payload.asOf)?.evidence?.status==='candidate'?'歷史K候選｜':'觀察｜')+
     (r133RiskGate(c).status==='eligible'?strictBreakoutDecision(c,stage).reason:r133RiskGate(c).reasons.join('；')),
    reason:r133RiskGate(c).status==='eligible'?strictBreakoutDecision(c,stage).reason:r133RiskGate(c).reasons.join('；')})))}</details>`:'';
   return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${displayCount}</span><span class="sector-arrow">⌄</span></summary>${auditNote}${r26GroupMarkup('stage-'+stage,arr)}${rawMarkup}</details>`;
@@ -2645,6 +2709,10 @@ function r131Signals(c){
  if(/量縮回測|回測再發動|再度轉強/.test(stage))out.add('reentry');
  if(Number.isFinite(m.avg20)&&m.avg20>0&&Number.isFinite(Number(c?.bars?.at(-1)?.[5]))&&Number(c.bars.at(-1)[5])>=m.avg20*1.5&&Number(c.close)>Number(c.bars.at(-1)[1]))out.add('launch');
  if(/六線|主升/.test(stage))out.add('trend');
+ // History-derived stages are visible only inside their risk/observation bucket;
+ // never infer a certified breakout merely from a historical candidate.
+ const historical=r147HistoricalBreakoutGate(c,c?.date)?.evidence;
+ if(historical?.status==='candidate'&&['first','second','third','fourth'].includes(historical.stage))out.add(historical.stage);
  if(/假突破|跌破|出貨|賣壓|轉弱|突破失敗/.test([stage,c?.followStatus,c?.trading?.status].join(' '))||R143StrictRisk.audit(c,c?.date).status==='risk'||r147HistoricalBreakoutGate(c,c?.date)?.status==='risk')out.add('risk');
  // Only classify evidence that actually exists; never infer an unverified stage.
  return [...out];
@@ -2710,7 +2778,7 @@ function r131Mount(){
  const host=document.querySelector('.advanced-radar')||document.querySelector('#candidateList')?.parentElement;
  if(!host||document.querySelector('#r131Screener'))return;
  const panel=document.createElement('section');panel.id='r131Screener';panel.style.cssText='margin:12px 0;padding:14px;border:1px solid #35576b;border-radius:14px;background:#0c2432;color:#e7f5fa';
- panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R145・共用嚴格風險驗證</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜量價可追蹤（非買點）</option><option value="watch">黃燈｜健康回測／賣壓待確認</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
+ panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R148・大量K與出貨嚴格驗證</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜量價可追蹤（非買點）</option><option value="watch">黃燈｜健康回測／賣壓待確認</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
  host.insertBefore(panel,host.firstChild);
  panel.querySelector('#r131Condition').addEventListener('change',e=>{r131Condition=e.target.value;r132Page=0;r131Render()});
  panel.querySelector('#r133Bucket').addEventListener('change',e=>{r133Bucket=e.target.value;r132Page=0;r131Render()});
@@ -3792,8 +3860,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R147-20261115';
- const BUILD_LABEL='r147 · 全名單突破失敗風險同步驗證';
+ const BUILD_ID='R148-20261115';
+ const BUILD_LABEL='r148 · 大量K獨立候選與全名單風險一致性驗證';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  const oldBadge=/r(?:60|1\d{2})\s*[·・]\s*(?:名單數量與觀察股分層|訊號衝突防呆|出貨訊號驗證|盤後判斷修正|統一版本顯示與風險篩選|突破認證風險一致性|突破逐日量價風險驗證|突破事件重建與逐日風險驗證|全篩選嚴格出貨風險驗證|四階段漏選及風險快取修正|全篩選資料修正即時重算|歷史突破候選重建與嚴格風險認證)/gi;
