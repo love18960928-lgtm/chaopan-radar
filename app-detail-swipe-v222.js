@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R149-20261115-stage-panel-hotfix */
+/* CHAOPAN_RADAR_BUILD: R150-20261115-stage-isolation */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const state={r41Page:'card',r41Advanced:null,payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false,instMarket:'all',instAsset:'stock',instSort:'amount'};
@@ -1325,6 +1325,36 @@ function sectorDirectory(){
   }catch(error){moduleIssue=true;console.error('技術階段模組暫時無法載入，改顯示可核對的歷史候選',error);}
  }
  r26ObserveGroups=new Map();
+ // R150: Stage paint is read-only and self-contained. A malformed candidate must
+ // not hide other stocks or make the entire technical-stage panel disappear.
+ // Cache results only for this one paint; corrected same-day OHLCV will be
+ // re-evaluated on the next paint (never reused across loads).
+ const r150RiskMemo=new WeakMap(),r150DecisionMemo=new WeakMap(),r150HistoryMemo=new WeakMap();
+ const r150Warn=error=>{scanErrors++;if(scanErrors<=3)console.warn('技術階段個別資料異常，已保留其他股票',error);};
+ const r150StageRisk=c=>{
+  if(!c||typeof c!=='object')return {status:'unknown',reasons:['股票欄位待補']};
+  if(r150RiskMemo.has(c))return r150RiskMemo.get(c);
+  let result;
+  try{result=r133RiskGate(c)}catch(error){r150Warn(error);result={status:'unknown',reasons:['此檔風險資料異常，需重新核對']};}
+  r150RiskMemo.set(c,result);return result;
+ };
+ const r150StageDecision=(c,stage)=>{
+  if(!c||typeof c!=='object')return {eligible:false,pending:true,reason:'股票資料缺漏'};
+  let byStage=r150DecisionMemo.get(c);
+  if(!byStage){byStage=new Map();r150DecisionMemo.set(c,byStage);}
+  if(byStage.has(stage))return byStage.get(stage);
+  let result;
+  try{result=strictBreakoutDecision(c,stage)}catch(error){r150Warn(error);result={eligible:false,pending:true,reason:'此檔突破判斷異常，暫列待補'};}
+  byStage.set(stage,result);return result;
+ };
+ const r150StageHistory=c=>{
+  if(!c||typeof c!=='object')return null;
+  if(r150HistoryMemo.has(c))return r150HistoryMemo.get(c);
+  let result=null;
+  try{result=r147HistoricalBreakoutGate(c,state.payload.asOf)?.evidence||null}
+  catch(error){r150Warn(error)}
+  r150HistoryMemo.set(c,result);return result;
+ };
  // Distinguish a raw historical breakout event from a currently qualified
  // trading observation. This prevents a 0-eligible list looking like no events.
  const rawAudit={first:0,second:0,third:0,fourth:0};
@@ -1346,9 +1376,7 @@ function sectorDirectory(){
   if(!hasBackendStage){
    // A normal stock with no recent breakout returns null here. R148 accessed
    // candidate.status unconditionally and aborted the entire stage renderer.
-   let candidate=null;
-   try{candidate=r147HistoricalBreakoutGate(c,state.payload.asOf)?.evidence||null;}
-   catch(error){scanErrors++;if(scanErrors===1)console.warn('技術階段部分候選重建失敗，顯示其他可驗證股票',error);}
+   const candidate=r150StageHistory(c);
    if(candidate?.status==='candidate'&&Array.isArray(rawStageRows[candidate.stage])){
     rawStageRows[candidate.stage].push(c);
    }
@@ -1375,21 +1403,26 @@ function sectorDirectory(){
   return [...byCode.values()];
  };
  const qualifiedRows=stage=>STRICT_BREAKOUT_STAGES.has(stage)
-  ?candidatesForStage(stage).filter(c=>strictBreakoutDecision(c,stage).eligible&&r133RiskGate(c).status==='eligible').map(c=>({row:c,stage,sector:c.sector||'產業待核對',compactStatus:'已認證｜'+strictBreakoutDecision(c,stage).reason}))
-  :radar.watch.filter(o=>o.stage===stage&&strictBreakoutDecision(o.row,stage).eligible&&r133RiskGate(o.row).status==='eligible');
+  ?candidatesForStage(stage).filter(c=>r150StageDecision(c,stage).eligible&&r150StageRisk(c).status==='eligible').map(c=>({row:c,stage,sector:c.sector||'產業待核對',compactStatus:'已認證｜'+r150StageDecision(c,stage).reason}))
+  :radar.watch.filter(o=>o.stage===stage&&r150StageDecision(o.row,stage).eligible&&r150StageRisk(o.row).status==='eligible');
  // Keep certified nonempty groups visible. Pending is not zero: it remains
  // visible for data-quality review. Empty groups fold into the idle section.
  const stagePending=stage=>STRICT_BREAKOUT_STAGES.has(stage)
-  ?candidatesForStage(stage).some(c=>strictBreakoutDecision(c,stage).pending||strictBreakoutDecision(c,stage).eligible&&r133RiskGate(c).status!=='eligible')
-  :radar.watch.some(o=>o.stage===stage&&r133RiskGate(o.row).status!=='eligible');
- const activeStages=ordered.filter(stage=>STRICT_BREAKOUT_STAGES.has(stage)
-  ?candidatesForStage(stage).length>0:qualifiedRows(stage).length>0||stagePending(stage));
- const inactiveStages=ordered.filter(stage=>!activeStages.includes(stage));
+  ?candidatesForStage(stage).some(c=>r150StageDecision(c,stage).pending||r150StageDecision(c,stage).eligible&&r150StageRisk(c).status!=='eligible')
+  :radar.watch.some(o=>o.stage===stage&&r150StageRisk(o.row).status!=='eligible');
+ const activeStages=[],inactiveStages=[];
+ for(const stage of ordered){
+  try{
+   const active=STRICT_BREAKOUT_STAGES.has(stage)?candidatesForStage(stage).length>0:
+    qualifiedRows(stage).length>0||stagePending(stage);
+   (active?activeStages:inactiveStages).push(stage);
+  }catch(error){r150Warn(error);activeStages.push(stage);}
+ }
  const stageBlock=stage=>{
   const arr=qualifiedRows(stage),strict=STRICT_BREAKOUT_STAGES.has(stage);
   const candidates=strict?candidatesForStage(stage):radar.watch.filter(o=>o.stage===stage).map(o=>o.row);
-  const pendingCount=strict?candidates.filter(c=>strictBreakoutDecision(c,stage).pending||strictBreakoutDecision(c,stage).eligible&&r133RiskGate(c).status!=='eligible').length:candidates.filter(c=>['watch','unknown'].includes(r133RiskGate(c).status)).length;
-  const failedCount=strict?candidates.filter(c=>!strictBreakoutDecision(c,stage).eligible&&!strictBreakoutDecision(c,stage).pending).length:candidates.filter(c=>r133RiskGate(c).status==='risk').length;
+  const pendingCount=strict?candidates.filter(c=>r150StageDecision(c,stage).pending||r150StageDecision(c,stage).eligible&&r150StageRisk(c).status!=='eligible').length:candidates.filter(c=>['watch','unknown'].includes(r150StageRisk(c).status)).length;
+  const failedCount=strict?candidates.filter(c=>!r150StageDecision(c,stage).eligible&&!r150StageDecision(c,stage).pending).length:candidates.filter(c=>r150StageRisk(c).status==='risk').length;
   const displayCount=stage==='trend'&&maxBars<245?'資料不足，待MA240認證':
    strict?`${arr.length} 已認證｜${pendingCount} 待補｜${failedCount} 未通過`:`${arr.length} 量價通過｜${pendingCount} 待補／觀察｜${failedCount} 警戒`;
   const auditNote=strict?`<p class="r23-note">僅顯示已認證檔數；${pendingCount?'部分股票資料待認證。':''}${failedCount?'未通過者保留在觀察區。':''}不代表買進建議。</p>`:
@@ -1401,18 +1434,26 @@ function sectorDirectory(){
   // live in a separate CLOSED disclosure with their own explicit count.
   // Never render raw candidates as direct siblings of certified rows.
   const rawMarkup=rawOnly.length?`<details class="r130-pending-group" data-r130-stage="${esc(stage)}"><summary>待補／賣壓警戒／認證未通過（${rawOnly.length} 檔）｜展開查看原因</summary><p class="r23-note">以下股票有資料不足、健康整理待確認或疑似出貨警戒，不列入通過數；請看每檔原因。</p>${r26GroupMarkup(rawGroup,rawOnly.map(c=>({row:c,stage,
-   compactStatus:(!c.breakoutSequence?.phase&&r147HistoricalBreakoutGate(c,state.payload.asOf)?.evidence?.status==='candidate'?'歷史K候選｜':'觀察｜')+
-    (r133RiskGate(c).status==='eligible'?strictBreakoutDecision(c,stage).reason:r133RiskGate(c).reasons.join('；')),
-   reason:r133RiskGate(c).status==='eligible'?strictBreakoutDecision(c,stage).reason:r133RiskGate(c).reasons.join('；')})))}</details>`:'';
+   compactStatus:(!c.breakoutSequence?.phase&&r150StageHistory(c)?.status==='candidate'?'歷史K候選｜':'觀察｜')+
+    (r150StageRisk(c).status==='eligible'?r150StageDecision(c,stage).reason:r150StageRisk(c).reasons.join('；')),
+   reason:r150StageRisk(c).status==='eligible'?r150StageDecision(c,stage).reason:r150StageRisk(c).reasons.join('；')})))}</details>`:'';
   return `<details class="sector-group" data-r26-group="stage-${stage}"><summary><span class="sector-nom">${esc(OBS_STAGE[stage])}</span><span class="sector-sum">${displayCount}</span><span class="sector-arrow">⌄</span></summary>${auditNote}${r26GroupMarkup('stage-'+stage,arr)}${rawMarkup}</details>`;
  };
  const fallbackMessage=moduleIssue?'原有產業／技術階段模組未完整載入；以下僅顯示日K可核對的候選，不能視為正式認證。':'';
- const sourceMessage=!validRows?'同交易日有效日K為0，暫時無法重建候選；請檢查盤後資料更新。':`已核對同日K棒 ${validRows} 檔；其餘依資料品質和風險分層，不把0檔當成全部股票轉弱。`;
- const errorMessage=scanErrors?`另有 ${scanErrors} 檔歷史候選重建出現程式／資料異常，暫列待查。`:'';
+ const sourceMessage=!validRows?'同交易日標記相符的K棒為0，暫時無法重建候選；請檢查盤後資料更新。':`取得同日標記的K棒 ${validRows} 檔（逐檔品質另行審查）；其餘依資料品質和風險分層，不把0檔當成全部股票轉弱。`;
+ const safeStageBlock=stage=>{
+  try{return stageBlock(stage)}catch(error){
+   r150Warn(error);
+   return `<details class="sector-group" data-r26-group="stage-${esc(stage)}"><summary>${esc(OBS_STAGE[stage]||stage)}｜資料檢查異常</summary><p class="r23-note">此分組暫列待補；其他階段仍正常顯示。請核對盤後資料及程式日誌。</p></details>`;
+  }
+ };
+ const activeHTML=activeStages.map(safeStageBlock).join('');
+ const inactiveHTML=inactiveStages.map(safeStageBlock).join('');
+ const errorMessage=scanErrors?`有 ${scanErrors} 次個股或分組驗證異常，未因此隱藏其他階段；請核對資料。`:'';
  out.innerHTML=
-  `<div class="r23-note r149-stage-banner" role="status"><b>技術階段｜盤後分類</b><small>${esc(sourceMessage)}${esc(fallbackMessage)}${esc(errorMessage)}</small></div>`+
-  activeStages.map(stageBlock).join('')+
-  `<details class="r27-idle"><summary>其他無訊號階段（${inactiveStages.length} 類）</summary>${inactiveStages.map(stageBlock).join('')}</details>`;
+  `<div class="r23-note r149-stage-banner r150-stage-banner" role="status"><b>技術階段｜盤後分類</b><small>${esc(sourceMessage)}${esc(fallbackMessage)}${esc(errorMessage)}</small></div>`+
+  activeHTML+
+  `<details class="r27-idle"><summary>其他無訊號階段（${inactiveStages.length} 類）</summary>${inactiveHTML}</details>`;
 }
 
 // r44.12: same-session relative performance, never infer missing index history.
@@ -2338,14 +2379,32 @@ function r42Scan(){
   ChaopanTomorrowRadar.analyze(rows,day):null;
  return r42ScanCache;
 }
+// R150: Independent technical-stage refresh. A desk, sector or investor widget
+// may fail without taking the stage section with it.
+let r150StageTimer=null;
+function r150ScheduleStageRefresh(asOf){
+ const host=$('#sectorDirectory');if(!host)return;
+ host.hidden=false;
+ if(!host.textContent.trim())host.innerHTML='<div class="r23-note r150-stage-banner" role="status"><b>技術階段｜正在核對盤後資料</b></div>';
+ if(r150StageTimer!==null)clearTimeout(r150StageTimer);
+ r150StageTimer=setTimeout(()=>{
+  r150StageTimer=null;
+  if(state.payload?.asOf!==asOf)return;
+  try{sectorDirectory()}
+  catch(error){
+   console.error('技術階段更新失敗，保留可見資料狀態',error);
+   host.innerHTML='<div class="r23-note r150-stage-banner" role="status"><b>技術階段｜資料待補</b><p>目前不能完成盤後階段核對；不表示全市場無訊號。請檢查資料日與更新檔。</p></div>';
+  }
+ },40);
+}
 function renderTradeDesk(onlyDesk=false){
+ const current=state.payload?.asOf||'—';
+ // R150: Schedule the stage independently BEFORE running any desk/relative
+ // strength code that might fail. This also covers missing #deskList.
+ if(!onlyDesk)r150ScheduleStageRefresh(current);
  const target=$('#deskList');
- if(!target){
-  // Do not make the technical-stage panel depend on a different desk widget.
-  if($('#sectorDirectory'))setTimeout(()=>sectorDirectory(),40);
-  return;
- }
- const current=state.payload?.asOf||'—',result=r42Scan(),picks=staleDeskSnapshot(current)?[]:(result?.candidates||[]).filter(x=>r133RiskGate(x.row).status==='eligible');
+ if(!target)return;
+ const result=r42Scan(),picks=staleDeskSnapshot(current)?[]:(result?.candidates||[]).filter(x=>r133RiskGate(x.row).status==='eligible');
  const showing=Math.min(picks.length,8);
  $('#deskCount').textContent=showing+' 檔';
  const pending=staleDeskSnapshot(current)||!result;
@@ -2359,17 +2418,12 @@ function renderTradeDesk(onlyDesk=false){
  }else target.innerHTML=r33PriorityRows.length?
   `<div class="r23-note">${esc(current)} 盤後篩選 ${result.validated}/${result.inspected} 檔有效資料。${pending?'⚠ 這是歷史快照，請等最新資料：':''}僅預備觀察，盤中需核對頸線、量能與防守；名單按技術條件排序，不是隔日漲幅預測。</div>${r26GroupMarkup('desk-priority',r33PriorityRows)}`:
   '<div class="desk-empty"><b>目前沒有通過資金流動性、產業領漲、趨勢與防守審查的明日攻擊股。</b><p>當大盤廣度偏弱或只有少數低價股拉抬時，寧可空名單；不以今日漲幅、技術低標或相對抗跌湊數。</p></div>';
- renderRelativeStrength();
+ try{renderRelativeStrength()}catch(error){console.warn('相對強勢更新異常，不影響技術階段',error)}
  if(!onlyDesk)setTimeout(()=>{
   if(state.payload?.asOf!==current)return;
-  try{sectorDirectory();}
-  catch(error){
-   console.error('技術階段更新失敗：請核對此交易日來源與程式',error);
-   const el=$('#sectorDirectory');
-   if(el)el.innerHTML='<div class="r23-empty" role="status">技術階段｜檢查發生錯誤，資料待核對。請勿把空畫面當作0檔。</div>';
-  }
-  if(state.universe?.asOf===current)renderSectorPulse(allRows());
-  renderRelativeStrength();
+  try{if(state.universe?.asOf===current)renderSectorPulse(allRows())}
+  catch(error){console.warn('族群觀察更新異常，不影響技術階段',error)}
+  try{renderRelativeStrength()}catch(error){console.warn('相對強勢更新異常，不影響技術階段',error)}
  },40);
 }
 const lensMemo=new WeakMap();
@@ -2662,6 +2716,7 @@ async function demoMode(){
   catch(ex){toast('無法開啟示範資料')}
 }
 function render(){
+  r150ScheduleStageRefresh(state.payload?.asOf||'—');
   r131Mount();r131Render();
   const x=state.payload||{candidates:[],counts:{}};
   const intel=$('#intelMarket');if(intel)intel.innerHTML=ChaopanIntel.marketPanel(state.marketIntel,x.asOf);
@@ -2814,7 +2869,7 @@ function r131Mount(){
  const host=document.querySelector('.advanced-radar')||document.querySelector('#candidateList')?.parentElement;
  if(!host||document.querySelector('#r131Screener'))return;
  const panel=document.createElement('section');panel.id='r131Screener';panel.style.cssText='margin:12px 0;padding:14px;border:1px solid #35576b;border-radius:14px;background:#0c2432;color:#e7f5fa';
- panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R149・大量K與出貨嚴格驗證</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜量價可追蹤（非買點）</option><option value="watch">黃燈｜健康回測／賣壓待確認</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
+ panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R150・大量K與出貨嚴格驗證</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜量價可追蹤（非買點）</option><option value="watch">黃燈｜健康回測／賣壓待確認</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
  host.insertBefore(panel,host.firstChild);
  panel.querySelector('#r131Condition').addEventListener('change',e=>{r131Condition=e.target.value;r132Page=0;r131Render()});
  panel.querySelector('#r133Bucket').addEventListener('change',e=>{r133Bucket=e.target.value;r132Page=0;r131Render()});
@@ -3896,11 +3951,11 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R149-20261115';
- const BUILD_LABEL='r149 · 技術階段消失修復與回歸測試';
+ const BUILD_ID='R150-20261115';
+ const BUILD_LABEL='r150 · 技術階段獨立刷新與個股錯誤隔離';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
- const oldBadge=/r(?:60|1\d{2})\s*[·・]\s*(?:名單數量與觀察股分層|訊號衝突防呆|出貨訊號驗證|盤後判斷修正|統一版本顯示與風險篩選|突破認證風險一致性|突破逐日量價風險驗證|突破事件重建與逐日風險驗證|全篩選嚴格出貨風險驗證|四階段漏選及風險快取修正|全篩選資料修正即時重算|歷史突破候選重建與嚴格風險認證|大量K獨立候選與全名單風險一致性驗證|技術階段消失修復與回歸測試)/gi;
+ const oldBadge=/r(?:60|1\d{2})\s*[·・]\s*(?:名單數量與觀察股分層|訊號衝突防呆|出貨訊號驗證|盤後判斷修正|統一版本顯示與風險篩選|突破認證風險一致性|突破逐日量價風險驗證|突破事件重建與逐日風險驗證|全篩選嚴格出貨風險驗證|四階段漏選及風險快取修正|全篩選資料修正即時重算|歷史突破候選重建與嚴格風險認證|大量K獨立候選與全名單風險一致性驗證|技術階段消失修復與回歸測試|技術階段獨立刷新與個股錯誤隔離)/gi;
  function updateBadge(){
   if(!document.body)return;
   const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
