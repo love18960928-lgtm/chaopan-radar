@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R155-20261116-multi-event-failure-audit */
+/* CHAOPAN_RADAR_BUILD: R156-20261116-breach-timeline-audit */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const state={r41Page:'card',r41Advanced:null,payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false,instMarket:'all',instAsset:'stock',instSort:'amount'};
@@ -1007,6 +1007,22 @@ function r140ReconstructEvent(c,stage){
 // heavy-volume K neckline. This function never authorizes a new-entry order.
 // No future candle contributes to the reference high: all levels are computed
 // from the 60 trading sessions strictly BEFORE the candidate event date.
+// R156: Track the FIRST close below each separate defense level, using only
+// daily bars already visible at the selected as-of date. A later reclaim does
+// not erase a failed breakout or automatically promote a stock to green.
+function r156FailureTimeline(follow,neckline,breakoutLow){
+ const firstNeck=follow.find(b=>b.c<neckline)||null;
+ const firstLow=follow.find(b=>b.c<breakoutLow)||null;
+ const lastTwo=follow.slice(-2);
+ const regained=x=>follow.length>=2&&lastTwo.every(b=>b.c>x);
+ return {
+  necklineFailure:firstNeck?{date:firstNeck.date,close:firstNeck.c}:null,
+  breakoutLowFailure:firstLow?{date:firstLow.date,close:firstLow.c}:null,
+  necklineReclaimed:!!firstNeck&&regained(neckline),
+  breakoutLowReclaimed:!!firstLow&&regained(breakoutLow)
+ };
+}
+
 function r146HistoricalStage(c,asOf,parsedContext){
  const parsed=parsedContext||R143StrictRisk.parse(c,asOf||c?.date);
  if(parsed.status!=='ok')return {status:'unknown',reason:parsed.reasons.join('；')};
@@ -1027,18 +1043,19 @@ function r146HistoricalStage(c,asOf,parsedContext){
   const follow=a.slice(eventIndex+1);
   // R153: A close below the breakout candle's LOW is not necessarily a
   // close below the neckline. Keep the two pieces of evidence separate.
-  const necklineFailed=follow.some(b=>b.c<level);
-  const breakoutLowFailed=follow.some(b=>b.c<event.l);
+  const timeline=r156FailureTimeline(follow,level,event.l);
+  const necklineFailed=!!timeline.necklineFailure;
+  const breakoutLowFailed=!!timeline.breakoutLowFailure;
   const failed=necklineFailed||breakoutLowFailed;
   const last=a.at(-1);
   const candidate={status:'candidate',stage:phases[days],days,date:event.date,
-   level,failed,necklineFailed,breakoutLowFailed,priceNow:last.c,
+   level,low:event.l,failed,necklineFailed,breakoutLowFailed,...timeline,priceNow:last.c,
    source:'prior60-high',
    reason:necklineFailed?'前60日高點候選頸線已收盤失守，列警戒':
     breakoutLowFailed?'突破K棒低點已收盤失守，但前60日高點頸線仍守住；列警戒':
     `前60日高點的第${days}根候選，尚未核對60～120日大量K頸線及續攻資格`};
   seen.push(candidate);
-  if(failed)failedEvents.push({date:event.date,stage:phases[days],level,source:'prior60-high',necklineFailed,breakoutLowFailed});
+  if(failed)failedEvents.push({date:event.date,stage:phases[days],level,low:event.l,source:'prior60-high',necklineFailed,breakoutLowFailed,...timeline});
  }
  if(seen.length)return {...seen[0],recentEventFailures:failedEvents,recentEventStages:seen.map(x=>x.stage)};
  return {status:'none',reason:'最近四個交易日無前60日高點首次收盤突破事件'};
@@ -1072,8 +1089,9 @@ function r148HeavyVolumeStage(c,asOf,parsedContext){
    // neckline the 'first breakout' of this exact anchor.
    if(a.slice(j+1,i).some(b=>b.c>neck))continue;
    const follow=a.slice(i+1);
-   const necklineFailed=follow.some(b=>b.c<neck);
-   const breakoutLowFailed=follow.some(b=>b.c<first.l);
+   const timeline=r156FailureTimeline(follow,neck,first.l);
+   const necklineFailed=!!timeline.necklineFailure;
+   const breakoutLowFailed=!!timeline.breakoutLowFailure;
    const failed=necklineFailed||breakoutLowFailed;
    const healthy=follow.some((b,k)=>b.c<a[i+k].c&&b.c>=neck&&b.c>=first.l&&
      b.v<.85*((volumePrefix[i+k+1]-volumePrefix[i+k-19])/20));
@@ -1081,7 +1099,7 @@ function r148HeavyVolumeStage(c,asOf,parsedContext){
     date:first.date,level:neck,anchorDate:anchor.date,anchorAge:age,
     anchorVolumeRatio:+(anchor.v/baseline).toFixed(3),
     eventVolumeRatio:eventRatio===null?null:+eventRatio.toFixed(3),
-    source:'volume-k-60-120',failed,necklineFailed,breakoutLowFailed,healthyPullback:healthy,
+    source:'volume-k-60-120',failed,necklineFailed,breakoutLowFailed,...timeline,healthyPullback:healthy,
     low:first.l,priceNow:a.at(-1).c});
   }
  }
@@ -1096,8 +1114,10 @@ function r148HeavyVolumeStage(c,asOf,parsedContext){
  // R155: Do not discard older failed heavy-K events simply because a newer
  // candidate is intact. Keep distinct dates/necklines and their exact failure.
  const recentEventFailures=found.filter(x=>x.failed).map(x=>({date:x.date,stage:x.stage,level:x.level,
-  source:'volume-k-60-120',anchorDate:x.anchorDate,necklineFailed:x.necklineFailed,
-  breakoutLowFailed:x.breakoutLowFailed}));
+  source:'volume-k-60-120',anchorDate:x.anchorDate,low:x.low,necklineFailed:x.necklineFailed,
+  breakoutLowFailed:x.breakoutLowFailed,necklineFailure:x.necklineFailure,
+  breakoutLowFailure:x.breakoutLowFailure,necklineReclaimed:x.necklineReclaimed,
+  breakoutLowReclaimed:x.breakoutLowReclaimed}));
  const recentEventStages=[...new Set(found.map(x=>x.stage))];
  return {...highest,recentEventFailures,recentEventStages,ambiguous,possibleEventCount:eventDays.size,possibleAnchorCount:same.length,
   reason:ambiguous?'出現不同突破日期或多組價差明顯的大量K頸線，禁止直接認證':
@@ -1165,7 +1185,12 @@ function r148ObservedBreakout(c,asOf){
    otherEventDate:crossEvent?high.date:null,
    otherEventStage:crossEvent?high.stage:null,
    otherEventLevel:crossEvent?high.level:null,
-   otherEventNecklineFailed,otherEventBreakoutLowFailed,reason};
+   otherEventNecklineFailed,otherEventBreakoutLowFailed,
+   otherEventNecklineFailure:crossEvent?high.necklineFailure:null,
+   otherEventBreakoutLowFailure:crossEvent?high.breakoutLowFailure:null,
+   otherEventNecklineReclaimed:crossEvent?high.necklineReclaimed:false,
+   otherEventBreakoutLowReclaimed:crossEvent?high.breakoutLowReclaimed:false,
+   reason};
  }
  if(high.status==='candidate'){
   // If history cannot establish a heavy-volume neckline, report this
@@ -1189,6 +1214,14 @@ function r148ObservedBreakout(c,asOf){
 // verified historical 60–120-day high-volume neckline and does not prove selling.
 const r147HistoricalGateCache=new WeakMap();
 function r147HistoricalBreakoutGate(c,asOf){
+ function breachHistory(e,label){
+  if(!e)return [];
+  const head=label||'本次候選';
+  const items=[];
+  if(e.necklineFailure)items.push(`${head}頸線${e.level}首次於${e.necklineFailure.date}以${e.necklineFailure.close}收盤失守${e.necklineReclaimed?'；最近兩根收盤已重新站回，原失敗紀錄仍保留':''}`);
+  if(e.breakoutLowFailure)items.push(`${head}突破K棒低點首次於${e.breakoutLowFailure.date}以${e.breakoutLowFailure.close}收盤失守${e.breakoutLowReclaimed?'；最近兩根收盤已重新站回，須重新認證':''}`);
+  return items;
+ }
  if(!c||typeof c!=='object')return null;
  const phase=String(c?.breakoutSequence?.phase||'');
  // R155: Backend labels are NOT an exemption from independently observed
@@ -1218,8 +1251,19 @@ function r147HistoricalBreakoutGate(c,asOf){
    observation.heavyNecklineFailed===false?'大量K頸線仍守住':null,
    observation.prior60HighFailed===false?'前60日高點仍守住':null
   ].filter(Boolean);
+  // R156: An event date is NOT a breach date. Report both independently.
+  // A genuine recovery is separately labelled, but the conservative risk veto
+  // continues until the primary formal event has been independently certified.
+  const chronology=[
+   ...breachHistory(observation,'代表事件'),
+   ...(observation.otherEventDate&&observation.otherEventLevel?[
+    ...(observation.otherEventNecklineFailure?[`另一事件（${observation.otherEventDate}）頸線${observation.otherEventLevel}首次於${observation.otherEventNecklineFailure.date}以${observation.otherEventNecklineFailure.close}收盤失守${observation.otherEventNecklineReclaimed?'，已連兩根站回':''}`]:[]),
+    ...(observation.otherEventBreakoutLowFailure?[`另一事件（${observation.otherEventDate}）K低點首次於${observation.otherEventBreakoutLowFailure.date}以${observation.otherEventBreakoutLowFailure.close}收盤失守${observation.otherEventBreakoutLowReclaimed?'，已連兩根站回':''}`]:[])
+   ]:[]),
+   ...(observation.recentFailedEvents||[]).flatMap(x=>breachHistory(x,x.date+'的'+(x.source==='volume-k-60-120'?'大量K候選':'前60日高點候選')))
+  ];
   const failureDetail=(failureParts.length?failureParts.join('；'):
-   '後續收盤失守候選參考價')+'；列候選突破失敗警戒（非主力出貨證明）';
+   '後續收盤失守候選參考價')+(chronology.length?'；首次失守逐日紀錄：'+chronology.join('；'):'')+'；列候選突破失敗警戒（非主力出貨證明）';
   result=observation.failed?
    {status:'risk',reasons:[label+'：'+failureDetail+(observation.ambiguous?'；頸線與事件日期有歧義，仍應保留失敗風險':'')],
     signals:['historical_candidate_failed',...(observation.ambiguous?['historical_candidate_ambiguous']:[])],evidence:observation}:observation.ambiguous?
@@ -2980,7 +3024,7 @@ function r131Mount(){
  const host=document.querySelector('.advanced-radar')||document.querySelector('#candidateList')?.parentElement;
  if(!host||document.querySelector('#r131Screener'))return;
  const panel=document.createElement('section');panel.id='r131Screener';panel.style.cssText='margin:12px 0;padding:14px;border:1px solid #35576b;border-radius:14px;background:#0c2432;color:#e7f5fa';
- panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R155・多事件失守逐項驗證</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜量價可追蹤（非買點）</option><option value="watch">黃燈｜健康回測／賣壓待確認</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
+ panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R156・逐日失守與站回核對</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜量價可追蹤（非買點）</option><option value="watch">黃燈｜健康回測／賣壓待確認</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
  host.insertBefore(panel,host.firstChild);
  panel.querySelector('#r131Condition').addEventListener('change',e=>{r131Condition=e.target.value;r132Page=0;r131Render()});
  panel.querySelector('#r133Bucket').addEventListener('change',e=>{r133Bucket=e.target.value;r132Page=0;r131Render()});
@@ -4062,11 +4106,11 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R155-20261116';
- const BUILD_LABEL='r155 · 多事件突破失守逐項核對';
+ const BUILD_ID='R156-20261116';
+ const BUILD_LABEL='r156 · 逐日失守與站回核對';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
- const oldBadge=/r(?:60|1\d{2})\s*[·・]\s*(?:名單數量與觀察股分層|訊號衝突防呆|出貨訊號驗證|盤後判斷修正|統一版本顯示與風險篩選|突破認證風險一致性|突破逐日量價風險驗證|突破事件重建與逐日風險驗證|全篩選嚴格出貨風險驗證|四階段漏選及風險快取修正|全篩選資料修正即時重算|歷史突破候選重建與嚴格風險認證|大量K獨立候選與全名單風險一致性驗證|技術階段消失修復與回歸測試|技術階段獨立刷新與個股錯誤隔離)/gi;
+ const oldBadge=/r(?:60|1\d{2})\s*[·・]\s*(?:名單數量與觀察股分層|訊號衝突防呆|出貨訊號驗證|盤後判斷修正|統一版本顯示與風險篩選|突破認證風險一致性|突破逐日量價風險驗證|突破事件重建與逐日風險驗證|全篩選嚴格出貨風險驗證|四階段漏選及風險快取修正|全篩選資料修正即時重算|歷史突破候選重建與嚴格風險認證|大量K獨立候選與全名單風險一致性驗證|技術階段消失修復與回歸測試|技術階段獨立刷新與個股錯誤隔離|紅燈優先統計與空資料修復|雙頸線失守交叉風險驗證|頸線與突破K低點分別核對|不同突破事件失守交叉核對|多事件突破失守逐項核對)/gi;
  function updateBadge(){
   if(!document.body)return;
   const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
