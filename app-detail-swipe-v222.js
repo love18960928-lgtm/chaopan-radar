@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R156-20261116-breach-timeline-audit */
+/* CHAOPAN_RADAR_BUILD: R157-20261116-multi-event-representative-audit */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const state={r41Page:'card',r41Advanced:null,payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false,instMarket:'all',instAsset:'stock',instSort:'amount'};
@@ -917,7 +917,7 @@ function sectorBattleCard(c,options={}){
  const label=g.level==='danger'?'出場警戒':g.level==='warn'?'減碼警戒':g.level==='unknown'?'資料不足':'待價量確認';
  const strictRisk=r133RiskGate(c);
  const strictLabel={eligible:'量價可追蹤（非買點）',watch:'黃燈／賣壓待確認',risk:'紅燈／出貨或轉弱警戒',unknown:'資料不足／待補'}[strictRisk.status];
- const strictHTML=`<div class="sector-phase-note"><b>R145嚴格驗證｜${esc(strictLabel)}</b>｜${esc(strictRisk.reasons.slice(0,3).join('；'))}</div>`;
+ const strictHTML=`<div class="sector-phase-note"><b>R157嚴格驗證｜${esc(strictLabel)}</b>｜${esc(strictRisk.reasons.slice(0,3).join('；'))}</div>`;
  const levelOk=g.level!=='unknown'&&c.date===state.payload?.asOf;
  const light=state.marketIntel?ChaopanIntel.miniLights(state.marketIntel,c,p):'<small>法人與量能依來源資料顯示</small>';
  const marginBrief=state.marketIntel&&globalThis.ChaopanIntel?.marginPreview?ChaopanIntel.marginPreview(state.marketIntel,c):'';
@@ -1057,7 +1057,14 @@ function r146HistoricalStage(c,asOf,parsedContext){
   seen.push(candidate);
   if(failed)failedEvents.push({date:event.date,stage:phases[days],level,low:event.l,source:'prior60-high',necklineFailed,breakoutLowFailed,...timeline});
  }
- if(seen.length)return {...seen[0],recentEventFailures:failedEvents,recentEventStages:seen.map(x=>x.stage)};
+ // R157: Prefer the *most recent* candidate for the headline. Earlier
+ // events remain independent risk evidence and are never discarded; different
+ // first-breakout dates must be labelled ambiguous, not certified as one event.
+ if(seen.length){
+  const newest=seen[seen.length-1];
+  return {...newest,ambiguous:seen.length>1,
+   recentEventFailures:failedEvents,recentEventStages:seen.map(x=>x.stage)};
+ }
  return {status:'none',reason:'最近四個交易日無前60日高點首次收盤突破事件'};
 }
 
@@ -3024,7 +3031,7 @@ function r131Mount(){
  const host=document.querySelector('.advanced-radar')||document.querySelector('#candidateList')?.parentElement;
  if(!host||document.querySelector('#r131Screener'))return;
  const panel=document.createElement('section');panel.id='r131Screener';panel.style.cssText='margin:12px 0;padding:14px;border:1px solid #35576b;border-radius:14px;background:#0c2432;color:#e7f5fa';
- panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R156・逐日失守與站回核對</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜量價可追蹤（非買點）</option><option value="watch">黃燈｜健康回測／賣壓待確認</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
+ panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R157・多事件與失守核對</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜量價可追蹤（非買點）</option><option value="watch">黃燈｜健康回測／賣壓待確認</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
  host.insertBefore(panel,host.firstChild);
  panel.querySelector('#r131Condition').addEventListener('change',e=>{r131Condition=e.target.value;r132Page=0;r131Render()});
  panel.querySelector('#r133Bucket').addEventListener('change',e=>{r133Bucket=e.target.value;r132Page=0;r131Render()});
@@ -4106,8 +4113,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R156-20261116';
- const BUILD_LABEL='r156 · 逐日失守與站回核對';
+ const BUILD_ID='R157-20261116';
+ const BUILD_LABEL='r157 · 多突破事件最新代表與歷史風險核對';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  const oldBadge=/r(?:60|1\d{2})\s*[·・]\s*(?:名單數量與觀察股分層|訊號衝突防呆|出貨訊號驗證|盤後判斷修正|統一版本顯示與風險篩選|突破認證風險一致性|突破逐日量價風險驗證|突破事件重建與逐日風險驗證|全篩選嚴格出貨風險驗證|四階段漏選及風險快取修正|全篩選資料修正即時重算|歷史突破候選重建與嚴格風險認證|大量K獨立候選與全名單風險一致性驗證|技術階段消失修復與回歸測試|技術階段獨立刷新與個股錯誤隔離|紅燈優先統計與空資料修復|雙頸線失守交叉風險驗證|頸線與突破K低點分別核對|不同突破事件失守交叉核對|多事件突破失守逐項核對)/gi;

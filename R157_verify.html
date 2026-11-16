@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>超盤手 R157｜技術階段更新確認</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0b1522;color:#e7eef7;font:15px/1.65 system-ui,-apple-system,"Noto Sans TC",sans-serif}main{max-width:750px;padding:22px 16px 42px;margin:auto}h1{font-size:1.35rem}h2{font-size:1rem;margin:0 0 8px}p{margin:6px 0 12px}.card{background:#16283b;border:1px solid #37526d;border-radius:12px;padding:14px;margin:10px 0}small{color:#b4c4d8}.ok{color:#8ce2bd}.warn{color:#ffcc86}.bad{color:#ffaaa9}code{overflow-wrap:anywhere;color:#b9dcff}a{color:#9ed6ff}
+</style>
+</head>
+<body><main>
+<h1>超盤手 RADAR｜R157 網站檔案與技術階段驗證</h1>
+<p>本頁用來核對 GitHub Pages 是否已發布 R157 主程式、首頁是否有技術階段容器，以及目前 Service Worker 狀態。<strong>即使全部檢查通過，仍須回首頁確認真實資料與畫面。</strong></p>
+<div id="results"><section class="card">正在讀取網站檔案…</section></div>
+<section class="card"><h2>接著請檢查</h2><p><a href="./">返回超盤手首頁</a>，找到「技術階段｜盤後分類」，確認第一至第四根，以及「待補／賣壓警戒」展開區。</p><small>若主程式是 R157，但首頁仍缺少階段，請檢查 index.html 的載入路徑、sw.js 快取、資料日期與手機瀏覽器 Console。本頁不會自動修改網站。</small></section>
+</main>
+<script>
+(async()=>{
+ const host=document.getElementById('results'),blocks=[];
+ const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const report=(title,kind,body)=>blocks.push('<section class="card"><h2 class="'+kind+'">'+esc(title)+'</h2><p>'+body+'</p></section>');
+ const bust=path=>{const url=new URL(path,location.href);url.searchParams.set('r157_verify',Date.now().toString());return url};
+ try{
+  const response=await fetch(bust('./app-detail-swipe-v222.js'),{cache:'no-store'});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const content=await response.text();
+  const build=content.match(/const BUILD_ID\s*=\s*['"]([^'"]+)/)?.[1]||'未找到';
+  const marker=content.match(/CHAOPAN_RADAR_BUILD:\s*([^*\n]+)/)?.[1]?.trim()||'未找到';
+  const versionOK=build==='R157-20261116';
+  const stageOK=content.includes('function r150ScheduleStageRefresh(')&&content.includes('r150StageRisk(c)')&&content.includes('r150StageDecision(c,stage)');
+  report('主程式：'+(versionOK?'R157 已發布':'未確認 R157'),versionOK?'ok':'bad','版本 '+esc(build)+'<br>原始碼標記：<code>'+esc(marker)+'</code>');
+  report('階段防消失修正：'+(stageOK?'檔案內已包含':'缺少部分程式標記'),stageOK?'ok':'bad',stageOK?'找到獨立刷新、風險及逐階段錯誤隔離程式':'請重新上傳新版 app-detail-swipe-v222.js');
+  const latestEventOK=content.includes('const newest=seen[seen.length-1]')&&content.includes('ambiguous:seen.length>1');
+  report('同股多事件最新代表：'+(latestEventOK?'新版規則存在':'尚未確認'),latestEventOK?'ok':'bad',latestEventOK?'最新事件作為說明代表，舊事件仍保留風險證據；多事件維持待確認':'主程式可能仍為舊版');
+  const dualOK=content.includes('breakoutLowFailed')&&content.includes('failedReferences')&&content.includes('heavyNecklineFailed')&&content.includes('recentFailedEvents')&&content.includes('r156FailureTimeline')&&content.includes('otherEventNecklineFailed');
+  report('頸線與多事件突破失敗分別核對：'+(dualOK?'已找到修正':'尚未確認'),dualOK?'ok':'bad',dualOK?'版本內分別記錄大量K頸線、前60日高點與突破K低點，且可逐一保留同一檔股票近期多次突破的失守證據':'請確認已覆蓋最新主程式');
+ }catch(e){report('主程式無法讀取','bad',esc(e.message))}
+ try{
+  const response=await fetch(bust('./index.html'),{cache:'no-store'});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const source=await response.text();
+  const stageHost=/id\s*=\s*["']sectorDirectory["']/.test(source);
+  const scriptRef=/<script\b[^>]*src\s*=\s*["'][^"']*app-detail-swipe-v222\.js(?:\?[^"']*)?["']/i.test(source);
+  report('首頁容器：'+(stageHost?'存在':'找不到'),stageHost?'ok':'warn','<code>#sectorDirectory</code>：'+(stageHost?'找到':'未找到')+'<br>主程式 script 標籤：'+(scriptRef?'找到':'未找到（可能以動態方式載入）'));
+ }catch(e){report('首頁原始碼無法讀取','warn',esc(e.message))}
+ try{
+  const controller=navigator.serviceWorker?.controller?.scriptURL||'未由 Service Worker 控制／不支援';
+  report('Service Worker 狀態','warn','目前控制來源：<code>'+esc(controller)+'</code><br><small>這只顯示狀態，不表示快取一定造成問題。</small>');
+ }catch(e){report('Service Worker 檢查失敗','warn',esc(e.message))}
+ host.innerHTML=blocks.join('');
+})();
+</script>
+</body>
+</html>
