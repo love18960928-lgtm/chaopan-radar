@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R160-20261117-price-gap-gate-consistency */
+/* CHAOPAN_RADAR_BUILD: R161-20261120-corporate-action-review-and-version-badge */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const state={r41Page:'card',r41Advanced:null,payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false,instMarket:'all',instAsset:'stock',instSort:'amount'};
@@ -1310,11 +1310,17 @@ function r147CombineRisk(...gates){
  // override the price-continuity UNKNOWN result. Keep the stock visible in
  // the data-review bucket, with no automatic green certification or red
  // assertion of selling, until a credible adjusted history is available.
+ // R161: explicit unadjusted corporate-action prices need the same priority
+ // as an inferred >35% gap. A reconstructed historical red signal can be
+ // mathematically invalid when built from these unadjusted bars.
  const unresolvedGap=g.find(x=>x.status==='unknown'&&Array.isArray(x.reasons)&&
-  x.reasons.some(r=>String(r).includes('價格斷層')));
- if(unresolvedGap)return {status:'unknown',
-  reasons:[...new Set([...unresolvedGap.reasons,'股價斷層尚未核對；其他量價紅燈待價格還原後重新計算，不能據此判定出貨'])],
-  signals:['price_continuity_review'],evidence:unresolvedGap.evidence||null,historical:null};
+  x.reasons.some(r=>/價格斷層|價格尚未還原|公司行動.*還原|除權息.*還原/.test(String(r))));
+ if(unresolvedGap){
+  const discontinuity=unresolvedGap.reasons.some(r=>String(r).includes('價格斷層'));
+  return {status:'unknown',
+   reasons:[...new Set([...unresolvedGap.reasons,discontinuity?'股價斷層尚未核對；其他量價紅燈待價格還原後重新計算，不能據此判定出貨':'公司行動價格尚未還原；量價及歷史突破失敗風險須重新計算，不能直接判定出貨'])],
+   signals:[discontinuity?'price_continuity_review':'corporate_action_review'],evidence:unresolvedGap.evidence||null,historical:null};
+ }
  const status=g.reduce((best,x)=>rank[x.status]>rank[best]?x.status:best,'eligible');
  const reasons=[...new Set(g.flatMap(x=>x.status==='eligible'&&status!=='eligible'?[]:x.reasons||[]))];
  const signals=[...new Set(g.flatMap(x=>x.signals||[]))];
@@ -2998,7 +3004,7 @@ function r131Signals(c){
  if(historical?.status==='candidate'&&['first','second','third','fourth'].includes(historical.stage))out.add(historical.stage);
  // R160: Avoid a contradictory red risk tag while prices require adjustment.
  const candleAudit=R143StrictRisk.audit(c,c?.date);
- const gapPending=candleAudit.status==='unknown'&&candleAudit.reasons.some(r=>String(r).includes('價格斷層'));
+ const gapPending=c?.possiblePriceAdjustment===true||(candleAudit.status==='unknown'&&candleAudit.reasons.some(r=>/價格斷層|價格尚未還原|公司行動.*還原|除權息.*還原/.test(String(r))));
  if(!gapPending&&(/假突破|跌破|出貨|賣壓|轉弱|突破失敗/.test([stage,c?.followStatus,c?.trading?.status].join(' '))||candleAudit.status==='risk'||r147HistoricalBreakoutGate(c,c?.date)?.status==='risk'))out.add('risk');
  // Only classify evidence that actually exists; never infer an unverified stage.
  return [...out];
@@ -3063,7 +3069,7 @@ function r131Mount(){
  const host=document.querySelector('.advanced-radar')||document.querySelector('#candidateList')?.parentElement;
  if(!host||document.querySelector('#r131Screener'))return;
  const panel=document.createElement('section');panel.id='r131Screener';panel.style.cssText='margin:12px 0;padding:14px;border:1px solid #35576b;border-radius:14px;background:#0c2432;color:#e7f5fa';
- panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R160・價格斷層與風險一致性</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜量價可追蹤（非買點）</option><option value="watch">黃燈｜健康回測／賣壓待確認</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
+ panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R161・公司行動與風險一致性</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜量價可追蹤（非買點）</option><option value="watch">黃燈｜健康回測／賣壓待確認</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
  host.insertBefore(panel,host.firstChild);
  panel.querySelector('#r131Condition').addEventListener('change',e=>{r131Condition=e.target.value;r132Page=0;r131Render()});
  panel.querySelector('#r133Bucket').addEventListener('change',e=>{r133Bucket=e.target.value;r132Page=0;r131Render()});
@@ -4145,25 +4151,34 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R160-20261117';
- const BUILD_LABEL='r160 · 價格斷層與全條件風險一致性修正';
+ const BUILD_ID='R161-20261120';
+ const BUILD_LABEL='r161 · 公司行動待補與版本顯示修正';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
- const oldBadge=/r(?:60|1\d{2})\s*[·・]\s*(?:名單數量與觀察股分層|訊號衝突防呆|出貨訊號驗證|盤後判斷修正|統一版本顯示與風險篩選|突破認證風險一致性|突破逐日量價風險驗證|突破事件重建與逐日風險驗證|全篩選嚴格出貨風險驗證|四階段漏選及風險快取修正|全篩選資料修正即時重算|歷史突破候選重建與嚴格風險認證|大量K獨立候選與全名單風險一致性驗證|技術階段消失修復與回歸測試|技術階段獨立刷新與個股錯誤隔離|紅燈優先統計與空資料修復|雙頸線失守交叉風險驗證|頸線與突破K低點分別核對|不同突破事件失守交叉核對|多事件突破失守逐項核對|多突破事件最新代表與歷史風險核對)/gi;
+ // R161: The static index.html has kept r50/r60-era labels even after
+ // the detail script has advanced. The old full-body text walker did not
+ // match some of those labels and re-scanned thousands of stocks on every
+ // mutation. Update only the two known display elements, and preserve the
+ // original text about the deployed commit/data date.
  function updateBadge(){
   if(!document.body)return;
-  const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
-  let node;
-  while((node=walker.nextNode())){
-   const raw=node.nodeValue||'';
-   if(!oldBadge.test(raw)){oldBadge.lastIndex=0;continue;}
-   oldBadge.lastIndex=0;
-   const next=raw.replace(oldBadge,BUILD_LABEL);
-   if(next!==raw)node.nodeValue=next;
+  const badge=document.querySelector('.brandtext .brandname b');
+  if(badge){
+   if(badge.textContent.trim()!==BUILD_LABEL)badge.textContent=BUILD_LABEL;
+   const aria='超盤手 RADAR '+BUILD_LABEL;
+   if(badge.getAttribute('aria-label')!==aria)badge.setAttribute('aria-label',aria);
+  }
+  const status=document.getElementById('r44VersionStatus');
+  if(status){
+   const raw=status.textContent||'';
+   const next=raw.includes('程式：'+BUILD_LABEL)?raw:raw.replace(/程式：r\d+(?:\s*[（(][^）)]*[）)])?/, '程式：'+BUILD_LABEL);
+   if(next!==raw)status.textContent=next;
   }
  }
  function start(){
   updateBadge();
+  // The page may repaint the header or asynchronously add the badge.
+  // No O(all-stock-list) text walk is needed on redraw.
   new MutationObserver(updateBadge).observe(document.body,{childList:true,subtree:true,characterData:true});
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});
