@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R171-20261120-full-taiex-chart */
+/* CHAOPAN_RADAR_BUILD: R172-20261120-compact-index-chart */
 /* Prior tested build (historical, not deployed version): CHAOPAN_RADAR_BUILD: R165-20261120-visual-card-red-up-green-down */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
@@ -4039,10 +4039,10 @@ const R168HomeIndex=(()=>{
   .r168-error{font-size:14px;line-height:1.7;padding:18px 7px;color:#ffd179}
   .r171-toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0}.r171-toolbar button{border:1px solid #477d94;border-radius:8px;background:#123445;color:#e6f3f9;padding:7px 10px;font-weight:700;cursor:pointer}.r171-toolbar button[aria-pressed="true"]{color:#00252d;background:#39d7c3}
   .r171-inspector{border:1px solid #51758b;background:#102637;padding:9px;border-radius:10px;line-height:1.5;font-size:13px;min-height:70px;position:relative}.r171-inspector b{color:#58e2c8}.r171-inspector small{display:block;color:#b9d0dc}
-  .r171-viewport{overflow-x:auto;overflow-y:hidden;max-width:100%;border:1px solid #2c556d;border-radius:9px;background:#091b2b;touch-action:pan-x pan-y;scrollbar-width:thin}.r171-viewport svg{display:block;width:680px;max-width:none;height:auto;touch-action:pan-x pan-y}
+  .r171-viewport{overflow-x:auto;overflow-y:hidden;width:100%;max-width:100%;border:1px solid #2c556d;border-radius:9px;background:#091b2b;touch-action:pan-x pan-y;scrollbar-width:thin;display:flex;justify-content:center}.r171-viewport svg{display:block;width:100%;max-width:680px;height:auto;flex:0 0 auto;touch-action:pan-x pan-y}
   .r171-hidden-fib .chaopan-fib-layer,.r171-hidden-gaps .chaopan-gap-layer,.r171-hidden-range .chaopan-range-layer{display:none!important}
   .r171-tip{font-size:12px;color:#b6cddd;margin:7px 0}.r171-chart-legend{font-size:12px;display:flex;flex-wrap:wrap;gap:4px 14px;color:#c0d4e1;margin:6px 0}
-  .r171-fullscreen #r168-index-panel{width:100vw!important;max-width:none;max-height:100dvh;height:100dvh;border-radius:0}.r171-fullscreen .r171-viewport{max-height:68dvh}.r171-fullscreen .r171-viewport svg{width:max(100%,860px)}
+  .r172-expanded #r168-index-panel{width:min(790px,100%);max-height:94dvh;height:auto;border-radius:18px}.r172-expanded .r171-viewport{justify-content:flex-start;max-height:390px}.r172-expanded .r171-viewport svg{width:680px;min-width:680px;max-width:680px}#r168-index-panel{width:min(690px,100%)}@media(orientation:landscape){#r168-index-panel{width:min(720px,100%);max-height:92dvh}.r171-viewport svg{max-width:680px}}
   @media(max-width:410px){.r171-toolbar button{padding:6px 8px;font-size:12px}.r171-inspector{font-size:12px}#r168-index-panel{padding:10px}}
 
   @media(max-width:360px){#r168-index-panel{padding:10px}.r168-ohlc{gap:3px;font-size:11px}.r168-ohlc b{font-size:12px}.r168-head strong{font-size:18px}}
@@ -4105,7 +4105,7 @@ const R168HomeIndex=(()=>{
    <div class="r171-toolbar" role="group" aria-label="加權K線操控">
      <button type="button" data-r171-pan="back" ${end<=20?'disabled':''}>◀ 前段</button><button type="button" data-r171-pan="next" ${end>=bars.length?'disabled':''}>後段 ▶</button>
      <button type="button" data-r171-zoom="in" aria-label="放大K線">＋</button><button type="button" data-r171-zoom="out" aria-label="縮小K線">－</button>
-     <button type="button" data-r171-full="1" aria-pressed="${zoomed}">${zoomed?'✕ 返回':'⛶ 放大'}</button>
+     <button type="button" data-r171-full="1" aria-pressed="${zoomed}">${zoomed?'↩ 還原':'⛶ 圖框放大'}</button>
      <button type="button" data-r171-toggle="fib" aria-pressed="${showFib}">費波</button><button type="button" data-r171-toggle="range" aria-pressed="${showRange}">盤整</button><button type="button" data-r171-toggle="gaps" aria-pressed="${showGaps}">缺口</button>
    </div>
    <div class="r171-inspector" role="status" aria-live="polite" data-r171-inspector>點選K棒可查看單日開高低收</div>
@@ -4131,7 +4131,7 @@ const R168HomeIndex=(()=>{
    let drag=false;canvas.addEventListener('pointerdown',e=>{if(e.pointerType==='touch'&&!e.isPrimary)return;drag=true;locate(e)});
    canvas.addEventListener('pointermove',e=>{if(drag)locate(e)});['pointerup','pointercancel','pointerleave'].forEach(name=>canvas.addEventListener(name,()=>{drag=false}));canvas.addEventListener('click',locate);
    select(shown.length-1);
-   viewport.scrollLeft=viewport.scrollWidth;
+   if(zoomed)viewport.scrollLeft=viewport.scrollWidth;
    let pinch=null;
    viewport.addEventListener('touchstart',e=>{if(e.touches.length===2)pinch=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY)},{passive:true});
    viewport.addEventListener('touchmove',e=>{if(e.touches.length!==2||!pinch)return;const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);if(d>pinch*1.28||d<pinch*.78){const growing=d>pinch;pinch=null;currentDays=Math.max(12,Math.min(120,Math.round(currentDays*(growing?.76:1.32))));render();}},{passive:true});
@@ -4140,7 +4140,7 @@ const R168HomeIndex=(()=>{
   result.querySelectorAll('[data-r171-pan]').forEach(b=>b.addEventListener('click',()=>{chartEnd=Math.max(20,Math.min(bars.length,end+(b.dataset.r171Pan==='back'?-20:20)));render()}));
   result.querySelectorAll('[data-r171-zoom]').forEach(b=>b.addEventListener('click',()=>{currentDays=Math.max(12,Math.min(120,Math.round(currentDays*(b.dataset.r171Zoom==='in'?.76:1.32))));render()}));
   result.querySelectorAll('[data-r171-toggle]').forEach(b=>b.addEventListener('click',()=>{const key=b.dataset.r171Toggle;if(key==='fib')showFib=!showFib;else if(key==='range')showRange=!showRange;else showGaps=!showGaps;render()}));
-  result.querySelector('[data-r171-full]')?.addEventListener('click',async()=>{zoomed=!zoomed;const modal=document.querySelector('#r168-index-modal');modal?.classList.toggle('r171-fullscreen',zoomed);if(zoomed){try{if(modal?.requestFullscreen&&document.fullscreenEnabled)await modal.requestFullscreen()}catch(e){}try{await screen.orientation?.lock?.('landscape')}catch(e){}}else{try{screen.orientation?.unlock?.()}catch(e){}try{if(document.fullscreenElement)await document.exitFullscreen()}catch(e){}}render()});
+  result.querySelector('[data-r171-full]')?.addEventListener('click',()=>{zoomed=!zoomed;document.querySelector('#r168-index-modal')?.classList.toggle('r172-expanded',zoomed);render()});
  }
 
  function overlay(){
@@ -4161,7 +4161,7 @@ const R168HomeIndex=(()=>{
   const node=overlay();node.hidden=false;render();node.querySelector('.r168-close').focus();
   Promise.resolve(R166IndexDaily.ensure()).then(()=>{if(!node.hidden)render()}).catch(()=>{if(!node.hidden)render()});
  }
- function close(){const node=document.getElementById('r168-index-modal');if(node){node.hidden=true;node.classList.remove('r171-fullscreen')}zoomed=false;try{screen.orientation?.unlock?.()}catch(e){}try{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}catch(e){}previousFocus?.focus?.();}
+ function close(){const node=document.getElementById('r168-index-modal');if(node){node.hidden=true;node.classList.remove('r172-expanded')}zoomed=false;previousFocus?.focus?.();}
  function init(){bind();if(!observer){observer=new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;if(!bound?.isConnected)bind()})});observer.observe(document.body,{childList:true,subtree:true});}
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('r168-index-modal')&&!document.getElementById('r168-index-modal').hidden){close();e.stopPropagation();}},true);
  }
@@ -4810,8 +4810,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R171-20261120-full-taiex-chart';
- const BUILD_LABEL='r171 · 加權指數完整K線圖';
+ const BUILD_ID='R172-20261120-compact-index-chart';
+ const BUILD_LABEL='r172 · 大盤K線與個股同尺寸';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  // R161: The static index.html has kept r50/r60-era labels even after

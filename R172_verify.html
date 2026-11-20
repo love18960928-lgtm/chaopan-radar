@@ -1,0 +1,13 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>超盤手 RADAR R172｜加權指數同尺寸K線驗證</title><style>body{margin:0;background:#071b2a;color:#eef8fc;font:15px/1.6 system-ui,'Noto Sans TC',sans-serif}main{max-width:660px;margin:auto;padding:18px 12px 45px}article{background:#112c3d;border:1px solid #477890;border-radius:14px;padding:14px;margin:12px 0}.ok{color:#4fe0a6}.bad{color:#ff8b91}.warn{color:#ffd378}code{overflow-wrap:anywhere}a{color:#79deeb}.small{font-size:13px;color:#b9d0de}</style></head><body><main><h2>超盤手 RADAR｜R172 驗證</h2><p class="small">此頁核對正式網站版本與官方加權指數資料。此頁不是實盤交易訊號。</p><article id="status">驗證中……</article><article><b>預期操作</b><p>首頁「台股盤後儀表板」→ 點「加權指數」→ 日K視窗：20／60／120日、前段／後段、圖框內放大縮小、橫向查看、選K棒查開高低收、成交量、MA5／10／20、費波／盤整／缺口。</p><p class="small">個股專屬的突破星號、風險減碼不是加權指數的買賣訊號。</p></article><p><a href="./">返回超盤手 RADAR</a> · <a href="https://github.com/love18960928-lgtm/chaopan-radar/actions">GitHub Actions 工作流程列表</a></p></main><script>
+(async()=>{
+const box=document.getElementById('status');const esc=x=>String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const line=(name,ok,info)=>`<p><strong class="${ok?'ok':'bad'}">${ok?'✓':'✕'} ${esc(name)}</strong><br><span class="small">${esc(info)}</span></p>`;
+let result='';let code='';try{const r=await fetch('./app-detail-swipe-v222.js?check='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);code=await r.text();const found=code.match(/CHAOPAN_RADAR_BUILD:\s*(R\d+-\d+[^\s*]*)/);result+=line('版本 R172',code.includes("R172-20261120-compact-index-chart"),found?found[1]:'未找到版本標記');
+result+=line('不強制系統全螢幕',!code.includes('await modal.requestFullscreen()'),!code.includes('await modal.requestFullscreen()')?'使用圖框內放大，不強制旋轉手機':'仍偵測到強制全螢幕舊碼');
+for(const [k,t] of Object.entries({'個股K線繪圖引擎共用':'const svg=makeChart(historyMatrix','逐根K棒查看':'data-r171-inspector','前後歷史瀏覽':'data-r171-pan','放大縮小':'data-r171-zoom','圖框放大':'r172-expanded','費波／盤整／缺口切換':'data-r171-toggle','保留個股減碼':'function r99Action('}))result+=line(k,code.includes(t),code.includes(t)?'程式功能存在':'可能未上傳新版本');
+}catch(e){result+=line('前端主程式',false,String(e.message||e))}
+try{const r=await fetch('./data/taiex-daily.json?check='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();const count=Array.isArray(d.bars)?d.bars.length:0;const verified=d.schema==='chaopan-taiex-daily-v1'&&count>=20&&d.asOf===d.bars[count-1][0];result+=line('官方加權指數K線資料',verified,`最新 ${d.asOf||'未知'} ／ ${count} 根K棒；需要至少20根且日期一致`);
+}catch(e){result+=line('官方加權指數K線資料',false,String(e.message||e))}
+box.innerHTML=result;
+})();
+</script></body></html>
