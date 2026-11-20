@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R164-20261120-visual-card-red-up-green-down */
+/* CHAOPAN_RADAR_BUILD: R165-20261120-visual-card-red-up-green-down */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const state={r41Page:'card',r41Advanced:null,payload:null,mode:'empty',tab:'all',query:'',market:'all',sector:'all',sort:'score',confirmed:false,limitMin:false,visible:30,watch:new Set(),detail:null,chartDays:60,marketIntel:null,universe:null,detailIds:[],detailHistory:false,etfDetail:null,rankView:'20',rankLens:'launch',stageView:'all',liquidityOnly:true,loadingExtra:false,instMarket:'all',instAsset:'stock',instSort:'amount'};
@@ -2401,53 +2401,57 @@ function r163CompactLevels(c){
 // R164: compact mobile-first replacement for the legacy text-only EOD card.
 // Market prices and indicators are computed strictly from completed as-of daily bars.
 const R164_CSS = `
-.r164-board{background:linear-gradient(165deg,#062338,#071524);border:1px solid #2d8dad;border-radius:17px;padding:10px;display:flex;flex-direction:column;gap:9px;color:#eaf6fd;min-width:0;box-sizing:border-box;font-variant-numeric:tabular-nums}
+/* R165: single image-reference dashboard. All legacy decision engines are preserved. */
+.r164-board{background:linear-gradient(156deg,#001a2b,#061b2b 55%,#031625);border:1.5px solid #12a0c3;border-radius:18px;padding:10px;display:flex;flex-direction:column;gap:8px;color:#eff8fd;min-width:0;box-sizing:border-box;font-variant-numeric:tabular-nums;box-shadow:inset 0 0 22px #0086a318}
 .r164-board *, .r164-board *:before,.r164-board *:after{box-sizing:border-box}
-.r164-board .r164-h{display:flex;justify-content:space-between;align-items:center;gap:6px;font-weight:750;font-size:15px}
+.r164-board .r164-h{display:flex;justify-content:space-between;align-items:center;gap:4px;font-weight:800;font-size:14px}
 .r164-board .r164-date{font-size:10px;color:#9ebaca;white-space:nowrap}
-.r164-panel{background:linear-gradient(145deg,#051a2b,#09273c);border:1px solid #266a85;border-radius:12px;padding:10px;min-width:0}
-.r164-controls{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.r164-board label{display:block;font-size:11px;color:#b8d3e0;min-width:0}
-.r164-board select,.r164-board input{display:block;margin-top:3px;width:100%;max-width:100%;border:1px solid #5da5c2;background:#061d30;border-radius:7px;color:#fff;padding:7px 5px;font:650 13px system-ui;min-height:34px}
+.r164-panel{background:linear-gradient(145deg,#031827,#051e30);border:1.3px solid #3694b3;border-radius:13px;padding:9px;min-width:0;box-shadow:inset 0 0 12px #079bc010}
+.r164-controls{display:grid;grid-template-columns:1fr 1fr;gap:7px;align-items:end}
+.r164-board label{display:block;font-size:11px;color:#c0d8e4;min-width:0}
+.r164-board select,.r164-board input{display:block;margin-top:3px;width:100%;max-width:100%;border:1.3px solid #5da5c2;background:#031c2b;border-radius:8px;color:#fff;padding:8px 7px;font:750 13px system-ui;min-height:35px}
 .r164-board input:focus,.r164-board select:focus{outline:2px solid #3dd9be;outline-offset:1px}
-.r164-board .r164-section-title{font-weight:750;font-size:12px;color:#b6e6e8;margin-bottom:6px}
+.r164-headblock{display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(150deg,#054d58,#062b48);border:1.5px solid #33afd5;border-radius:13px;min-width:56px;flex:0 0 56px;padding:7px 3px;text-align:center;color:#fff;font-size:13px;font-weight:900;line-height:1.5;text-shadow:0 0 9px #4cd9ff42}
+.r164-strip{display:flex;align-items:stretch;gap:7px;min-width:0}
+.r164-strip-data{min-width:0;flex:1}
 .r164-mas{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;text-align:center}
-.r164-ma-item{min-width:0;padding:2px 3px;border-right:1px solid #325469;display:flex;align-items:center;flex-direction:column;gap:2px}
+.r164-ma-item{min-width:0;padding:2px 3px;border-right:1px solid #3e7284;display:flex;align-items:center;flex-direction:column;justify-content:space-between;gap:2px}
 .r164-ma-item:last-child{border-right:0}
 .r164-ma-item b{font-size:12px;white-space:nowrap}
-.r164-ma-item strong{font-size:15px;color:#f3f8fa;white-space:nowrap}
-.r164-ma-item small{font-size:10px;color:#a3c6d6;line-height:1.25}
-.r164-track{width:90%;height:6px;border-radius:9px;background:#324958;overflow:hidden;margin-top:4px}
+.r164-ma-item strong{font-size:15px;color:#f3f8fa;white-space:nowrap;letter-spacing:-.3px}
+.r164-ma-item small{font-size:10px;color:#afcfdd;line-height:1.25}
+.r164-track{width:90%;height:6px;border-radius:9px;background:#3a5260;overflow:hidden;margin-top:5px}
 .r164-fill{display:block;height:100%;border-radius:9px;background:var(--accent,#f9ca48);width:var(--length,40%)}
-.r164-market-label{font-size:11px;padding:3px 4px;border-radius:6px;background:#113c47;color:#a9f0d9;line-height:1.3}
-.r164-position{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.r164-market-label{font-size:11px;padding:4px 2px;border-radius:6px;background:#15343b;color:#f7c75d;line-height:1.2;max-width:100%}
+.r164-status{font-size:10px;color:#d8b780;text-align:right;margin-top:4px}
+.r164-position{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:8px}
 .r164-position .r164-inputs{display:grid;grid-template-columns:1fr 1fr;gap:7px;min-width:0}
-.r164-position .r164-pnlbox{background:#041624;border:1px solid #2b4e65;border-radius:9px;padding:6px;display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0}
-.r164-pnlbox strong{font-size:14px;white-space:normal;overflow-wrap:anywhere;line-height:1.25}
-.r164-pnlbox small{font-size:11px}
-.r164-positive{color:#ff686f!important}.r164-negative{color:#43da8d!important}.r164-neutral{color:#e4edf5!important}
-.r164-actionline{display:flex;flex-wrap:wrap;align-items:center;gap:6px;justify-content:space-between}
-.r164-actionline strong{font-size:17px;color:#f4c96e}
-.r164-actionline .r164-flag{border-radius:8px;background:#163543;color:#ffc56d;border:1px solid #755b3b;padding:3px 6px;font-size:11px}
-.r164-scenarios{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
-.r164-scenario{border:1px solid #35786c;border-radius:9px;padding:7px;min-width:0;background:#08282b;display:flex;flex-direction:column;gap:2px}
-.r164-scenario.down{border-color:#4a9f75;background:#071e26}
+.r164-position .r164-pnlbox{border-left:1px solid #3a7691;padding:2px 4px 2px 8px;display:flex;flex-direction:column;justify-content:center;gap:1px;min-width:0}
+.r164-pnlbox strong{font-size:17px;white-space:normal;overflow-wrap:anywhere;line-height:1.25}
+.r164-pnlbox small{font-size:10px}
+/* Taiwan market: rising RED, falling GREEN; severity bar is independent. */
+.r164-positive{color:#ff6976!important}.r164-negative{color:#42e697!important}.r164-neutral{color:#e4edf5!important}
+.r164-actionline{display:flex;flex-wrap:wrap;align-items:center;gap:4px;justify-content:space-between}
+.r164-actionline strong{font-size:16px;color:#ffcf65}
+.r164-actionline .r164-flag{border-radius:8px;background:#173746;color:#ffcf75;border:1px solid #806a37;padding:3px 5px;font-size:10px}
+.r164-scenarios{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:5px}
+.r164-scenario{border:1.5px solid #d45b67;border-radius:10px;padding:7px;min-width:0;background:linear-gradient(140deg,#35131d,#051c28);display:flex;flex-direction:column;gap:1px}
+.r164-scenario.down{border-color:#31b884;background:linear-gradient(140deg,#0a3128,#051c28)}
 .r164-scenario b{font-size:11px}.r164-scenario strong{font-size:15px;overflow-wrap:anywhere}
-.r164-scenario small{font-size:10px;color:#a8c6d4}
-.r164-band-items,.r164-key-items{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;text-align:center}
-.r164-band-items>div,.r164-key-items>div{min-width:0}
-.r164-band-items small,.r164-key-items small{display:block;font-size:10px;color:#b3d3dd}
-.r164-band-items b,.r164-key-items b{display:block;font-size:14px;font-weight:750;overflow-wrap:anywhere;line-height:1.25}
+.r164-scenario small{font-size:10px;color:#b6ccd8}
+.r164-band-items,.r164-key-items{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px;text-align:center}
+.r164-band-items>div,.r164-key-items>div{min-width:0;border-right:1px solid #355a70;padding:0 2px}
+.r164-band-items>div:last-child,.r164-key-items>div:last-child{border:0}
+.r164-band-items small,.r164-key-items small{display:block;font-size:10px;color:#c2dae5;line-height:1.25}
+.r164-band-items b,.r164-key-items b{display:block;font-size:14px;font-weight:800;overflow-wrap:anywhere;line-height:1.3}
 .r164-band-items em,.r164-key-items em{font-size:10px;font-style:normal;line-height:1.3}
-.r164-gradient{height:9px;border-radius:20px;background:linear-gradient(90deg,#24d0ad 0%,#c5ef34 28%,#ffdd4c 50%,#f9a13b 74%,#e05b78 100%);display:flex;justify-content:space-around;align-items:center;margin:13px 5px 3px}
-.r164-gradient i{width:15px;height:15px;box-shadow:0 0 5px #2f526b;border:2px solid #b1dae2;border-radius:50%;background:var(--dot,#eeca3d)}
-.r164-mini-note{font-size:10px;color:#89aaba;line-height:1.4}
-.r164-board details.r164-evidence{border:1px solid #365165;background:#061827;border-radius:8px;padding:6px;font-size:12px}
-.r164-board details.r164-evidence>summary{cursor:pointer;color:#b5ccd6}
-.r164-board details.r164-evidence .r99-action{margin-top:8px}
-.r164-board.r164-protect-mode .r164-defense,.r164-board.r164-protect-mode .r164-pnlbox{border-color:#eac761;box-shadow:inset 0 0 0 1px #987a35}
+.r164-gradient{height:9px;border-radius:20px;background:linear-gradient(90deg,#23e5ad 0%,#bcf449 27%,#ffe85d 50%,#ff9d30 73%,#fa5473 100%);display:flex;justify-content:space-around;align-items:center;margin:14px 7px 6px}
+.r164-gradient i{width:17px;height:17px;box-shadow:0 0 5px #24769f;border:2px solid #d2f1ef;border-radius:50%;background:var(--dot,#eeca3d)}
+.r164-gradient.is-missing{opacity:.28;filter:grayscale(1)}
+.r164-mini-note{font-size:10px;color:#a7bdc9;line-height:1.4}
+.r164-board.r164-protect-mode .r164-defense,.r164-board.r164-protect-mode .r164-pnlbox{border-color:#eac761;box-shadow:inset 0 0 0 1px #987a3550}
 .r164-board:not(.r164-protect-mode) .r164-ma-panel{box-shadow:inset 0 0 0 1px rgba(60,218,194,.2)}
-.r164-price-limit{padding:7px 10px;font-size:11px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:5px;border:1px solid #366078;border-radius:12px;background:#0b2536}
+.r164-price-limit{padding:7px;font-size:10px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:5px;border:1px solid #3d7e97;border-radius:12px;background:#0b2536}
 .r164-detail-heading{display:flex!important;justify-content:space-between;align-items:start;gap:9px;flex-wrap:wrap;background:transparent!important}
 .r164-heading-id{font-size:24px;font-weight:800;line-height:1.25}
 .r164-heading-id small{display:block;font-size:11px;letter-spacing:.12em;color:#4ee8db;margin-bottom:5px}
@@ -2455,10 +2459,12 @@ const R164_CSS = `
 .r41-detail-tabs.r164-detail-tabs{display:flex;gap:6px;padding:4px;border:1px solid #4b8ba7;border-radius:13px;background:#082437;margin:10px 0 7px}
 .r41-detail-tabs.r164-detail-tabs button{flex:1;min-width:0;border:0;background:transparent;color:#b7ccda;font-size:13px;font-weight:750;border-radius:9px;padding:10px 2px}
 .r41-detail-tabs.r164-detail-tabs button.active{background:#42d9c0;color:#042333}
-.r164-overview .sector-card-identity,.r164-overview .sector-card-eyebrow,.r164-overview .sector-r9-tabs{display:none!important}
-.r164-overview [data-card-panel="levels"],.r164-overview .sector-card-actions{display:none!important}
-.r164-overview .unified-battle-card{margin:0}
-@media(max-width:375px){.r164-board{padding:7px;gap:7px}.r164-panel{padding:7px}.r164-ma-item strong{font-size:13px}.r164-ma-item small{font-size:9px}.r164-board select,.r164-board input{font-size:12px}.r164-band-items b,.r164-key-items b{font-size:12px}.r164-actionline strong{font-size:15px}}
+.r165-brief{display:flex;flex-direction:column;gap:8px}
+.r165-brief-head{display:flex;justify-content:space-between;gap:6px;align-items:center}
+.r165-brief-signals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.r165-brief-signals>div{padding:9px 4px;text-align:center;border:1px solid #2c7691;border-radius:9px;background:#061c2e}
+.r165-brief-signals b{display:block;font-size:12px}.r165-brief-signals small{font-size:10px}
+@media(max-width:375px){.r164-board{padding:6px;gap:6px}.r164-panel{padding:7px}.r164-headblock{min-width:46px;flex-basis:46px;font-size:11px}.r164-ma-item strong{font-size:12px}.r164-ma-item small{font-size:9px}.r164-board select,.r164-board input{font-size:12px}.r164-band-items b,.r164-key-items b{font-size:12px}.r164-actionline strong{font-size:14px}.r164-pnlbox strong{font-size:14px}}
 `;
 function r164EnsureStyle(){
  if(typeof document==='undefined'||!document.head||document.getElementById('r164-dashboard-style'))return;
@@ -2483,71 +2489,75 @@ function r164LimitBand(c){
 }
 function r164Data(c){
  const b=Array.isArray(c?.bars)?c.bars:[],close=numeric(c?.close),asOf=state.payload?.asOf;
- const ok=close!==null&&close>0&&b.length>=26&&c?.date===asOf&&b.at(-1)?.[0]===asOf&&
+ // Historical verified K-lines can still be shown. Staleness only disables
+ // the next-session decision; it must not erase the neon visual modules.
+ const ok=close!==null&&close>0&&b.length>=26&&b.at(-1)?.[0]===c?.date&&
   Math.abs(Number(b.at(-1)?.[4])-close)<=.001&&!c.possiblePriceAdjustment&&
   b.slice(-26).every((x,i,a)=>r129ValidCandle(x)&&/^\d{4}-\d{2}-\d{2}$/.test(String(x[0]))&&
   (i===0||x[0]>a[i-1][0])&&
   (i===0||(Math.abs(Number(x[1])/Number(a[i-1][4])-1)<=.35&&Math.abs(Number(x[4])/Number(a[i-1][4])-1)<=.35)));
- if(!ok)return {ok:false,close,reason:'盤後K線不足、日期不符或價格待還原'};
- if(chaopanEodFreshness(c.date).stale)return {ok:false,close,reason:'最新盤後資料待更新'};
+ if(!ok)return {ok:false,fresh:false,close,reason:'日K不足／日期或公司行動待核對'};
+ const fresh=c?.date===asOf&&!chaopanEodFreshness(c.date).stale;
  const sum=a=>a.reduce((s,x)=>s+Number(x[4]),0);
  const mas=[5,10,20].map(n=>{
   const today=sum(b.slice(-n))/n,prev=sum(b.slice(-n-1,-1))/n,touch=sum(b.slice(-(n-1)))/(n-1);
-  const turn=Number(b[b.length-n][4]); // oldest close rolling out tomorrow
+  const turn=Number(b[b.length-n][4]);
   return {n,today,prev,touch,turn,dir:today>prev+.000001?'up':today<prev-.000001?'down':'flat',pct:(touch/close-1)*100};
  });
- const last14=b.slice(-14);let sumTr=0;
+ let sumTr=0;
  for(let i=b.length-14;i<b.length;i++){
   const x=b[i],prevClose=Number(b[i-1][4]);
   sumTr+=Math.max(Number(x[2])-Number(x[3]),Math.abs(Number(x[2])-prevClose),Math.abs(Number(x[3])-prevClose));
  }
- const atr=sumTr/14,ma5=mas[0];
- // Conservative adjustable candidate from volatility, NOT a backtested stop.
- const bufferPct=Math.max(.4,Math.min(1.8,.5*atr/ma5.touch*100));
+ const atr=sumTr/14,ma5=mas[0],bufferPct=Math.max(.4,Math.min(1.8,.5*atr/ma5.touch*100));
  const margin=r164Snap(ma5.touch*(1-bufferPct/100),'down');
  const hard=r164Snap(ma5.touch*(1-2*bufferPct/100),'down');
- return {ok:true,close,mas,atr,bufferPct,margin,hard};
+ return {ok:true,fresh,close,mas,atr,bufferPct,margin,hard,reason:fresh?'':'資料非最新盤後；僅顯示歷史價位'};
 }
 function r164Fmt(v){return Number.isFinite(v)?Number(v).toLocaleString('zh-TW',{maximumFractionDigits:2}):'—';}
 function r164Pct(v){return Number.isFinite(v)?`${v>0?'+':''}${v.toFixed(2)}%`:'—';}
 function r164PctColor(p){return p>0?'r164-positive':p<0?'r164-negative':'r164-neutral';}
+function r165Gradient(missing=false){
+ return `<div class="r164-gradient${missing?' is-missing':''}" aria-hidden="true"><i style="--dot:#27eaaa"></i><i style="--dot:#ffe24f"></i><i style="--dot:#ffa037"></i><i style="--dot:#f95f74"></i></div>`;
+}
+function r165Value(v){return Number.isFinite(v)&&v>0?r164Fmt(v):'—';}
+function r165LevelColumn(label,v,close,cls,icon=''){
+ const valid=Number.isFinite(v)&&v>0&&Number.isFinite(close)&&close>0;
+ return `<div><small class="${cls}">${icon} ${label}</small><b class="${cls}">${valid?r164Fmt(v):'—'}</b><em class="${valid?r164PctColor(100*(v/close-1)):''}">${valid?r164Pct(100*(v/close-1)):'待補'}</em></div>`;
+}
 function r164MABox(c,data){
- if(!data.ok)return `<section class="r164-panel r164-ma-panel r163-compact-risk" role="status"><b>均線趨勢</b><small>｜待核對：${esc(data.reason)}</small></section>`;
- const badges=data.mas.map(m=>{
-  const arrow=m.dir==='up'?'↗':m.dir==='down'?'↘':'→',dirColor=m.dir==='up'?'#ff6f79':m.dir==='down'?'#4cde99':'#ffca62';
-  const width=Math.max(7,Math.min(100,Math.abs(m.pct)*12));
-  return `<div class="r164-ma-item" data-ma="${m.n}"><b style="color:${dirColor}">MA${m.n} ${arrow}</b><strong>${r164Fmt(m.today)}</strong><small>觸線 ${r164Fmt(m.touch)}</small><small class="${r164PctColor(m.pct)}">${r164Pct(m.pct)}</small><span class="r164-track"><i class="r164-fill" style="--length:${width}%;--accent:${dirColor}"></i></span></div>`;
+ let badges=[5,10,20].map(n=>{
+  const m=data.ok?data.mas.find(x=>x.n===n):null;
+  const arrow=m?(m.dir==='up'?'↗':m.dir==='down'?'↘':'→'):'·';
+  const dirColor=m?(m.dir==='up'?'#ff6676':m.dir==='down'?'#45e499':'#ffd25e'):'#8aa9b8';
+  const width=m?Math.max(8,Math.min(100,Math.abs(m.pct)*15)):0;
+  return `<div class="r164-ma-item" data-ma="${n}"><b style="color:${dirColor}">MA${n} ${arrow}</b><strong style="color:${dirColor}">${m?r164Fmt(m.today):'—'}</strong><small>${m?(data.fresh?'明日觸線':'歷史觸線'):'觸線待補'}</small><small class="${m?r164PctColor(m.pct):''}">${m?r164Pct(m.pct):'—'}</small><span class="r164-track"><i class="r164-fill" style="--length:${width}%;--accent:${dirColor}"></i></span></div>`;
  }).join('');
  let market='<span class="r164-market-label">待核對</span>';
- try{
+ if(data.ok)try{
   const checked=globalThis.ChaopanCompareR162?.inspect?.(c,state.marketIntel,20,state.mode!=='demo');
   if(checked?.ok){const excess=checked.excess;market=`<span class="r164-market-label ${r164PctColor(excess)}">${excess>=0?'相對強勢':'相對弱勢'}<small style="display:block">${r164Pct(excess)}</small></span>`;}
  }catch(e){}
- return `<section class="r164-panel r164-ma-panel r163-compact-risk" aria-label="均線趨勢與明日動態觸線條件"><div class="r164-mas">${badges}<div class="r164-ma-item"><b>大盤</b>${market}<small>同日比較</small></div></div></section>`;
+ badges+=`<div class="r164-ma-item"><b>大盤</b><strong style="font-size:14px">${market}</strong><small>同日比較</small><span class="r164-track"><i class="r164-fill" style="--length:20%;--accent:#58717e"></i></span></div>`;
+ return `<section class="r164-panel r164-ma-panel r163-compact-risk" aria-label="MA5 MA10 MA20 大盤圖形化趨勢"><div class="r164-strip"><div class="r164-headblock">均線<br>趨勢</div><div class="r164-strip-data"><div class="r164-mas">${badges}</div></div></div>${!data.ok?'<div class="r164-status">行情不足 · 保留圖示，價格待補</div>':!data.fresh?`<div class="r164-status">${esc(c.date)} 歷史資料 · 不作明日委託價</div>`:''}</section>`;
 }
 function r164KeyBox(c,data){
- if(!data.ok)return `<section class="r164-panel r164-key-panel"><b>關鍵價位</b> <small>待核對</small></section>`;
- const lv=r103ConditionalLevels(c,{close:data.close,rebound:null,breakout:null});
- const support=numeric(supportLines(c)[0]?.lower),neck=numeric(latestNeck(c));
- const guidance=ChaopanGuidance.evaluate(c,deskEvidence(c),supportLines(c));
- const pressure=numeric(lv?.rebound),breakout=numeric(guidance?.breakoutLevel);
- const items=[['♢','支撐',support],['⊙','頸線',neck],['▱','壓力',pressure],['♛','突破',breakout]];
- const mark=items.map(([icon,label,val])=>{
-  const valid=val!==null&&val>0&&Number.isFinite(val),p=valid?100*(val/data.close-1):null;
-  return `<div><small>${icon} ${label}</small><b>${valid?r164Fmt(val):'待核對'}</b><em class="${r164PctColor(p)}">${r164Pct(p)}</em></div>`;
- }).join('');
- return `<section class="r164-panel r164-key-panel" aria-label="支撐頸線壓力突破的價格條"><div class="r164-section-title">關鍵價位</div><div class="r164-key-items">${mark}</div><div class="r164-gradient" aria-hidden="true"><i style="--dot:#34dfac"></i><i style="--dot:#d9ec34"></i><i style="--dot:#ffab45"></i><i style="--dot:#f26878"></i></div></section>`;
+ let support=null,neck=null,pressure=null,breakout=null;
+ if(data.ok){
+  const lv=r103ConditionalLevels(c,{close:data.close,rebound:null,breakout:null});
+  support=numeric(supportLines(c)[0]?.lower);neck=numeric(latestNeck(c));
+  const guidance=ChaopanGuidance.evaluate(c,deskEvidence(c),supportLines(c));
+  pressure=numeric(lv?.rebound);breakout=numeric(guidance?.breakoutLevel);
+ }
+ const close=data.close,cols=[['♢','支撐',support,'r164-negative'],['⊙','頸線',neck,'r164-neutral'],['▱','壓力',pressure,'r164-positive'],['♛','突破',breakout,'r164-positive']].map(([ic,label,v,cls])=>r165LevelColumn(label,v,close,cls,ic)).join('');
+ return `<section class="r164-panel r164-key-panel" aria-label="支撐頸線壓力突破彩色關鍵價位圖條"><div class="r164-strip"><div class="r164-headblock">關鍵<br>價位</div><div class="r164-strip-data"><div class="r164-key-items">${cols}</div>${r165Gradient(!data.ok)}</div></div></section>`;
 }
 function r164DefenseBox(c,data){
- if(!data.ok)return `<section class="r164-panel r164-defense"><b>MA5 防守帶</b> <small>待核對</small></section>`;
- const ma=data.mas[0],p=data.close;
- const info=[['反彈參考',ma.touch*(1+data.bufferPct/100)],['觸線',ma.touch],['容忍區',data.margin],['風險區',data.hard]];
- const entries=info.map(([k,v],i)=>{
-  const q=i===0?r164Snap(v,'up'):i===1?v:Number(v),pc=100*(q/p-1);
-  return `<div><small>${k}</small><b class="${r164PctColor(pc)}">${r164Fmt(q)}</b><em class="${r164PctColor(pc)}">${r164Pct(pc)}</em></div>`;
- }).join('');
- const warn=ma.touch>=p?'收盤已在MA5隔日觸線參考價下方；不能把它當成未來下跌停損線。':'觸線只提醒，容忍幅度採0.5×ATR候選值，仍需回測。';
- return `<section class="r164-panel r164-defense" aria-label="MA5 波動容忍及價格參考"><div class="r164-section-title">MA5 防守帶 <small style="font-weight:400;color:#9db8c8">容忍約 ${data.bufferPct.toFixed(2)}% · 候選</small></div><div class="r164-band-items">${entries}</div><div class="r164-gradient" aria-hidden="true"><i style="--dot:#34e3ac"></i><i style="--dot:#ffe657"></i><i style="--dot:#ffae49"></i><i style="--dot:#e86575"></i></div><div class="r164-mini-note">${warn}</div></section>`;
+ const ma=data.ok?data.mas[0]:null,p=data.close;
+ const info=data.ok?[['彈起',r164Snap(ma.touch*(1+data.bufferPct/100),'up'),'r164-positive'],['MA5觸線',ma.touch,'r164-neutral'],['容忍',data.margin,'r164-negative'],['防守',data.hard,'r164-negative']]:[['彈起',null,'r164-positive'],['MA5觸線',null,'r164-neutral'],['容忍',null,'r164-negative'],['防守',null,'r164-negative']];
+ const entries=info.map(([k,v,cls])=>r165LevelColumn(k,v,p,cls)).join('');
+ const note=data.ok?(data.fresh?(ma.touch>=p?'已低於隔日觸線臨界 · 非下跌掛單':'容忍幅度：波動候選，未經回測'):'歷史資料，不能作明日觸價委託'):'行情缺漏 · 價格待補';
+ return `<section class="r164-panel r164-defense" aria-label="MA5 綠黃橘紅防守帶"><div class="r164-strip"><div class="r164-headblock">MA5<br>防守帶</div><div class="r164-strip-data"><div class="r164-band-items">${entries}</div>${r165Gradient(!data.ok)}</div></div><div class="r164-mini-note">${note}</div></section>`;
 }
 function r164PnlHTML(cost,qty,close){
  const valid=Number.isFinite(cost)&&cost>0&&Number.isSafeInteger(qty)&&qty>0&&qty<=1e8&&Number.isFinite(close)&&close>0;
@@ -2555,26 +2565,28 @@ function r164PnlHTML(cost,qty,close){
  const pnl=(close-cost)*qty,pc=(close/cost-1)*100;
  return `<small>帳面損益（未計費）</small><strong class="${r164PctColor(pnl)}">${pnl>0?'+':''}${r164Fmt(Math.round(pnl))}</strong><small class="${r164PctColor(pc)}">${r164Pct(pc)} · ${pnl>0?'獲利中':pnl<0?'虧損中':'打平'}</small>`;
 }
-function r164ActionPreview(a,c){
- if(!a.valid)return `<div class="r164-actionline" role="status"><strong style="color:#9fbdcd">${esc(a.title||'等待資料')}</strong><span class="r164-flag">未認證，不顯示委託價</span></div>`;
+function r164ActionPreview(a,c,data=null){
+ // Compact representation of the ORIGINAL r99Action decision: same trigger,
+ // risk shares, levels, and price-specific P/L; never redraw legacy text card.
+ if((data&&(!data.ok||!data.fresh))||!a.valid)return `<div class="r164-actionline" role="status"><strong>◎ ${esc(data&&(!data.ok||!data.fresh)?'等待最新盤後':a.title||'等待資料')}</strong><span class="r164-flag">價位待核對</span></div><div class="r164-scenarios"><div class="r164-scenario"><b class="r164-positive">↗ 開高／反彈</b><strong>—</strong><small>等待資料</small></div><div class="r164-scenario down"><b class="r164-negative">↘ 開低／防守</b><strong>—</strong><small>等待資料</small></div></div>`;
  const shares=Number.isSafeInteger(a.shares)&&a.shares>0?a.shares:0;
- const type=shares>0?`${esc(a.title)} ${shares} 股`:`${esc(a.title)}`;
+ const type=shares>0?`${esc(a.title)} ${shares} 股`:esc(a.title);
  const lv=a.levelsVerified===false?null:r103ConditionalLevels(c,a);
  const limit=r164LimitBand(c);
- const up=lv?.rebound>0?lv.rebound:null,down=lv?.defense>0?lv.defense:null;
- const validNum=x=>Number.isFinite(x)&&x>0;
- const xPct=x=>validNum(x)?r164Pct(100*(x/a.close-1)):'—';
- const upper=up!==null&&limit?.up!==null&&up>limit.up?limit.up:up;
- const upLabel=up!==null&&upper!==up?'一般漲幅上限參考':'開高／反彈觀察';
- const additional=up!==null&&upper!==up?`另有多日壓力 ${r164Fmt(up)}`:'非保證委託價';
- return `<div class="r164-actionline"><strong>◎ ${type}</strong><span class="r164-flag">${a.levelsVerified===false?'價位待核對':'盤後情境'}</span></div>
-  <div class="r164-scenarios"><div class="r164-scenario"><b class="r164-positive">↗ ${upLabel}</b><strong class="r164-positive">${validNum(upper)?r164Fmt(upper):'待核對'}</strong><small>${validNum(upper)?xPct(upper):'—'}｜${additional}</small></div>
-  <div class="r164-scenario down"><b class="r164-negative">↘ 開低／跌破防守</b><strong class="r164-negative">${validNum(down)?r164Fmt(down):'待核對'}</strong><small>${xPct(down)}｜參考非成交保證</small></div></div>`;
+ const up=Number.isFinite(lv?.rebound)&&lv.rebound>0?lv.rebound:null;
+ const down=Number.isFinite(lv?.defense)&&lv.defense>0?lv.defense:null;
+ const valid=x=>Number.isFinite(x)&&x>0;
+ const upper=valid(up)&&limit?.up!==null&&valid(limit?.up)&&up>limit.up?limit.up:up;
+ const label=valid(up)&&valid(upper)&&upper<up?'開高上限參考':'開高／反彈';
+ const pct=x=>valid(x)?r164Pct(100*(x/a.close-1)):'—';
+ const pnl=x=>shares>0&&valid(x)&&Number.isFinite(a.cost)?`${shares}股損益 ${r164Fmt(Math.round((x-a.cost)*shares))}`:'—';
+ return `<div class="r164-actionline"><strong>◎ ${type}</strong><span class="r164-flag">${a.levelsVerified===false?'價位待核對':'原策略判斷'}</span></div><div class="r164-scenarios">
+ <div class="r164-scenario"><b class="r164-positive">↗ ${label}</b><strong class="r164-positive">${r165Value(upper)}</strong><small>${pct(upper)}${valid(up)&&valid(upper)&&up>upper?' · 多日壓力 '+r164Fmt(up):''}</small><small>${pnl(upper)}</small></div>
+ <div class="r164-scenario down"><b class="r164-negative">↘ 開低／防守</b><strong class="r164-negative">${r165Value(down)}</strong><small>${pct(down)}</small><small>${pnl(down)}</small></div></div>`;
 }
-
 function nextSessionDefenseCard(c){
  r164EnsureStyle();
- const v=r82Plan(c),code=String(c?.code||''),key='chaopan-r82-cost-'+code,
+ const code=String(c?.code||''),key='chaopan-r82-cost-'+code,
  qtyKey='chaopan-r91-qty-'+code,modeKey='chaopan-r92-mode-'+code;
  let cost='',qty='',mode='medium';
  try{
@@ -2583,41 +2595,35 @@ function nextSessionDefenseCard(c){
   if(stored!==null&&Number(stored)>0)cost=String(Number(stored));
   if(q!==null&&Number.isSafeInteger(Number(q))&&Number(q)>0&&Number(q)<=1e8)qty=String(Number(q));
  }catch(e){}
- const data=r164Data(c),close=numeric(c?.close);
+ const data=r164Data(c),close=numeric(c?.close),p=close!==null&&close>0?close:NaN;
  const plan=r99Action(c,cost===''?NaN:Number(cost),qty===''?NaN:Number(qty),mode);
- const action= r164ActionPreview(plan,c);
- const p=close!==null&&close>0?close:NaN;
- // R164 price levels must be guarded by verified data; screenshot examples are not traded.
- return `<section class="r82-decision r91-decision r164-board" data-code="${esc(code)}" aria-label="明日持股操作視覺卡片">
-  <div class="r164-h"><strong>明日持股操作</strong><span class="r164-date">${esc(c?.date||'日期待核對')} 盤後 · R164</span></div>
-  <div class="r164-controls">
-   <label>持有週期<select class="r92-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></label>
-   <label>畫面重點<select class="r164-strategy"><option value="trend">均線防守</option><option value="protect">獲利保護</option></select></label>
-  </div>
-  ${r164MABox(c,data)}
-  <section class="r164-panel r164-position"><div class="r164-inputs">
-   <label>成本（元）<input class="r82-cost-input" type="number" inputmode="decimal" min="0" step="any" value="${esc(cost)}" placeholder="成本" /></label>
-   <label>股數（股）<input class="r91-qty-input" type="number" inputmode="numeric" min="1" step="1" value="${esc(qty)}" placeholder="股數" /></label>
-  </div><div class="r164-pnlbox r91-pnl" aria-live="polite">${r164PnlHTML(cost===''?NaN:Number(cost),qty===''?NaN:Number(qty),p)}</div></section>
-  <section class="r164-panel r164-action-preview"><div class="r164-quick-action">${action}</div></section>
-  ${r164DefenseBox(c,data)}
-  ${r164KeyBox(c,data)}
-  ${(()=>{if(!data.ok)return '';const limits=r164LimitBand(c);if(!limits)return '';return `<div class="r164-price-limit"><span>一般漲幅參考 <b class="r164-positive">${r164Fmt(limits.up)}（${r164Pct(100*(limits.up/data.close-1))}）</b></span><span>一般跌幅參考 <b class="r164-negative">${r164Fmt(limits.down)}（${r164Pct(100*(limits.down/data.close-1))}）</b></span></div>`;})()}
-  <div class="r164-mini-note">盤後預警｜一般漲跌幅非交易所正式隔日公告，特殊交易日待核對。觸線非立即成交或自動下單。</div>
-  <details class="r164-evidence"><summary>詳細盤後推演、減碼損益與K棒證據</summary><div class="r99-action">${r99ActionHTML(plan,c)}</div></details>
+ const priceLimits=data.fresh?r164LimitBand(c):null;
+ return `<section class="r82-decision r91-decision r164-board r165-reference" data-code="${esc(code)}" aria-label="明日持股操作原圖版圖形模組">
+ <div class="r164-h"><strong>明日持股操作</strong><span class="r164-date">${esc(c?.date||'日期待核對')} 盤後 · R165</span></div>
+ <div class="r164-controls">
+  <label>持有週期<select class="r92-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></label>
+  <label>策略模式<select class="r164-strategy"><option value="trend">均線防守</option><option value="protect">獲利保護</option></select></label>
+ </div>
+ ${r164MABox(c,data)}
+ <section class="r164-panel r164-position"><div class="r164-inputs">
+  <label>成本（元）<input class="r82-cost-input" type="number" inputmode="decimal" min="0" step="any" value="${esc(cost)}" placeholder="成本" /></label>
+  <label>股數（股）<input class="r91-qty-input" type="number" inputmode="numeric" min="1" step="1" value="${esc(qty)}" placeholder="股數" /></label>
+ </div><div class="r164-pnlbox r91-pnl" aria-live="polite">${r164PnlHTML(cost===''?NaN:Number(cost),qty===''?NaN:Number(qty),p)}</div></section>
+ <section class="r164-panel r164-action-preview"><div class="r164-quick-action">${r164ActionPreview(plan,c,data)}</div></section>
+ ${r164DefenseBox(c,data)}
+ ${r164KeyBox(c,data)}
+ <div class="r164-price-limit">${priceLimits?`<span>漲幅參考 <b class="r164-positive">${r164Fmt(priceLimits.up)} (${r164Pct(100*(priceLimits.up/data.close-1))})</b></span><span>跌幅參考 <b class="r164-negative">${r164Fmt(priceLimits.down)} (${r164Pct(100*(priceLimits.down/data.close-1))})</b></span>`:'<span>特殊／非最新交易日：漲跌停價格待交易所核對</span>'}</div>
+ <div class="r164-mini-note">價格是盤後條件參考 · 非觸價委託或自動下單 · 判斷規則維持原版</div>
  </section>`;
 }
 function r82BindCost(card,c){
- const input=card.querySelector('.r82-cost-input'),qtyInput=card.querySelector('.r91-qty-input'),pnl=card.querySelector('.r91-pnl'),modeInput=card.querySelector('.r92-mode'),strategy=card.querySelector('.r164-strategy'),actionEl=card.querySelector('.r99-action'),quick=card.querySelector('.r164-quick-action');
- if(!input||!qtyInput||!pnl||!actionEl||!quick)return;
+ const input=card.querySelector('.r82-cost-input'),qtyInput=card.querySelector('.r91-qty-input'),pnl=card.querySelector('.r91-pnl'),modeInput=card.querySelector('.r92-mode'),strategy=card.querySelector('.r164-strategy'),quick=card.querySelector('.r164-quick-action');
+ if(!input||!qtyInput||!pnl||!quick)return;
  const key='chaopan-r82-cost-'+String(c.code||''),qtyKey='chaopan-r91-qty-'+String(c.code||''),modeKey='chaopan-r92-mode-'+String(c.code||'');
  const update=()=>{
   const cost=input.value.trim()===''?NaN:Number(input.value),qty=qtyInput.value.trim()===''?NaN:Number(qtyInput.value),mode=modeInput?.value||'medium';
   const a=r99Action(c,cost,qty,mode);
-  actionEl.innerHTML=r99ActionHTML(a,c);
-  quick.innerHTML=r164ActionPreview(a,c);
-  pnl.innerHTML=r164PnlHTML(cost,qty,numeric(c.close));
-  // Strategy is presentation-only: never silently change the original risk/sell-share engine.
+  quick.innerHTML=r164ActionPreview(a,c,r164Data(c));pnl.innerHTML=r164PnlHTML(cost,qty,numeric(c.close));
   const protect=strategy?.value==='protect';
   (card.querySelector('.r164-board')||card).classList.toggle('r164-protect-mode',protect);
   try{
@@ -2681,13 +2687,14 @@ function arrangeR41Detail(c){
   advanced.push('<details><summary>突破階段完整說明</summary>'+head.outerHTML+'</details>');
   const ch=numeric(c.changePct),quoteClass=r164PctColor(ch);
   head.classList.add('r164-detail-heading');
-  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R164</small>${esc(c.code)} ${esc(c.name)}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
+  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R165</small>${esc(c.code)} ${esc(c.name)}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
  }
  // Use the actual existing summary evaluation; remove its duplicate action tab.
- summary.innerHTML=sectorBattleCard(c,{source:'lookup-detail',rankText:'超盤手｜個股完整分析'});
- summary.querySelectorAll('[data-card-panel="levels"]').forEach(el=>el.remove());
- summary.querySelectorAll('[data-card-panel="summary"]').forEach(el=>{el.hidden=false;});
- summary.querySelectorAll('.sector-r9-tabs').forEach(el=>el.remove());
+ // R165: old long-form sector battle/action text card is NOT rendered.
+ // Preserve decision engines and show their outputs in a compact overview.
+ const brief=r92Decision(c,'medium'),early=defensiveEarlyWarning(c);
+ const briefTitle=esc(brief.status||'待核對'),earlyTitle=esc(early.text||early.stage||'待核對');
+ summary.innerHTML=`<section class="r164-board r165-brief" aria-label="個股速覽簡潔圖形版"><div class="r165-brief-head"><strong>${esc(c.code)} ${esc(c.name)}</strong><span class="r164-market-label">${briefTitle}</span></div><div class="r165-brief-signals"><div><small>趨勢</small><b>${esc(brief.trend||'待核對')}</b></div><div><small>成交量</small><b>${esc(brief.volume||'待核對')}</b></div><div><small>法人</small><b>${esc(brief.institution||'待核對')}</b></div></div><div class="r164-mini-note">防守訊號：${earlyTitle}</div></section>`;
  card.innerHTML=nextSessionDefenseCard(c);
  r82BindCost(card,c);
  state.r41Advanced={code:c.code,date:c.date,html:advanced.join('')};
@@ -3284,7 +3291,7 @@ function r131Mount(){
  const host=document.querySelector('.advanced-radar')||document.querySelector('#candidateList')?.parentElement;
  if(!host||document.querySelector('#r131Screener'))return;
  const panel=document.createElement('section');panel.id='r131Screener';panel.style.cssText='margin:12px 0;padding:14px;border:1px solid #35576b;border-radius:14px;background:#0c2432;color:#e7f5fa';
- panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R164・個股與大盤同步比較</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜量價可追蹤（非買點）</option><option value="watch">黃燈｜健康回測／賣壓待確認</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
+ panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">全條件訊號篩選｜R165・個股與大盤同步比較</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">選擇目前已有的突破／趨勢／風險條件</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+R131_CONDITIONS.map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜量價可追蹤（非買點）</option><option value="watch">黃燈｜健康回測／賣壓待確認</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
  host.insertBefore(panel,host.firstChild);
  panel.querySelector('#r131Condition').addEventListener('change',e=>{r131Condition=e.target.value;r132Page=0;r131Render()});
  panel.querySelector('#r133Bucket').addEventListener('change',e=>{r133Bucket=e.target.value;r132Page=0;r131Render()});
@@ -4500,8 +4507,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R164-20261120';
- const BUILD_LABEL='r164 · 圖形持股操作＋紅漲綠跌';
+ const BUILD_ID='R165-20261120';
+ const BUILD_LABEL='r165 · 原圖圖形模組＋原判斷引擎';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  // R161: The static index.html has kept r50/r60-era labels even after
