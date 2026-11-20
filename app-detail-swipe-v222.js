@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R170-20261120-reconciled-risk-ui */
+/* CHAOPAN_RADAR_BUILD: R171-20261120-full-taiex-chart */
 /* Prior tested build (historical, not deployed version): CHAOPAN_RADAR_BUILD: R165-20261120-visual-card-red-up-green-down */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
@@ -2658,7 +2658,7 @@ function nextSessionDefenseCard(c){
  const plan=r99Action(c,cost===''?NaN:Number(cost),qty===''?NaN:Number(qty),mode);
  const priceLimits=data.fresh?r164LimitBand(c):null;
  return `<section class="r82-decision r91-decision r164-board r165-reference" data-code="${esc(code)}" aria-label="明日持股操作原圖版圖形模組">
- <div class="r164-h"><strong>明日持股操作</strong><span class="r164-date">${esc(c?.date||'日期待核對')} 盤後 · R170</span></div>
+ <div class="r164-h"><strong>明日持股操作</strong><span class="r164-date">${esc(c?.date||'日期待核對')} 盤後 · R171</span></div>
  <div class="r164-controls">
   <label>持有週期<select class="r92-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></label>
   <label>策略模式<select class="r164-strategy"><option value="trend">均線防守</option><option value="protect">獲利保護</option></select></label>
@@ -2747,7 +2747,7 @@ function arrangeR41Detail(c){
   const ch=numeric(c.changePct),quoteClass=r164PctColor(ch);
   head.classList.add('r164-detail-heading');
   const industryLabel=String(c.industry||c.fundamentals?.industry||'').trim();
-  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R170</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
+  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R171</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
  }
  // Use the actual existing summary evaluation; remove its duplicate action tab.
  // R165: old long-form sector battle/action text card is NOT rendered.
@@ -4020,7 +4020,7 @@ globalThis.ChaopanCompareR162=R162Compare;
  * 台股盤後儀表板 > 加權指數 card. No stock needs to be opened. It only reads
  * independently verified TWSE K data; it never mutates marketTrend. */
 const R168HomeIndex=(()=>{
- let bound=null, observer=null, queued=false, currentDays=60, previousFocus=null;
+ let bound=null, observer=null, queued=false, currentDays=60, previousFocus=null, chartEnd=null, zoomed=false, showFib=true, showGaps=true, showRange=true;
  const fmt=x=>Number(x).toLocaleString('zh-TW',{maximumFractionDigits:2,minimumFractionDigits:2});
  function ensureCss(){
   if(document.getElementById('r168-home-css'))return;
@@ -4037,6 +4037,14 @@ const R168HomeIndex=(()=>{
   .r168-range{display:flex;gap:8px;margin:14px 0}.r168-range button{flex:1;border-radius:9px;border:1px solid #448297;background:#123345;color:#d3e8ee;padding:9px;font-weight:700;cursor:pointer}.r168-range button[aria-pressed="true"]{background:#3ed6bf;color:#00242d}
   .r168-result{padding:10px;background:#102d42;border:1px solid #325b6d;border-radius:12px}.r168-ohlc{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;font-size:12px;margin:9px 0}.r168-ohlc b{font-size:14px}.r168-ma{display:flex;justify-content:space-around;gap:5px;font-size:12px;color:#c8daee;flex-wrap:wrap;margin:8px 0}.r168-chart svg{width:100%;height:auto}.r168-foot{font-size:12px;color:#9fbdd0;margin-top:9px}
   .r168-error{font-size:14px;line-height:1.7;padding:18px 7px;color:#ffd179}
+  .r171-toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0}.r171-toolbar button{border:1px solid #477d94;border-radius:8px;background:#123445;color:#e6f3f9;padding:7px 10px;font-weight:700;cursor:pointer}.r171-toolbar button[aria-pressed="true"]{color:#00252d;background:#39d7c3}
+  .r171-inspector{border:1px solid #51758b;background:#102637;padding:9px;border-radius:10px;line-height:1.5;font-size:13px;min-height:70px;position:relative}.r171-inspector b{color:#58e2c8}.r171-inspector small{display:block;color:#b9d0dc}
+  .r171-viewport{overflow-x:auto;overflow-y:hidden;max-width:100%;border:1px solid #2c556d;border-radius:9px;background:#091b2b;touch-action:pan-x pan-y;scrollbar-width:thin}.r171-viewport svg{display:block;width:680px;max-width:none;height:auto;touch-action:pan-x pan-y}
+  .r171-hidden-fib .chaopan-fib-layer,.r171-hidden-gaps .chaopan-gap-layer,.r171-hidden-range .chaopan-range-layer{display:none!important}
+  .r171-tip{font-size:12px;color:#b6cddd;margin:7px 0}.r171-chart-legend{font-size:12px;display:flex;flex-wrap:wrap;gap:4px 14px;color:#c0d4e1;margin:6px 0}
+  .r171-fullscreen #r168-index-panel{width:100vw!important;max-width:none;max-height:100dvh;height:100dvh;border-radius:0}.r171-fullscreen .r171-viewport{max-height:68dvh}.r171-fullscreen .r171-viewport svg{width:max(100%,860px)}
+  @media(max-width:410px){.r171-toolbar button{padding:6px 8px;font-size:12px}.r171-inspector{font-size:12px}#r168-index-panel{padding:10px}}
+
   @media(max-width:360px){#r168-index-panel{padding:10px}.r168-ohlc{gap:3px;font-size:11px}.r168-ohlc b{font-size:12px}.r168-head strong{font-size:18px}}
   `;document.head.appendChild(style);
  }
@@ -4073,22 +4081,68 @@ const R168HomeIndex=(()=>{
   const status=R166IndexDaily.status(),raw=R166IndexDaily.getLatest();
   const bars=raw&&R162Compare.readSeries(raw);
   if(!status.ok||!bars||bars.length<20||bars.some(x=>!x.candle)){
-   result.innerHTML=`<div class="r168-error" role="status"><b>加權指數歷史日K尚未入庫</b><br><small>缺少 <code>data/taiex-daily.json</code>：不是K線按鈕故障。</small><br><small>請到 GitHub Actions 執行「Official TAIEX daily K history」，確認執行成功且該檔案已提交。</small><br><small>${String(status.reason||'').replace(/[<>]/g,'')}</small><br><button type="button" class="r168-retry" style="margin-top:12px;background:#3ed6bf;border:0;border-radius:9px;padding:8px 14px;color:#063441;font-weight:800">重新讀取指數資料</button></div>`;
-   result.querySelector('.r168-retry')?.addEventListener('click',()=>{result.innerHTML='<div class="r168-error">重新讀取官方指數資料…</div>';Promise.resolve(R166IndexDaily.retry()).then(render).catch(render);});
+   result.innerHTML=`<div class="r168-error" role="status"><b>加權指數歷史日K尚未入庫</b><br><small>需要 data/taiex-daily.json 的完整開高低收；不能使用推測K棒。</small><br><small>請執行 GitHub Actions 的 Official TAIEX daily K history。</small><br><small>${String(status.reason||'').replace(/[<>]/g,'')}</small><br><button type="button" class="r168-retry" style="margin-top:12px;background:#3ed6bf;border:0;border-radius:9px;padding:8px 14px;color:#063441;font-weight:800">重新讀取指數資料</button></div>`;
+   result.querySelector('.r168-retry')?.addEventListener('click',()=>{result.textContent='重新讀取官方指數資料…';Promise.resolve(R166IndexDaily.retry()).then(render).catch(render)});
    return;
   }
-  const view=bars.slice(-currentDays),last=bars.at(-1),prev=bars.at(-2),diff=prev?((last.close/prev.close-1)*100):0;
-  const ma=n=>bars.length>=n?bars.slice(-n).reduce((x,b)=>x+b.close,0)/n:null;
-  const dateMatch=!state?.payload?.asOf||last.date===state.payload.asOf;
+  const end=chartEnd===null?bars.length:Math.max(20,Math.min(bars.length,chartEnd));
+  chartEnd=end;
+  const history=bars.slice(0,end),shown=history.slice(-currentDays);
+  const asOf=history.at(-1),realLast=bars.at(-1);
+  const previous=bars.at(-2),diff=previous?(realLast.close/previous.close-1)*100:0;
+  const maAt=(position,n)=>position+1<n?null:bars.slice(position+1-n,position+1).reduce((v,b)=>v+b.close,0)/n;
   const tone=diff>0?'#ff888c':diff<0?'#48d2a0':'#f3f6fa';
-  const vol=view.every(x=>x.volume!==null);
-  result.innerHTML=`<div class="r168-result"><div class="r168-date">${last.date} 盤後｜${dateMatch?'同日指數':'歷史指數，與個股盤後日期不一致'}</div>
-    <div style="font-size:23px;font-weight:800;margin:3px 0">${fmt(last.close)} <span style="font-size:16px;color:${tone}">${diff>0?'+':''}${diff.toFixed(2)}%</span></div>
-    <div class="r168-ohlc"><div>開<br><b>${fmt(last.open)}</b></div><div>高<br><b>${fmt(last.high)}</b></div><div>低<br><b>${fmt(last.low)}</b></div><div>收<br><b>${fmt(last.close)}</b></div></div>
-    <div class="r168-ma"><span style="color:#ffd36e">MA5 ${fmt(ma(5))}</span><span style="color:#8dafff">MA10 ${fmt(ma(10))}</span><span style="color:#eaa8ec">MA20 ${fmt(ma(20))}</span></div>
-    <div class="r168-chart" aria-label="加權指數日K線及均線">${R162Compare.candleChart(view,vol)}</div>
-    <div class="r168-foot">紅漲綠跌｜MA5黃／MA10藍／MA20紫｜${vol?'下方顯示成交量':'成交量資料待補'}｜非即時</div></div>`;
+  const verifiedVolume=history.every(x=>x.volume!==null);
+  // Use exactly the stock's makeChart SVG renderer, not the old small index-only drawing.
+  // IndexMode disables individual-stock risk stars and defense labels.
+  const historyMatrix=history.map(b=>[b.date,b.open,b.high,b.low,b.close,b.volume??0]);
+  const svg=makeChart(historyMatrix,null,currentDays,[],[],null,asOf.date,{indexMode:true,noVolume:!verifiedVolume});
+  const latestSelectedMA=[5,10,20].map(n=>maAt(end-1,n));
+  const dateMatch=!state?.payload?.asOf||realLast.date===state.payload.asOf;
+  result.innerHTML=`<div class="r168-result r171-chart" data-r171-version="R171">
+   <div class="r168-date">${realLast.date} 盤後｜${dateMatch?'大盤與個股盤後日期一致':'大盤與個股盤後日期不同，只看各自歷史'}</div>
+   <div style="font-size:23px;font-weight:800;margin:4px 0">${fmt(realLast.close)} <span style="font-size:16px;color:${tone}">${diff>0?'+':''}${diff.toFixed(2)}%</span></div>
+   <div class="r171-toolbar" role="group" aria-label="加權K線操控">
+     <button type="button" data-r171-pan="back" ${end<=20?'disabled':''}>◀ 前段</button><button type="button" data-r171-pan="next" ${end>=bars.length?'disabled':''}>後段 ▶</button>
+     <button type="button" data-r171-zoom="in" aria-label="放大K線">＋</button><button type="button" data-r171-zoom="out" aria-label="縮小K線">－</button>
+     <button type="button" data-r171-full="1" aria-pressed="${zoomed}">${zoomed?'✕ 返回':'⛶ 放大'}</button>
+     <button type="button" data-r171-toggle="fib" aria-pressed="${showFib}">費波</button><button type="button" data-r171-toggle="range" aria-pressed="${showRange}">盤整</button><button type="button" data-r171-toggle="gaps" aria-pressed="${showGaps}">缺口</button>
+   </div>
+   <div class="r171-inspector" role="status" aria-live="polite" data-r171-inspector>點選K棒可查看單日開高低收</div>
+   <div class="r171-viewport ${showFib?'':'r171-hidden-fib'} ${showRange?'':'r171-hidden-range'} ${showGaps?'':'r171-hidden-gaps'}" data-r171-viewport aria-label="可左右滑動的完整加權指數K線">${svg}</div>
+   <div class="r171-tip">${shown.length}根日K｜左右滑動查看；前段／後段瀏覽歷史；點K棒看價量｜${verifiedVolume?'官方成交量':'成交量尚未核實'}</div>
+   <div class="r168-ma"><span style="color:#ffd36e">MA5 ${latestSelectedMA[0]===null?'—':fmt(latestSelectedMA[0])}</span><span style="color:#8dafff">MA10 ${latestSelectedMA[1]===null?'—':fmt(latestSelectedMA[1])}</span><span style="color:#eaa8ec">MA20 ${latestSelectedMA[2]===null?'—':fmt(latestSelectedMA[2])}</span></div>
+   <div class="r171-chart-legend"><span style="color:#ff777f">■ 上漲</span><span style="color:#3bd1b4">■ 下跌</span><span style="color:#ffd36e">━ MA5</span><span style="color:#8dafff">━ MA10</span><span style="color:#eaa8ec">━ MA20</span></div>
+   <div class="r168-foot">收盤歷史資料，非即時報價；不將指數技術圖誤判為個股減碼或突破星號。</div></div>`;
+  const viewport=result.querySelector('[data-r171-viewport]'),canvas=viewport?.querySelector('svg'),inspector=result.querySelector('[data-r171-inspector]');
+  if(canvas&&inspector){
+   const cross=document.createElementNS('http://www.w3.org/2000/svg','line');
+   cross.setAttribute('stroke','#f2cf75');cross.setAttribute('stroke-width','1.5');cross.setAttribute('stroke-dasharray','4 4');cross.setAttribute('pointer-events','none');canvas.append(cross);
+   const select=i=>{
+    if(i<0||i>=shown.length)return;
+    const b=shown[i],position=end-shown.length+i,prev=bars[position-1];
+    const change=prev?.close>0?(b.close/prev.close-1)*100:null;
+    const values=[['開',b.open],['高',b.high],['低',b.low],['收',b.close],['量',b.volume]];
+    inspector.innerHTML=`<b>${b.date}｜歷史日K</b><div style="display:flex;gap:3px 12px;flex-wrap:wrap">${values.map(([k,v])=>`<span>${k} ${v===null?'資料待補':fmt(v)}</span>`).join('')}<span style="color:${change===null?'#ddd':change>=0?'#ff888c':'#48d2a0'}">${change===null?'':`漲跌 ${change>0?'+':''}${change.toFixed(2)}%`}</span></div><small>MA5 ${maAt(position,5)===null?'—':fmt(maAt(position,5))} ／ MA10 ${maAt(position,10)===null?'—':fmt(maAt(position,10))} ／ MA20 ${maAt(position,20)===null?'—':fmt(maAt(position,20))}</small>`;
+    const x=126+489*(i+.5)/shown.length;
+    cross.setAttribute('x1',String(x));cross.setAttribute('x2',String(x));cross.setAttribute('y1','20');cross.setAttribute('y2','336');
+   };
+   const locate=e=>{const pt=canvas.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const ctm=canvas.getScreenCTM();if(!ctm)return;const local=pt.matrixTransform(ctm.inverse());if(local.x<118||local.x>623)return;select(Math.max(0,Math.min(shown.length-1,Math.floor((local.x-126)/489*shown.length))));};
+   let drag=false;canvas.addEventListener('pointerdown',e=>{if(e.pointerType==='touch'&&!e.isPrimary)return;drag=true;locate(e)});
+   canvas.addEventListener('pointermove',e=>{if(drag)locate(e)});['pointerup','pointercancel','pointerleave'].forEach(name=>canvas.addEventListener(name,()=>{drag=false}));canvas.addEventListener('click',locate);
+   select(shown.length-1);
+   viewport.scrollLeft=viewport.scrollWidth;
+   let pinch=null;
+   viewport.addEventListener('touchstart',e=>{if(e.touches.length===2)pinch=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY)},{passive:true});
+   viewport.addEventListener('touchmove',e=>{if(e.touches.length!==2||!pinch)return;const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);if(d>pinch*1.28||d<pinch*.78){const growing=d>pinch;pinch=null;currentDays=Math.max(12,Math.min(120,Math.round(currentDays*(growing?.76:1.32))));render();}},{passive:true});
+   viewport.addEventListener('touchend',e=>{if(e.touches.length<2)pinch=null},{passive:true});
+  }
+  result.querySelectorAll('[data-r171-pan]').forEach(b=>b.addEventListener('click',()=>{chartEnd=Math.max(20,Math.min(bars.length,end+(b.dataset.r171Pan==='back'?-20:20)));render()}));
+  result.querySelectorAll('[data-r171-zoom]').forEach(b=>b.addEventListener('click',()=>{currentDays=Math.max(12,Math.min(120,Math.round(currentDays*(b.dataset.r171Zoom==='in'?.76:1.32))));render()}));
+  result.querySelectorAll('[data-r171-toggle]').forEach(b=>b.addEventListener('click',()=>{const key=b.dataset.r171Toggle;if(key==='fib')showFib=!showFib;else if(key==='range')showRange=!showRange;else showGaps=!showGaps;render()}));
+  result.querySelector('[data-r171-full]')?.addEventListener('click',async()=>{zoomed=!zoomed;const modal=document.querySelector('#r168-index-modal');modal?.classList.toggle('r171-fullscreen',zoomed);if(zoomed){try{if(modal?.requestFullscreen&&document.fullscreenEnabled)await modal.requestFullscreen()}catch(e){}try{await screen.orientation?.lock?.('landscape')}catch(e){}}else{try{screen.orientation?.unlock?.()}catch(e){}try{if(document.fullscreenElement)await document.exitFullscreen()}catch(e){}}render()});
  }
+
  function overlay(){
   let node=document.getElementById('r168-index-modal');if(node)return node;
   ensureCss();node=document.createElement('div');node.id='r168-index-modal';node.hidden=true;
@@ -4099,15 +4153,15 @@ const R168HomeIndex=(()=>{
   document.body.append(node);
   node.querySelector('.r168-close').addEventListener('click',close);
   node.addEventListener('click',e=>{if(e.target===node)close()});
-  node.querySelector('.r168-range').addEventListener('click',e=>{const b=e.target.closest('[data-r168-days]');if(!b)return;currentDays=Number(b.dataset.r168Days);node.querySelectorAll('[data-r168-days]').forEach(x=>x.setAttribute('aria-pressed',String(Number(x.dataset.r168Days)===currentDays)));render();});
+  node.querySelector('.r168-range').addEventListener('click',e=>{const b=e.target.closest('[data-r168-days]');if(!b)return;currentDays=Number(b.dataset.r168Days);chartEnd=null;node.querySelectorAll('[data-r168-days]').forEach(x=>x.setAttribute('aria-pressed',String(Number(x.dataset.r168Days)===currentDays)));render();});
   return node;
  }
  function open(){
-  previousFocus=document.activeElement;
+  chartEnd=null;currentDays=60;previousFocus=document.activeElement;
   const node=overlay();node.hidden=false;render();node.querySelector('.r168-close').focus();
   Promise.resolve(R166IndexDaily.ensure()).then(()=>{if(!node.hidden)render()}).catch(()=>{if(!node.hidden)render()});
  }
- function close(){const node=document.getElementById('r168-index-modal');if(node)node.hidden=true;previousFocus?.focus?.();}
+ function close(){const node=document.getElementById('r168-index-modal');if(node){node.hidden=true;node.classList.remove('r171-fullscreen')}zoomed=false;try{screen.orientation?.unlock?.()}catch(e){}try{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}catch(e){}previousFocus?.focus?.();}
  function init(){bind();if(!observer){observer=new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;if(!bound?.isConnected)bind()})});observer.observe(document.body,{childList:true,subtree:true});}
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('r168-index-modal')&&!document.getElementById('r168-index-modal').hidden){close();e.stopPropagation();}},true);
  }
@@ -4340,7 +4394,8 @@ function detectPriceGaps(all){
   }
   return gaps;
 }
-function makeChart(bars,neck,days,supports=[],necklines=[],mainDefense=null,asOf=null){
+function makeChart(bars,neck,days,supports=[],necklines=[],mainDefense=null,asOf=null,opts={}){
+  const indexMode=opts?.indexMode===true,noVolume=opts?.noVolume===true;
   // The chart must not silently discard a corrupt candle or plot future dates.
   // Reject malformed, unordered, duplicated or out-of-session OHLCV instead.
   if(!Array.isArray(bars)||!bars.length)return '<div class="empty-state">沒有歷史K線可顯示</div>';
@@ -4469,10 +4524,10 @@ function makeChart(bars,neck,days,supports=[],necklines=[],mainDefense=null,asOf
     svg+='</g>';
   }
   // r70 markers: position each signal at the original historical candle.
-  const historicalDefense=defenseHistory(all,Math.max(60,length));
+  const historicalDefense=indexMode?[]:defenseHistory(all,Math.max(60,length));
   const visibleStartIndex=all.length-data.length;
   const defenseMarkers=new Map(historicalDefense.filter(e=>e.index>=visibleStartIndex).map(e=>[e.index-visibleStartIndex,e]));
-  data.forEach((b,i)=>{const x=P+step*(i+.5),[date,o,h,l,c,v]=[b[0],Number(b[1]),Number(b[2]),Number(b[3]),Number(b[4]),Number(b[5])];const color=c>=o?'#ff777f':'#3bd1b4';let yo=py(o),yc=py(c),yh=py(h),yl=py(l);svg+=`<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${yh.toFixed(1)}" y2="${yl.toFixed(1)}" stroke="${color}" stroke-width="1.1"/><rect x="${(x-barW/2).toFixed(1)}" y="${Math.min(yo,yc).toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(1.6,Math.abs(yo-yc)).toFixed(1)}" fill="${color}" rx=".5"/><rect x="${(x-barW/2).toFixed(1)}" y="${(volTop+volHeight*(1-v/maxV)).toFixed(1)}" width="${barW.toFixed(1)}" height="${(volHeight*v/maxV).toFixed(1)}" fill="${color}" opacity=".7"/>`;const warning=defenseMarkers.get(i);if(warning){const colors={zero:'#94a3b8',first:'#f59e0b',second:'#ef4444'},numbers={zero:'0',first:'1',second:'2'};const markY=Math.max(top+10,py(h)-13);svg+=`<circle cx="${x.toFixed(1)}" cy="${markY.toFixed(1)}" r="8" fill="${colors[warning.stage]}" stroke="#0d1a29" stroke-width="1"/><text x="${x.toFixed(1)}" y="${(markY+3.6).toFixed(1)}" font-size="10" font-weight="bold" fill="#fff" text-anchor="middle">${numbers[warning.stage]}</text>`;}if(i===0||i===Math.floor(data.length/2)||i===data.length-1){svg+=`<text x="${x.toFixed(1)}" y="${H-6}" text-anchor="${i===0?'start':i===data.length-1?'end':'middle'}" font-size="12" fill="#91aabd">${esc(date.slice(5))}</text>`}});
+  data.forEach((b,i)=>{const x=P+step*(i+.5),[date,o,h,l,c,v]=[b[0],Number(b[1]),Number(b[2]),Number(b[3]),Number(b[4]),Number(b[5])];const color=c>=o?'#ff777f':'#3bd1b4';let yo=py(o),yc=py(c),yh=py(h),yl=py(l);svg+=`<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${yh.toFixed(1)}" y2="${yl.toFixed(1)}" stroke="${color}" stroke-width="1.1"/><rect x="${(x-barW/2).toFixed(1)}" y="${Math.min(yo,yc).toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(1.6,Math.abs(yo-yc)).toFixed(1)}" fill="${color}" rx=".5"/>${noVolume?'':`<rect x="${(x-barW/2).toFixed(1)}" y="${(volTop+volHeight*(1-v/maxV)).toFixed(1)}" width="${barW.toFixed(1)}" height="${(volHeight*v/maxV).toFixed(1)}" fill="${color}" opacity=".7"/>`}`;const warning=defenseMarkers.get(i);if(warning){const colors={zero:'#94a3b8',first:'#f59e0b',second:'#ef4444'},numbers={zero:'0',first:'1',second:'2'};const markY=Math.max(top+10,py(h)-13);svg+=`<circle cx="${x.toFixed(1)}" cy="${markY.toFixed(1)}" r="8" fill="${colors[warning.stage]}" stroke="#0d1a29" stroke-width="1"/><text x="${x.toFixed(1)}" y="${(markY+3.6).toFixed(1)}" font-size="10" font-weight="bold" fill="#fff" text-anchor="middle">${numbers[warning.stage]}</text>`;}if(i===0||i===Math.floor(data.length/2)||i===data.length-1){svg+=`<text x="${x.toFixed(1)}" y="${H-6}" text-anchor="${i===0?'start':i===data.length-1?'end':'middle'}" font-size="12" fill="#91aabd">${esc(date.slice(5))}</text>`}});
   return svg+'</svg>';
 }
 // V2.2 swipe fix: listen on the whole detail sheet, not only its tiny top navigator.
@@ -4755,8 +4810,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R170-20261120-reconciled-risk-ui';
- const BUILD_LABEL='r170 · 指數資料修正圖整合版';
+ const BUILD_ID='R171-20261120-full-taiex-chart';
+ const BUILD_LABEL='r171 · 加權指數完整K線圖';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  // R161: The static index.html has kept r50/r60-era labels even after
