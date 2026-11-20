@@ -1,4 +1,4 @@
-name: Official TAIEX daily K history (R166)
+name: Official TAIEX daily K history (R170)
 on:
   schedule:
     # Asia/Taipei 16:20 and 18:20, weekdays. TWSE publication may lag.
@@ -18,10 +18,11 @@ jobs:
         with:
           python-version: '3.11'
       - name: Fetch official index OHLC and volume
-        run: python scripts/update_taiex_daily.py
+        run: python -u scripts/update_taiex_daily.py
       - name: Validate and commit the index JSON only
         run: |
           python -m json.tool data/taiex-daily.json > /dev/null
+          python -c "import json; d=json.load(open('data/taiex-daily.json')); assert len(d['bars'])>=45; print('Index asOf:',d['asOf'],'bars:',len(d['bars']))"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/taiex-daily.json
