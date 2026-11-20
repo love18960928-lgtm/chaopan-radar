@@ -17,6 +17,9 @@ from urllib.request import Request, urlopen
 
 BASE='https://www.twse.com.tw/rwd/zh/'
 BACKUP='https://www.twse.com.tw/'
+# TWSE's main historical TAIEX page uses the TAIEX endpoint; retain legacy
+# indicesReport as a second official route when the current path is unavailable.
+INDEX_PATHS=('TAIEX/MI_5MINS_HIST','indicesReport/MI_5MINS_HIST')
 
 def roc_date(raw):
     value=str(raw).strip().replace('/', '').replace('-', '')
@@ -37,21 +40,27 @@ def num(v):
 
 def monthly(month, report):
     params=urlencode({'date':month.strftime('%Y%m01'),'response':'json'})
+    paths=INDEX_PATHS if report in INDEX_PATHS else (report,)
     errors=[]
-    for root in (BASE,BACKUP):
-        url=root+report+'?'+params
-        try:
-            req=Request(url,headers={'User-Agent':'Mozilla/5.0 (compatible; ChaopanRadar-EOD/1.0)', 'Accept':'application/json'})
-            with urlopen(req,timeout=22) as resp:
-                raw=json.load(resp)
-            rows=raw.get('data') or []
-            if raw.get('stat') and 'OK' not in str(raw['stat']).upper() and not rows:
-                errors.append(f'{url}: {raw.get("stat")}');continue
-            if isinstance(rows,list) and rows:return rows
-            errors.append(f'{url}: missing rows')
-        except (URLError,HTTPError,TimeoutError,ValueError,TypeError) as exc:
-            errors.append(f'{url}: {str(exc)[:80]}')
-    raise RuntimeError('TWSE historical data unavailable: '+ '; '.join(errors))
+    # Prefer the live TWSE rwd/zh/TAIEX route for the OHLC report.
+    for path in paths:
+        for root in (BASE,BACKUP):
+            url=root+path+'?'+params
+            for attempt in (0,1):
+                try:
+                    req=Request(url,headers={'User-Agent':'Mozilla/5.0 (compatible; ChaopanRadar-EOD/1.1)', 'Accept':'application/json'})
+                    with urlopen(req,timeout=20) as resp:
+                        raw=json.load(resp)
+                    rows=raw.get('data') or []
+                    if isinstance(rows,list) and rows and isinstance(rows[0],list):
+                        monthly.last_index_path=path if path in INDEX_PATHS else getattr(monthly,'last_index_path',None)
+                        return rows
+                    errors.append(f'{url}: {raw.get("stat") or "missing rows"}')
+                    break
+                except (URLError,HTTPError,TimeoutError,ValueError,TypeError,KeyError) as exc:
+                    errors.append(f'{url}: {str(exc)[:65]}')
+                    if attempt==0:time.sleep(.5)
+    raise RuntimeError('TWSE historical data unavailable: '+ '; '.join(errors[-5:]))
 
 def months_back(today,count=9):
     out=[]
@@ -86,10 +95,11 @@ def parse_volume(rows,index_closes):
 
 def produce(today=None,fetcher=monthly):
     today=today or dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()
-    price={};market_vol={};processed=[];failures=[]
+    price={};market_vol={};processed=[];failures=[];price_paths=[]
     for month in months_back(today):
         try:
-            part=parse_ohlc(fetcher(month,'indicesReport/MI_5MINS_HIST'))
+            part=parse_ohlc(fetcher(month,'TAIEX/MI_5MINS_HIST'))
+            price_paths.append(getattr(fetcher,'last_index_path','TAIEX/MI_5MINS_HIST'))
             price.update(part);processed.append(month.strftime('%Y-%m'))
         except Exception as exc:
             failures.append(str(exc)[:180]);continue
@@ -107,7 +117,7 @@ def produce(today=None,fetcher=monthly):
     if (today-dt.date.fromisoformat(last)).days>7:
         raise RuntimeError('Official index source is over 7 calendar days old; refusing overwrite')
     return {'schema':'chaopan-taiex-daily-v1',
-            'source':'TWSE/indicesReport/MI_5MINS_HIST',
+            'source':'TWSE/'+('TAIEX/MI_5MINS_HIST' if 'TAIEX/MI_5MINS_HIST' in price_paths else 'indicesReport/MI_5MINS_HIST'),
             'volumeSource':'TWSE/exchangeReport/FMTQIK (aligned where verified)',
             'asOf':last, 'generatedAt':dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),
             'bars':bars,'months':processed,'missingMonths':failures}
