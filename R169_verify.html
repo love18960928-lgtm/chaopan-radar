@@ -1,0 +1,25 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>超盤手 R169｜圖形操作卡完整性驗證</title><style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#061725;color:#e5f4fa;font:15px/1.55 system-ui,'Noto Sans TC',sans-serif}main{max-width:700px;padding:20px 12px 50px;margin:auto}.card{padding:14px;border:1px solid #4284a0;border-radius:13px;background:#102b3b;margin:10px 0}.ok{color:#4fe1a8}.warn{color:#ffd080}.bad{color:#ff7d88}b{font-size:16px}h1{font-size:20px}h2{font-size:16px}small{color:#accbd8}a{color:#8de7f6}code{overflow-wrap:anywhere}</style></head><body><main><h1>超盤手 RADAR｜R169 驗證</h1><p><small>比對正式網站的實際程式與資料日期，不代表交易訊號正確或 GitHub Actions 已成功。</small></p><div id="results" class="card">讀取網站檔案中……</div><section class="card"><h2>新版顯示要求</h2><p>風險減碼固定欄位、成本股數輸入、開高／開低、MA5／10／20、大盤K、MA5防守帶、支撐／頸線／壓力／突破。</p><small>資料日期過期時只提供已核實的歷史參考，不產生新的隔日委託價。合格盤後資料與持股數字齊全後才有計算股數與減碼情境。</small></section><p><a href="./">返回超盤手首頁</a>｜<a href="https://github.com/love18960928-lgtm/chaopan-radar/actions">檢查 Actions 資料更新</a></p></main><script>
+(async()=>{
+const results=document.getElementById('results');let html='';
+const h=s=>String(s).replace(/[&<>"']/g,t=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[t]));
+const row=(title,ok,msg,kind)=>`<section style="padding:8px 0;border-bottom:1px solid #385769"><b class="${kind|| (ok?'ok':'bad')}">${h(title)}：${kind==='warn'?'待確認':ok?'通過':'未通過'}</b><div>${h(msg)}</div></section>`;
+const fetchFile=async(path,kind)=>{const res=await fetch(path+(path.includes('?')?'&':'?')+'r169='+Date.now(),{cache:'no-store'});if(!res.ok)throw Error('HTTP '+res.status);return kind==='json'?res.json():res.text()};
+try{
+const js=await fetchFile('./app-detail-swipe-v222.js');
+const checks={版本:js.includes("const BUILD_ID='R169-20261120-reconciled-risk-ui'"),
+'風險減碼固定列':js.includes('r169-risk-strip')&&js.includes('function r164ActionPreview'),
+'原版風險引擎仍保留':js.includes('function r99Action(c,cost,qty,mode=')&&js.includes('r92Decision(c,mode)'),
+'原圖核心模組':js.includes('r164-ma-panel')&&js.includes('r164-defense')&&js.includes('r164-key-panel'),
+'成本／股數輸入':js.includes('r82-cost-input')&&js.includes('r91-qty-input'),
+'加權指數入口':js.includes('const R168HomeIndex=')&&js.includes('r167-index-open'),
+'防止超過單日上限的賣價':js.includes('多日壓力（非明日掛價）')};
+for(const [title,v] of Object.entries(checks))html+=row(title,v,v?'主程式檢查存在':'主程式仍是舊版或上傳不完整');
+}catch(e){html+=row('主程式',false,'讀取失敗：'+e.message)}
+let radar=null,index=null;
+try{radar=await fetchFile('./data/radar.json','json');const d=radar.asOf||'未知';html+=row('個股盤後資料',!!radar.asOf,'資料日期：'+d,radar.asOf?'warn':'bad')}catch(e){html+=row('個股盤後資料',false,e.message)}
+try{index=await fetchFile('./data/taiex-daily.json','json');const bars=Array.isArray(index.bars)?index.bars:[];const valid=bars.length>=20&&index.asOf===bars.at(-1)?.[0];html+=row('加權指數歷史資料',valid,valid?`日期 ${index.asOf}，${bars.length} 根K線`:'尚未取得符合格式的20根以上官方K線',valid?'warn':'bad');}catch(e){html+=row('加權指數歷史資料',false,e.message)}
+if(radar?.asOf&&index?.asOf)html+=row('個股與大盤日期一致',radar.asOf===index.asOf,`個股 ${radar.asOf}／大盤 ${index.asOf}`,radar.asOf===index.asOf?'ok':'warn');
+results.innerHTML=html;
+})();
+</script></body></html>
