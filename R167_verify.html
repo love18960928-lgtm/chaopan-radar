@@ -1,0 +1,22 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>超盤手 R167｜加權指數日K與大盤驗收</title><style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{background:#061827;color:#e6f2f7;font:15px/1.65 system-ui,'Noto Sans TC',sans-serif;margin:0}main{margin:auto;max-width:760px;padding:20px 14px 45px}h1{font-size:1.36rem}h2{font-size:1.05rem;margin:0}.panel{background:#102c3e;border:1px solid #39738e;border-radius:12px;padding:14px;margin:11px 0}.ok{color:#58e5a8}.warn{color:#ffd074}.bad{color:#ff8791}small{color:#adc7d3}code{color:#a7e4fd;overflow-wrap:anywhere}a{color:#8ad9ff}</style></head><body><main>
+<h1>超盤手 RADAR｜R167 官方加權指數 K 線驗證</h1>
+<div id="status" role="status"><div class="panel">正在讀取正式網站檔案……</div></div>
+<section class="panel"><h2>部署後應有的功能</h2><p>「明日持股操作」的大盤K可點擊並定位到指數日K；「走勢圖」包含個股日K、加權指數日K、MA5／10／20及同日相對強弱；「明日持股操作」的大盤欄位使用同日指數資料。</p><small>資料與個股未對齊時，保留圖形但禁止把舊指數當成最新明日操作價。此頁不會代替交易所資料驗證。</small></section>
+<p><a href="./">返回超盤手首頁</a> ｜ <a href="https://github.com/love18960928-lgtm/chaopan-radar/actions/workflows/taiex-daily.yml">查看官方加權指數更新流程</a></p>
+<script>
+(async()=>{
+ const out=document.getElementById('status'),cards=[];
+ const esc=s=>String(s).replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[x]));
+ const add=(title,status,msg)=>cards.push(`<section class="panel"><h2 class="${status}">${esc(title)}</h2><p>${esc(msg)}</p></section>`);
+ const read=async name=>{const response=await fetch(name+(name.includes('?')?'&':'?')+'r167='+Date.now(),{cache:'no-store'});if(!response.ok)throw Error(name+': HTTP '+response.status);return name.endsWith('.js')?response.text():response.json()};
+ try{const js=await read('./app-detail-swipe-v222.js');add('主程式版本',(js.includes("const BUILD_ID='R167-20261120-index-click-to-chart'")&&js.includes('CHAOPAN_RADAR_BUILD: R167-20261120-index-click-to-chart')&&js.includes('r167-index-open')&&js.includes('r167-index-chart'))?'ok':'bad',(js.includes("const BUILD_ID='R167-20261120-index-click-to-chart'")&&js.includes('CHAOPAN_RADAR_BUILD: R167-20261120-index-click-to-chart')&&js.includes('r167-index-open')&&js.includes('r167-index-chart'))?'R167 主程式、版本標籤和大盤K點擊入口一致':'版本未完全更新：請檢查主程式與畫面 BUILD_ID、Pages 部署和快取');}
+ catch(e){add('主程式版本','bad',e.message)}
+ let dataset=null;
+ try{dataset=await read('./data/taiex-daily.json');const rows=Array.isArray(dataset.bars)?dataset.bars:[];const valid=dataset.schema==='chaopan-taiex-daily-v1'&&dataset.source==='TWSE/indicesReport/MI_5MINS_HIST'&&rows.length>=20&&dataset.asOf===rows.at(-1)?.[0];add('加權指數歷史日K',valid?'ok':'bad',valid?`資料日期 ${dataset.asOf}｜${rows.length} 根日K｜成交量已核對 ${rows.filter(x=>x[5]!=null).length} 根`:'格式、日期或歷史根數不足；請查 GitHub Actions 日誌')}
+ catch(e){add('加權指數歷史日K','warn','尚未產生 data/taiex-daily.json。需上傳腳本及工作流程並執行 Run workflow。'+e.message)}
+ try{const radar=await read('./data/radar.json');const date=radar.asOf||'—';const same=dataset?.asOf===date;add('指數與個股資料日期',same?'ok':'warn',`股票盤後 ${date}｜加權指數 ${dataset?.asOf||'待補'}｜${same?'同日可供比對':'不同日，不能混用作明日防守訊號'}`)}
+ catch(e){add('個股雷達日期','warn','無法核對 radar.json：'+e.message)}
+ out.innerHTML=cards.join('');
+})();
+</script></main></body></html>
