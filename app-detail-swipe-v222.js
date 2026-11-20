@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R169-20261120-reconciled-risk-ui */
+/* CHAOPAN_RADAR_BUILD: R170-20261120-reconciled-risk-ui */
 /* Prior tested build (historical, not deployed version): CHAOPAN_RADAR_BUILD: R165-20261120-visual-card-red-up-green-down */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
@@ -2573,7 +2573,7 @@ function r164MABox(c,data){
   if(Array.isArray(indexBars)&&indexBars.length>=20){
    const a=indexBars.at(-1),p=indexBars.at(-2),ixPct=(a[4]/p[4]-1)*100;
    const m5=indexBars.slice(-5).reduce((sum,b)=>sum+b[4],0)/5;
-   market=`<span class="r164-market-label ${r164PctColor(ixPct)}">${ixPct>0?'大盤上漲':ixPct<0?'大盤下跌':'大盤持平'}<small style="display:block">${r164Fmt(a[4])}點 ${r164Pct(ixPct)}</small><small style="display:block">${a[4]>=m5?'站上MA5':'跌破MA5'}</small></span>`;
+   market=`<span class="r164-market-label ${r164PctColor(ixPct)}">${ixPct>0?'大盤上漲':ixPct<0?'大盤下跌':'大盤持平'}<small style="display:block">${a[0].slice(5)} ${r164Fmt(a[4])}點</small><small style="display:block">${r164Pct(ixPct)}</small><small style="display:block">${a[4]>=m5?'站上MA5':'跌破MA5'}</small></span>`;
   }
  }
  if(data.ok)try{
@@ -2658,7 +2658,7 @@ function nextSessionDefenseCard(c){
  const plan=r99Action(c,cost===''?NaN:Number(cost),qty===''?NaN:Number(qty),mode);
  const priceLimits=data.fresh?r164LimitBand(c):null;
  return `<section class="r82-decision r91-decision r164-board r165-reference" data-code="${esc(code)}" aria-label="明日持股操作原圖版圖形模組">
- <div class="r164-h"><strong>明日持股操作</strong><span class="r164-date">${esc(c?.date||'日期待核對')} 盤後 · R169</span></div>
+ <div class="r164-h"><strong>明日持股操作</strong><span class="r164-date">${esc(c?.date||'日期待核對')} 盤後 · R170</span></div>
  <div class="r164-controls">
   <label>持有週期<select class="r92-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></label>
   <label>策略模式<select class="r164-strategy"><option value="trend">均線防守</option><option value="protect">獲利保護</option></select></label>
@@ -2747,7 +2747,7 @@ function arrangeR41Detail(c){
   const ch=numeric(c.changePct),quoteClass=r164PctColor(ch);
   head.classList.add('r164-detail-heading');
   const industryLabel=String(c.industry||c.fundamentals?.industry||'').trim();
-  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R169</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
+  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R170</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
  }
  // Use the actual existing summary evaluation; remove its duplicate action tab.
  // R165: old long-form sector battle/action text card is NOT rendered.
@@ -3814,7 +3814,7 @@ const R166IndexDaily=(()=>{
  const validDate=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&!Number.isNaN(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
  const n=v=>v===null||v===undefined||v===''?null:Number.isFinite(Number(v))?Number(v):null;
  function normalize(raw){
-  if(raw?.schema!=='chaopan-taiex-daily-v1'||raw?.source!=='TWSE/indicesReport/MI_5MINS_HIST'||!Array.isArray(raw.bars))return null;
+  if(raw?.schema!=='chaopan-taiex-daily-v1'||!['TWSE/TAIEX/MI_5MINS_HIST','TWSE/indicesReport/MI_5MINS_HIST'].includes(raw?.source)||!Array.isArray(raw.bars))return null;
   if(raw.bars.length<20||raw.bars.length>5000)return null;
   const bars=[];let lastDate='';
   for(const b of raw.bars){
@@ -3827,10 +3827,17 @@ const R166IndexDaily=(()=>{
   if(raw.asOf!==lastDate)return null;
   return {asOf:lastDate,bars,generatedAt:String(raw.generatedAt||''),volumeSource:String(raw.volumeSource||'')};
  }
- function get(asOf){return snapshot?.asOf===asOf?snapshot.bars:null;}
+ function get(asOf){
+  // An updated index file can contain an older stock's exact trading day.
+  // Never claim it is today's candle or forward-fill unmatched dates.
+  if(!snapshot||typeof asOf!=='string')return null;
+  const k=snapshot.bars.findIndex(b=>b[0]===asOf);
+  return k>=19?snapshot.bars.slice(0,k+1):null;
+ }
  function getLatest(){return snapshot?.bars||null;}
  function status(){return snapshot?{ok:true,asOf:snapshot.asOf,volumeSource:snapshot.volumeSource}:{ok:false,reason:error};}
  function install(raw){const parsed=normalize(raw);if(!parsed){error='證交所K線格式、日期或歷史根數不足';return false;}snapshot=parsed;error='';return true;}
+ function retry(){attempted=false;promise=null;return ensure();}
  function ensure(){
   if(typeof window==='undefined'||window.__RADAR_PREVIEW__||attempted)return promise;
   attempted=true;
@@ -3860,7 +3867,7 @@ const R166IndexDaily=(()=>{
   })();
   return promise;
  }
- return Object.freeze({get,getLatest,status,ensure,install,normalize});
+ return Object.freeze({get,getLatest,status,ensure,retry,install,normalize});
 })();
 globalThis.ChaopanIndexDailyR166=R166IndexDaily;
 
@@ -4066,7 +4073,8 @@ const R168HomeIndex=(()=>{
   const status=R166IndexDaily.status(),raw=R166IndexDaily.getLatest();
   const bars=raw&&R162Compare.readSeries(raw);
   if(!status.ok||!bars||bars.length<20||bars.some(x=>!x.candle)){
-   result.innerHTML=`<div class="r168-error" role="status">加權指數歷史日K尚未入庫。<br>請確認 <code>data/taiex-daily.json</code> 已產生，並執行指數資料更新流程。<br><small>${String(status.reason||'').replace(/[<>]/g,'')}</small></div>`;
+   result.innerHTML=`<div class="r168-error" role="status"><b>加權指數歷史日K尚未入庫</b><br><small>缺少 <code>data/taiex-daily.json</code>：不是K線按鈕故障。</small><br><small>請到 GitHub Actions 執行「Official TAIEX daily K history」，確認執行成功且該檔案已提交。</small><br><small>${String(status.reason||'').replace(/[<>]/g,'')}</small><br><button type="button" class="r168-retry" style="margin-top:12px;background:#3ed6bf;border:0;border-radius:9px;padding:8px 14px;color:#063441;font-weight:800">重新讀取指數資料</button></div>`;
+   result.querySelector('.r168-retry')?.addEventListener('click',()=>{result.innerHTML='<div class="r168-error">重新讀取官方指數資料…</div>';Promise.resolve(R166IndexDaily.retry()).then(render).catch(render);});
    return;
   }
   const view=bars.slice(-currentDays),last=bars.at(-1),prev=bars.at(-2),diff=prev?((last.close/prev.close-1)*100):0;
@@ -4747,8 +4755,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R169-20261120-reconciled-risk-ui';
- const BUILD_LABEL='r169 · 防守圖整合版';
+ const BUILD_ID='R170-20261120-reconciled-risk-ui';
+ const BUILD_LABEL='r170 · 指數資料修正圖整合版';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  // R161: The static index.html has kept r50/r60-era labels even after
