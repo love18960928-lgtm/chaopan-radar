@@ -60,17 +60,23 @@ jobs:
             echo "::warning::沒有 data/radar.json，跳過法人抓取"
           fi
       - name: Verify and enrich official TWSE T86 institutional flows
-        # An institutional-data failure must not appear as a green successful update.
-        # No data is invented; radar.json remains unchanged if validation fails.
+        # T86 may publish later than OHLCV. A known T86 no-data response is
+        # recorded as unavailable, not as zero and not as a verified risk signal.
+        # All other data-integrity failures still fail the job.
         run: |
-          python scripts/update_institutions.py --radar data/radar.json
+          python scripts/update_institutions.py --radar data/radar.json --allow-unavailable
           python - <<'PYVERIFY'
           import json
           obj=json.load(open('data/radar.json', encoding='utf-8'))
           day=obj.get('asOf')
+          coverage=obj.get('institutionalCoverage') or {}
           rows=[c for c in obj.get('candidates',[]) if c.get('market')=='上市' and (c.get('institutional') or {}).get('date')==day]
-          print('T86_POSTWRITE', 'date=',day,'verifiedListedCandidates=',len(rows))
-          assert rows, 'no same-day institutional candidates persisted'
+          print('T86_POSTWRITE', 'date=',day,'verifiedListedCandidates=',len(rows), 'status=',coverage.get('status','verified'))
+          if coverage.get('status') == 'unavailable':
+              assert not rows, 'unverified state must not assert same-day institutional matches'
+              print('::warning::T86 not yet available; OHLCV can be checked by normal release gate; no same-day institutional claims')
+          else:
+              assert rows, 'no same-day institutional candidates persisted'
           PYVERIFY
       - name: Build independently searchable stocks
         run: python scripts/build_stock_lookup.py
