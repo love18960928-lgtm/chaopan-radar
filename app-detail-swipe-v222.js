@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R172-20261120-compact-index-chart */
+/* CHAOPAN_RADAR_BUILD: R175-20261122-stock-index-ma-compare */
 /* Prior tested build (historical, not deployed version): CHAOPAN_RADAR_BUILD: R165-20261120-visual-card-red-up-green-down */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
@@ -2492,9 +2492,18 @@ const R164_CSS = `
 @media(max-width:360px){.r164-strip{gap:4px}.r164-headblock{flex-basis:42px;min-width:42px}.r164-ma-item{padding:2px 1px}.r164-board .r164-date{font-size:9px}.r169-risk-title{font-size:14px}}
 
 `;
+const R174_CSS = `
+.r174-auto-panel{display:flex;flex-direction:column;justify-content:center;padding:5px 10px;border:1px solid #3cb8c5;border-radius:8px;min-width:0;background:#052d3c}.r174-auto-panel span{font-size:11px;color:#a1c6d5}.r174-auto-panel strong{font-size:14px;color:#48e0c6}
+.r174-small-title{display:flex;align-items:center;justify-content:space-between;gap:7px;margin-bottom:7px}.r174-small-title strong{font-size:14px}.r174-small-title span,.r174-small-title small{font-size:11px;color:#aed4e1}
+.r174-index-compare .r174-index-rows{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px}.r174-index-rows>div{display:flex;flex-direction:column;gap:2px;align-items:center;border-right:1px solid #36677d;min-width:0}.r174-index-rows>div:last-child{border-right:0}.r174-index-rows span{font-size:11px;color:#dcecf3}.r174-index-rows b{font-size:13px;color:#e8faf9}.r174-index-rows small{font-size:10px;text-align:center;line-height:1.3;overflow-wrap:anywhere}.r174-source,.r174-no-feed{display:block;font-size:10px;line-height:1.4;color:#a5bdcd;margin-top:5px}.r174-muted-placeholder{padding:15px;color:#eccb8f;text-align:center;border:1px dashed #4e7589;border-radius:9px}
+.r174-support-alert{border:2px solid #d1a941;background:linear-gradient(150deg,#041929,#112420 62%,#1b1b17)}.r174-warning-cells{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;text-align:center}.r174-warning-cells>div{border:1px solid #36788e;border-radius:8px;padding:7px 3px;min-width:0;background:#09263a}.r174-warning-cells>div:nth-child(2){border-color:#2cc897;background:#062c25}.r174-warning-cells>div:nth-child(3){border-color:#e89644;background:#291f15}.r174-warning-cells>div:nth-child(4){border-color:#dd5974;background:#28171f}.r174-warning-cells small{display:block;font-size:10px;color:#abc7d4}.r174-warning-cells b{display:block;font-size:clamp(11px,2.8vw,15px);overflow-wrap:anywhere;color:#edf5fc}.r174-warning-cells>div:nth-child(2) b{color:#4ee6ac}.r174-warning-cells>div:nth-child(3) b{color:#ffc16e}.r174-warning-cells>div:nth-child(4) b{color:#ff8d9e}.r174-distance{text-align:center;margin:7px 0;font-size:12px}.r174-distance b{color:#f6d079}.r174-warning-bar{height:12px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;overflow:hidden;border-radius:20px;margin-top:9px}.r174-warning-bar i:nth-child(1){background:#26df9a}.r174-warning-bar i:nth-child(2){background:#f6df4e}.r174-warning-bar i:nth-child(3){background:#ff9b44}.r174-warning-bar i:nth-child(4){background:#fc5d83}.r174-band-legend{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;font-size:9px;text-align:center;margin-top:4px;color:#bad4dc}
+.r174-index-extras{display:grid;gap:9px;margin:11px 0 0}.r174-structure-cols,.r174-ma-cols{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}.r174-data-col{display:flex;flex-direction:column;min-width:0;align-items:center;gap:3px;text-align:center}.r174-data-col strong{font-size:clamp(11px,2.6vw,15px)}.r174-data-col em{font-size:10px;font-style:normal;overflow-wrap:anywhere}.r174-data-col small{font-size:10px}.r174-ma-cols{grid-template-columns:repeat(3,minmax(0,1fr));text-align:center}.r174-ma-cols>div{display:flex;flex-direction:column;gap:3px;min-width:0}.r174-ma-cols b{font-size:13px;color:#eef6fb}.r174-ma-cols em{font-size:10px;overflow-wrap:anywhere;font-style:normal}.r174-research h3{font-size:17px;margin:0 0 9px;color:#e6f5f9}.r174-institution-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin:10px 0}.r174-verified-metric{border:1px solid #3c7087;border-radius:10px;text-align:center;padding:8px 4px;display:flex;flex-direction:column;gap:3px;min-width:0}.r174-verified-metric small{font-size:10px;color:#afd0df}.r174-verified-metric b{font-size:clamp(12px,3vw,16px);overflow-wrap:anywhere}.r174-research .visual-tech{border-radius:10px;overflow:hidden}
+.r174-five-tabs{overflow-x:auto;scrollbar-width:none;display:flex!important;gap:3px!important;padding:4px!important}.r174-five-tabs button{flex:0 0 auto!important;white-space:nowrap!important;padding:9px 8px!important;font-size:clamp(10px,2.4vw,13px)!important}.r174-index-extras .r174-warning-cells b{font-size:12px}.r174-index-extras .r174-index-structure{border-color:#2baaca}.r174-index-extras .r174-index-ma{border-color:#238da4}
+@media(max-width:375px){.r174-warning-cells{gap:3px}.r174-warning-cells>div{padding:6px 2px}.r174-warning-cells b{font-size:11px}.r174-index-rows b{font-size:11px}.r174-index-rows small{font-size:9px}.r174-structure-cols{gap:2px}.r174-data-col strong{font-size:11px}.r174-data-col em{font-size:9px}}
+`;
 function r164EnsureStyle(){
  if(typeof document==='undefined'||!document.head||document.getElementById('r164-dashboard-style'))return;
- const s=document.createElement('style');s.id='r164-dashboard-style';s.textContent=R164_CSS;document.head.appendChild(s);
+ const s=document.createElement('style');s.id='r164-dashboard-style';s.textContent=R164_CSS+R174_CSS+R175_CSS;document.head.appendChild(s);
 }
 function r164PriceTick(p){return p<10?.01:p<50?.05:p<100?.1:p<500?.5:p<1000?1:p<5000?5:10;}
 function r164Snap(p,how){
@@ -2513,6 +2522,11 @@ function r164LimitBand(c){
  // reference on ex-rights, no-price-limit, resumed, or special trading days.
  return {up:r164Snap(close*1.1,'down'),down:r164Snap(close*.9,'up'),estimated:true};
 }
+const R175_CSS = `
+.r175-compare{padding:10px 9px!important}.r175-compare .r175-head{margin-bottom:7px}.r175-head .r175-status{font-size:12px;font-weight:700;text-align:right}.r175-compare-daily{display:flex;align-items:center;justify-content:space-between;gap:7px;border-radius:8px;padding:7px 8px;margin-bottom:8px;background:#082a39;border:1px solid #347c8a;font-size:11px;flex-wrap:wrap}.r175-compare-daily b{font-weight:800;font-size:12px}.r175-column-head,.r175-compare-row{display:grid;grid-template-columns:38px minmax(0,1.13fr) minmax(0,1.18fr) minmax(0,0.95fr);gap:3px;align-items:center}.r175-column-head{font-size:9px;color:#8eabbc;text-align:center;margin:4px 0}.r175-compare-row{padding:6px 1px;min-width:0;border-top:1px solid #27566d;line-height:1.3}.r175-ma-id{font-weight:800;font-size:12px;text-align:center;color:#b6eff3}.r175-compare-cell,.r175-ma-result{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-width:0;gap:2px}.r175-compare-cell small{font-size:10px;color:#c0d3e1;overflow-wrap:anywhere}.r175-compare-cell strong{font-size:13px}.r175-compare-cell small.r164-positive{color:#fa8090}.r175-compare-cell small.r164-negative{color:#4fdbb1}.r175-ma-result b{font-size:13px;white-space:nowrap}.r175-ma-result b small{font-size:8px;padding-left:2px}.r175-ma-result span{font-size:9px;color:#cfdfeb;line-height:1.1;text-align:center}
+@media(min-width:480px){.r175-compare{padding:12px 13px!important}.r175-compare-row{grid-template-columns:52px 1.2fr 1.2fr 1fr;gap:8px}.r175-column-head{grid-template-columns:52px 1.2fr 1.2fr 1fr;gap:8px;font-size:11px}.r175-compare-cell strong,.r175-ma-result b{font-size:16px}.r175-ma-id{font-size:15px}.r175-compare-cell small,.r175-ma-result span{font-size:12px}}
+@media(max-width:340px){.r175-compare-row,.r175-column-head{grid-template-columns:33px minmax(0,1fr) minmax(0,1fr) minmax(0,.86fr);gap:1px}.r175-ma-id{font-size:11px}.r175-compare-cell strong,.r175-ma-result b{font-size:11px}.r175-compare-cell small{font-size:9px}.r175-ma-result span{font-size:8px}}
+`;
 function r164Data(c){
  const b=Array.isArray(c?.bars)?c.bars:[],close=numeric(c?.close),asOf=state.payload?.asOf;
  // Historical verified K-lines can still be shown. Staleness only disables
@@ -2643,6 +2657,169 @@ function r164ActionPreview(a,c,data=null){
   <div class="r164-scenario down"><b class="r164-negative">↘ 開低／防守</b><strong class="r164-negative">${r165Value(defense)}</strong><small>${pct(defense)}</small><small>${pnl(defense)}</small></div>
  </div>${riskSub}`;
 }
+/* R174: The stock and TAIEX use the same compact warning grammar.
+   These are historical EOD reference levels, not executable future quotes.
+   Unknown = dash; do not convert missing verified fields into zero. */
+function r174AutoMode(cost,close){
+ if(!Number.isFinite(cost)||cost<=0||!Number.isFinite(close)||close<=0)return '輸入成本後自動判斷';
+ const roi=(close/cost-1)*100;
+ return roi>1?'獲利保護':roi>=-1?'成本保衛':'均線防守';
+}
+function r174Dist(v,close,unit){
+ if(!(Number.isFinite(v)&&v>0&&Number.isFinite(close)&&close>0))return {amount:'—',pct:'—',valid:false};
+ const diff=v-close,pct=diff/close*100;
+ const nf=new Intl.NumberFormat('zh-TW',{maximumFractionDigits:unit==='點'?2:2});
+ return {amount:(diff>0?'+':'')+nf.format(diff)+' '+unit,pct:r164Pct(pct),valid:true};
+}
+function r174Bar(label,point,close,unit,colour,sub=''){
+ const n=Number(point),ok=Number.isFinite(n)&&n>0&&Number.isFinite(close)&&close>0;
+ const d=r174Dist(ok?n:null,close,unit);
+ return `<div class="r174-data-col"><small style="color:${colour}">${esc(label)}</small><strong>${ok?r164Fmt(n):'—'}</strong><em class="${d.valid?r164PctColor(n-close):''}">${d.valid?`${d.amount}｜${d.pct}`:'資料待核對'}</em>${sub?`<small class="r174-hint">${esc(sub)}</small>`:''}</div>`;
+}
+function r174WarnBand(){return `<div class="r174-warning-bar" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="r174-band-legend"><span>安全區</span><span>接近支撐</span><span>跌破支撐</span><span>確認轉弱</span></div>`;}
+/* R175: Compare distance-to-each-own-MA, never stock yuan with index points.
+ * Index series and verified stock bars must have the exact same EOD date.
+ * When stale, show historical readings only, not next-day order triggers. */
+function r175MarketStockModel(c){
+ const stock=r164Data(c);
+ const stockBars=Array.isArray(c?.bars)?c.bars:null;
+ const ix=(c?.market==='上市'&&state.mode!=='demo'&&typeof R166IndexDaily!=='undefined')?R166IndexDaily.get(c.date):null;
+ const isReady=Array.isArray(ix)&&ix.length>=20&&ix.at(-1)?.[0]===c.date&&
+   ix.at(-2)?.[0]<c.date&&ix.slice(-20).every(b=>Array.isArray(b)&&Number.isFinite(Number(b[4]))&&Number(b[4])>0);
+ if(!isReady)return {ok:false,reason:c?.market!=='上市'?'目前只支援上市個股與加權指數；上櫃個股須另接櫃買指數':'大盤同日完整日K尚未入庫，不能推定強弱'};
+ const ic=Number(ix.at(-1)[4]),ip=Number(ix.at(-2)[4]);
+ const stockReady=stock.ok&&stockBars.length>=26&&stockBars.at(-1)[0]===c.date&&stockBars.at(-2)[0]<c.date;
+ const sc=stockReady?stock.close:null,sp=stockReady?Number(stockBars.at(-2)[4]):null;
+ const dayStock=sp>0?(sc/sp-1)*100:null,dayIndex=(ic/ip-1)*100;
+ const delta=dayStock===null?null:dayStock-dayIndex;
+ const rows=[5,10,20].map(n=>{
+  const maIndex=ix.slice(-n).reduce((sum,b)=>sum+Number(b[4]),0)/n;
+  const indexPoint=ic-maIndex,indexPct=indexPoint/maIndex*100;
+  const maStock=stockReady?stock.mas.find(x=>x.n===n)?.today:null;
+  const stockDiff=maStock>0?sc-maStock:null,stockPct=maStock>0?stockDiff/maStock*100:null;
+  const relative=stockPct===null?null:stockPct-indexPct;
+  const signal=relative===null?'個股待核對':relative<-.5?'個股較弱':relative>.5?'個股較強':'接近同步';
+  return {n,maIndex,indexPoint,indexPct,maStock,stockDiff,stockPct,relative,signal};
+ });
+ const belowStock=rows.filter(r=>r.stockPct!==null&&r.stockPct<0).length;
+ const belowIndex=rows.filter(r=>r.indexPct<0).length;
+ let trend='個股資料待核對';
+ if(stockReady){
+  if(belowStock===3&&belowIndex===3)trend='個股／大盤均弱';
+  else if(belowStock>=2&&belowIndex<=1)trend='個股偏弱／大盤較強';
+  else if(belowStock<=1&&belowIndex>=2)trend='個股抗跌／大盤較弱';
+  else if(belowStock===0&&belowIndex===0)trend='個股／大盤均強';
+  else trend='個股／大盤均線分歧';
+ }
+ return {ok:true,stockReady,ic,dayIndex,dayStock,delta,rows,trend,date:c.date,fresh:stock.fresh};
+}
+function r174IndexCompare(c){
+ const m=r175MarketStockModel(c);
+ if(!m.ok)return `<section class="r164-panel r174-index-compare r175-compare" aria-label="個股與大盤均線比對">
+  <div class="r174-small-title"><strong>大盤比對｜${c.market==='上市'?'加權指數':'櫃買指數'}</strong><span>待核對</span></div>
+  <div class="r174-no-feed">${esc(m.reason)}｜MA5／10／20 距離暫不顯示</div>
+ </section>`;
+ const money=v=>Number.isFinite(v)?r164Fmt(v):'—';
+ const signed=(v,unit)=>Number.isFinite(v)?`${v>0?'+':''}${money(v)}${unit}`:'—';
+ const p=v=>Number.isFinite(v)?r164Pct(v):'—';
+ const col=(d)=>d===null?'':r164PctColor(d);
+ const table=m.rows.map(r=>`<div class="r175-compare-row" data-compare-ma="${r.n}">
+   <div class="r175-ma-id">MA${r.n}</div>
+   <div class="r175-compare-cell r175-stock-side"><small>個股 ${money(r.maStock)}元</small><strong class="${col(r.stockPct)}">${p(r.stockPct)}</strong><small class="${col(r.stockDiff)}">${signed(r.stockDiff,'元')}</small></div>
+   <div class="r175-compare-cell r175-index-side"><small>大盤 ${money(r.maIndex)}點</small><strong class="${col(r.indexPct)}">${p(r.indexPct)}</strong><small class="${col(r.indexPoint)}">${signed(r.indexPoint,'點')}</small></div>
+   <div class="r175-ma-result"><b class="${col(r.relative)}">${p(r.relative)}<small>pp</small></b><span>${r.signal}</span></div>
+ </div>`).join('');
+ const dayDiff=m.delta===null?'個股日漲跌待核對':`${m.delta>0?'+':''}${m.delta.toFixed(2)}pp`;
+ const trendColor=/均弱|偏弱/.test(m.trend)?'r164-negative':/均強|抗跌/.test(m.trend)?'r164-positive':'';
+ const label=m.delta===null?'待核對':m.delta<-.15?'日漲跌弱於大盤':m.delta>.15?'日漲跌強於大盤':'日漲跌接近大盤';
+ return `<section class="r164-panel r174-index-compare r175-compare" aria-label="個股與加權指數 MA5 MA10 MA20 比較">
+  <div class="r174-small-title r175-head"><strong>大盤比對｜加權指數</strong><span class="r175-status ${trendColor}">${esc(m.trend)}</span></div>
+  <div class="r175-compare-daily"><span>大盤 ${money(m.ic)}點 <b class="${col(m.dayIndex)}">${p(m.dayIndex)}</b></span><span>${label} <b class="${col(m.delta)}">${dayDiff}</b></span></div>
+  <div class="r175-column-head"><span>均線</span><span>個股：元／距MA</span><span>大盤：點／距MA</span><span>差距／強弱</span></div>
+  <div class="r175-compare-rows">${table}</div>
+  <small class="r174-source">${esc(m.date)}${m.fresh?' 同日盤後':' 歷史盤後'}｜個股與大盤各算自己的均線距離；兩者差距以百分點(pp)比較，不混算元與指數點；均弱／均強指與均線相對位置，不代表完整趨勢</small>
+ </section>`;
+}
+function r174StockSupportAlert(c,data){
+ const close=numeric(c?.close),support=data.ok?numeric(supportLines(c)[0]?.lower):null;
+ const good=Number.isFinite(support)&&support>0&&Number.isFinite(close)&&close>0;
+ const dist=r174Dist(support,close,'元');
+ const gap=good?100*(support/close-1):null;
+ const phase=!good?'待核對':close<support?'跌破支撐，待確認':Math.abs(gap)<=1?'接近支撐':'尚距支撐';
+ return `<section class="r164-panel r174-support-alert" aria-label="個股支撐預警">
+  <div class="r174-small-title"><strong>⚠ ${esc(c.code)} 個股｜支撐預警</strong><small>依盤後條件計算</small></div>
+  <div class="r174-warning-cells">
+   <div><small>現價</small><b>${Number.isFinite(close)?r164Fmt(close):'—'}</b></div>
+   <div><small>支撐</small><b>${good?r164Fmt(support):'—'}</b></div>
+   <div><small>跌破</small><b>${good&&close<support?'收盤跌破':'待確認'}</b></div>
+   <div><small>轉弱</small><b>${good&&close<support?'待量價核對':'待確認'}</b></div>
+  </div>
+  <div class="r174-distance">距支撐　<b>${good?`${dist.amount}｜${dist.pct}`:'資料待核對'}</b></div>
+  ${r174WarnBand()}<div class="r174-source">${esc(phase)}｜收盤跌破後仍須以歷史支撐、量價與均線確認，非自動委託</div>
+ </section>`;
+}
+function r174InstitutionPanel(c){
+ const ins=c?.institutional,asOf=c?.date;
+ const valid=ins&&ins.date===asOf&&['foreignNetShares','trustNetShares','dealerNetShares'].every(k=>Number.isFinite(Number(ins[k]))&&ins[k]!==null&&ins[k]!==undefined);
+ const row=(label,val)=>`<div class="r174-verified-metric"><small>${label}</small><b class="${r164PctColor(val)}">${val>0?'+':''}${r164Fmt(Math.round(val/1000))} 張</b></div>`;
+ return `<section class="r164-board r174-research"><h3>法人動向</h3><div class="r174-source">${esc(asOf||'日期未知')}｜${valid?'同日已取得欄位（仍須核對來源）':'同日法人資料待核對，不補零'}</div>
+ ${valid?`<div class="r174-institution-grid">${row('外資',Number(ins.foreignNetShares))}${row('投信',Number(ins.trustNetShares))}${row('自營商',Number(ins.dealerNetShares))}</div>`:'<div class="r174-muted-placeholder">法人買賣超暫無可核對資料</div>'}
+ <small class="r174-source">法人資料不得因缺失而寫成買超／賣超0，也不單獨當作主力出貨或減碼依據</small></section>`;
+}
+function r174TechnicalPanel(c){
+ const bs=c?.bars||[],valid=bs.length>=26&&bs.at(-1)?.[0]===c.date&&bs.slice(-26).every(x=>r129ValidCandle(x));
+ return `<section class="r164-board r174-research"><h3>技術指標</h3>
+ ${valid?technicalVisual(c):'<div class="r174-muted-placeholder">歷史日 K 尚未通過核對或少於26根，技術指標暫不計算</div>'}
+ <small class="r174-source">以完成的歷史日K計算；需足夠根數，與有無官方現成技術指標不同</small></section>`;
+}
+function r174LargeKPanel(c){
+ const close=numeric(c?.close),neck=numeric(latestNeck(c)),keyDate=c?.structureV23?.primaryNecklineEvidence?.priceAnchorDate||c?.neckDate;
+ const good=Number.isFinite(neck)&&neck>0&&typeof keyDate==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(keyDate);
+ const d=r174Dist(good?neck:null,close,'元');
+ const oldDate=c?.oldMaxDate,oldLots=numeric(c?.oldMaxLots),verifiedOld=typeof oldDate==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(oldDate)&&oldLots!==null&&oldLots>0;
+ return `<section class="r164-board r174-research"><h3>歷史大量K</h3><div class="r174-institution-grid"><div class="r174-verified-metric"><small>歷史頸線</small><b>${good?r164Fmt(neck):'—'}</b><small>${good?esc(keyDate):'來源待核對'}</small></div><div class="r174-verified-metric"><small>距頸線</small><b>${good?d.amount:'—'}</b><small>${good?d.pct:'待核對'}</small></div><div class="r174-verified-metric"><small>歷史最大量</small><b>${verifiedOld?r164Fmt(oldLots)+' 張':'—'}</b><small>${verifiedOld?esc(oldDate):'來源待核對'}</small></div></div>
+ <small class="r174-source">歷史大量K不等於最新買點；缺頸線錨點或歷史量時不顯示推測價位</small></section>`;
+}
+function r174IndexExtras(bars){
+ const last=bars?.at(-1),close=last?.close;
+ if(!last||!(close>0)||bars.length<20)return '<div class="r174-no-feed">加權指數歷史不足，關鍵價位待核對</div>';
+ const ma=n=>bars.slice(-n).reduce((sum,b)=>sum+b.close,0)/n;
+ const mean5=ma(5),mean10=ma(10),mean20=ma(20);
+ // Recent session low is a warning reference only, not a confirmed major support.
+ const floor=Math.min(...bars.slice(-20).map(b=>b.low));
+ const above=[mean5,mean10,mean20].filter(v=>v>close).sort((a,b)=>a-b);
+ const pressure=above[0]??null;
+ // Candidate structural neckline only if two separated verified historical pivot highs
+ // retest a similar price. Otherwise leave it blank; MA is NOT a neckline.
+ const prior=bars.slice(-61,-1),pivots=[];
+ for(let i=2;i<prior.length-2;i++){
+  const high=prior[i].high;
+  if(high>prior[i-1].high&&high>=prior[i+1].high&&high>=prior[i-2].high&&high>=prior[i+2].high)pivots.push({i,high});
+ }
+ let neck=null;
+ for(let i=pivots.length-1;i>0&&neck===null;i--){
+  const a=pivots[i];if(a.high<=close*1.005)continue;
+  for(let j=i-1;j>=0;j--){
+   const b=pivots[j];
+   if(a.i-b.i>=5&&Math.abs(a.high-b.high)/Math.min(a.high,b.high)<=.015){neck=Math.min(a.high,b.high);break;}
+  }
+ }
+ // Breakout observation is the nearest confirmed pivot overhead above the
+ // candidate neckline; a missing pivot must remain unconfirmed.
+ const breakout=neck===null?null:(pivots.filter(x=>x.high>neck*1.01).sort((a,b)=>a.high-b.high)[0]?.high??null);
+ const gap=r174Dist(floor,close,'點');
+ const phase=close<floor?'收盤跌破':Math.abs((floor/close-1)*100)<=1?'接近支撐':'尚距支撐';
+ const cells=[['現價',close],['近期低點',floor],['跌破',null],['轉弱',null]].map(([k,v])=>`<div><small>${k}</small><b>${v!==null?r164Fmt(v):'待確認'}</b></div>`).join('');
+ const maRow=(n,v)=>{const d=r174Dist(v,close,'點');return `<div><small>MA${n}</small><b>${r164Fmt(v)}</b><em class="${r164PctColor(close-v)}">距離 ${r164Fmt(close-v)}點｜${r164Pct((close/v-1)*100)}</em></div>`};
+ return `<section class="r174-index-extras" aria-label="加權指數技術價位與預警">
+  <div class="r164-panel r174-support-alert"><div class="r174-small-title"><strong>⚠ 加權指數｜支撐預警</strong><small>${esc(last.date)} 盤後</small></div><div class="r174-warning-cells">${cells}</div><div class="r174-distance">距近期低點　<b>${gap.amount}｜${gap.pct}</b></div>${r174WarnBand()}<div class="r174-source">${phase}｜近期低點 ≠ 已確認結構支撐；有效跌破與轉弱須收盤及量價核對</div></div>
+  <div class="r164-panel r174-index-structure"><div class="r174-small-title"><strong>關鍵價位｜技術結構</strong><small>歷史參考</small></div><div class="r174-structure-cols">
+  ${r174Bar('低點參考',floor,close,'點','#37dfa8')}${r174Bar('頸線',neck,close,'點','#f2cf66')}${r174Bar('均線壓力',pressure,close,'點','#ff7886')}${r174Bar('突破',breakout,close,'點','#d6a1f7')}
+ </div>${r174WarnBand()}<small class="r174-source">頸線／突破依歷史轉折候選推算；不是已認證買點，無轉折時留空</small></div>
+  <div class="r164-panel r174-index-ma"><div class="r174-small-title"><strong>均線趨勢｜大盤</strong><span class="${r164PctColor(close-mean5)}">${close<mean5&&close<mean10&&close<mean20?'空頭警戒':'歷史比較'}</span></div><div class="r174-ma-cols">${maRow(5,mean5)}${maRow(10,mean10)}${maRow(20,mean20)}</div></div>
+ </section>`;
+}
+
 function nextSessionDefenseCard(c){
  r164EnsureStyle();
  const code=String(c?.code||''),key='chaopan-r82-cost-'+code,
@@ -2658,12 +2835,13 @@ function nextSessionDefenseCard(c){
  const plan=r99Action(c,cost===''?NaN:Number(cost),qty===''?NaN:Number(qty),mode);
  const priceLimits=data.fresh?r164LimitBand(c):null;
  return `<section class="r82-decision r91-decision r164-board r165-reference" data-code="${esc(code)}" aria-label="明日持股操作原圖版圖形模組">
- <div class="r164-h"><strong>明日持股操作</strong><span class="r164-date">${esc(c?.date||'日期待核對')} 盤後 · R171</span></div>
+ <div class="r164-h"><strong>明日持股操作</strong><span class="r164-date">${esc(c?.date||'日期待核對')} 盤後 · R175</span></div>
  <div class="r164-controls">
   <label>持有週期<select class="r92-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></label>
-  <label>策略模式<select class="r164-strategy"><option value="trend">均線防守</option><option value="protect">獲利保護</option></select></label>
+  <div class="r174-auto-panel"><span>自動策略</span><strong class="r174-auto-mode" aria-live="polite">輸入成本後自動判斷</strong></div>
  </div>
  ${r164MABox(c,data)}
+ ${r174IndexCompare(c)}
  <section class="r164-panel r164-position"><div class="r164-inputs">
   <label>成本（元）<input class="r82-cost-input" type="number" inputmode="decimal" min="0" step="any" value="${esc(cost)}" placeholder="成本" /></label>
   <label>股數（股）<input class="r91-qty-input" type="number" inputmode="numeric" min="1" step="1" value="${esc(qty)}" placeholder="股數" /></label>
@@ -2671,20 +2849,22 @@ function nextSessionDefenseCard(c){
  <section class="r164-panel r164-action-preview"><div class="r164-quick-action">${r164ActionPreview(plan,c,data)}</div></section>
  ${r164DefenseBox(c,data)}
  ${r164KeyBox(c,data)}
+ ${r174StockSupportAlert(c,data)}
  <div class="r164-price-limit">${priceLimits?`<span>漲幅參考 <b class="r164-positive">${r164Fmt(priceLimits.up)} (${r164Pct(100*(priceLimits.up/data.close-1))})</b></span><span>跌幅參考 <b class="r164-negative">${r164Fmt(priceLimits.down)} (${r164Pct(100*(priceLimits.down/data.close-1))})</b></span>`:'<span>特殊／非最新交易日：漲跌停價格待交易所核對</span>'}</div>
  <div class="r164-mini-note">價格是盤後條件參考 · 非觸價委託或自動下單 · 判斷規則維持原版</div>
  </section>`;
 }
 function r82BindCost(card,c){
- const input=card.querySelector('.r82-cost-input'),qtyInput=card.querySelector('.r91-qty-input'),pnl=card.querySelector('.r91-pnl'),modeInput=card.querySelector('.r92-mode'),strategy=card.querySelector('.r164-strategy'),quick=card.querySelector('.r164-quick-action');
+ const input=card.querySelector('.r82-cost-input'),qtyInput=card.querySelector('.r91-qty-input'),pnl=card.querySelector('.r91-pnl'),modeInput=card.querySelector('.r92-mode'),auto=card.querySelector('.r174-auto-mode'),quick=card.querySelector('.r164-quick-action');
  if(!input||!qtyInput||!pnl||!quick)return;
  const key='chaopan-r82-cost-'+String(c.code||''),qtyKey='chaopan-r91-qty-'+String(c.code||''),modeKey='chaopan-r92-mode-'+String(c.code||'');
  const update=()=>{
   const cost=input.value.trim()===''?NaN:Number(input.value),qty=qtyInput.value.trim()===''?NaN:Number(qtyInput.value),mode=modeInput?.value||'medium';
   const a=r99Action(c,cost,qty,mode);
   quick.innerHTML=r164ActionPreview(a,c,r164Data(c));pnl.innerHTML=r164PnlHTML(cost,qty,numeric(c.close));
-  const protect=strategy?.value==='protect';
-  (card.querySelector('.r164-board')||card).classList.toggle('r164-protect-mode',protect);
+  const strategyName=r174AutoMode(cost,numeric(c.close));
+  if(auto)auto.textContent=strategyName;
+  (card.querySelector('.r164-board')||card).classList.toggle('r164-protect-mode',strategyName==='獲利保護');
   try{
    if(Number.isFinite(cost)&&cost>0)localStorage.setItem(key,String(cost));else localStorage.removeItem(key);
    if(Number.isSafeInteger(qty)&&qty>0&&qty<=1e8)localStorage.setItem(qtyKey,String(qty));else localStorage.removeItem(qtyKey);
@@ -2692,7 +2872,7 @@ function r82BindCost(card,c){
   }catch(e){}
  };
  input.addEventListener('input',update);qtyInput.addEventListener('input',update);
- modeInput?.addEventListener('change',update);strategy?.addEventListener('change',update);update();
+ modeInput?.addEventListener('change',update);update();
 }
 
 function defenseHistory(bars, maxBars=60){
@@ -2724,7 +2904,8 @@ function arrangeR41Detail(c){
  const root=$('#modalContent'),chart=root.querySelector(':scope > .chart-area');
  if(!chart)return;
  const summary=document.createElement('section'),card=document.createElement('section'),graph=document.createElement('section');
- const sections={summary,card,chart:graph};
+ const institution=document.createElement('section'),technical=document.createElement('section'),large=document.createElement('section');
+ const sections={summary,card,chart:graph,institution,technical,large};
  for(const [name,element] of Object.entries(sections)){
   element.className='r41-detail-page'+(name==='summary'?' r164-overview':'');element.dataset.r41Page=name;
   element.setAttribute('role','tabpanel');element.id='r41-page-'+name;
@@ -2747,7 +2928,7 @@ function arrangeR41Detail(c){
   const ch=numeric(c.changePct),quoteClass=r164PctColor(ch);
   head.classList.add('r164-detail-heading');
   const industryLabel=String(c.industry||c.fundamentals?.industry||'').trim();
-  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R171</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
+  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R175</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
  }
  // Use the actual existing summary evaluation; remove its duplicate action tab.
  // R165: old long-form sector battle/action text card is NOT rendered.
@@ -2758,10 +2939,13 @@ function arrangeR41Detail(c){
  card.innerHTML=nextSessionDefenseCard(c);
  r82BindCost(card,c);
  state.r41Advanced={code:c.code,date:c.date,html:advanced.join('')};
- const tabs=document.createElement('nav');tabs.className='r41-detail-tabs r164-detail-tabs';tabs.setAttribute('aria-label','個股主要分頁');tabs.setAttribute('role','tablist');
- tabs.innerHTML=[['summary','速覽'],['card','明日持股操作'],['chart','走勢圖']].map(([id,label])=>`<button type="button" role="tab" aria-controls="r41-page-${id}" data-r41-tab="${id}">${label}</button>`).join('');
+ institution.innerHTML=r174InstitutionPanel(c);
+ technical.innerHTML=r174TechnicalPanel(c);
+ large.innerHTML=r174LargeKPanel(c);
+ const tabs=document.createElement('nav');tabs.className='r41-detail-tabs r164-detail-tabs r174-five-tabs';tabs.setAttribute('aria-label','個股主要分頁');tabs.setAttribute('role','tablist');
+ tabs.innerHTML=[['card','明日持股操作'],['chart','K線分析'],['institution','法人動向'],['technical','技術指標'],['large','歷史大量K']].map(([id,label])=>`<button type="button" role="tab" aria-controls="r41-page-${id}" data-r41-tab="${id}">${label}</button>`).join('');
  tabs.style.position='relative';tabs.style.top='auto';tabs.style.zIndex='1';
- root.append(tabs,summary,card,graph);
+ root.append(tabs,card,graph,institution,technical,large);
  function setPage(name){
   if(!sections[name])return;state.r41Page=name;
   for(const [id,el] of Object.entries(sections)){el.hidden=id!==name;el.setAttribute('aria-hidden',String(id!==name));}
@@ -2773,9 +2957,9 @@ function arrangeR41Detail(c){
  tabs.querySelectorAll('button').forEach(b=>{
   b.onclick=()=>setPage(b.dataset.r41Tab);
   b.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight'].includes(e.key))return;
-   e.preventDefault();const ids=['summary','card','chart'],next=ids[(Math.max(0,ids.indexOf(state.r41Page))+(e.key==='ArrowRight'?1:ids.length-1))%ids.length];setPage(next);tabs.querySelector(`[data-r41-tab="${next}"]`).focus();});
+   e.preventDefault();const ids=['card','chart','institution','technical','large'],next=ids[(Math.max(0,ids.indexOf(state.r41Page))+(e.key==='ArrowRight'?1:ids.length-1))%ids.length];setPage(next);tabs.querySelector(`[data-r41-tab="${next}"]`).focus();});
  });
- setPage(['summary','card','chart'].includes(state.r41Page)?state.r41Page:'card');
+ setPage(['card','chart','institution','technical','large'].includes(state.r41Page)?state.r41Page:'card');
  // R167: The market tile is an actual accessible shortcut to the index K.
  // Keep the chart and its data-status placeholder in the same tab. No fake prices.
  card.querySelectorAll('.r167-index-open').forEach(button=>{
@@ -4046,7 +4230,7 @@ const R168HomeIndex=(()=>{
   @media(max-width:410px){.r171-toolbar button{padding:6px 8px;font-size:12px}.r171-inspector{font-size:12px}#r168-index-panel{padding:10px}}
 
   @media(max-width:360px){#r168-index-panel{padding:10px}.r168-ohlc{gap:3px;font-size:11px}.r168-ohlc b{font-size:12px}.r168-head strong{font-size:18px}}
-  `;document.head.appendChild(style);
+  `;style.textContent+=R174_CSS;document.head.appendChild(style);
  }
  function findCard(){
   // Match exactly the homepage index label; never the stock's 大盤K tile.
@@ -4099,7 +4283,7 @@ const R168HomeIndex=(()=>{
   const svg=makeChart(historyMatrix,null,currentDays,[],[],null,asOf.date,{indexMode:true,noVolume:!verifiedVolume});
   const latestSelectedMA=[5,10,20].map(n=>maAt(end-1,n));
   const dateMatch=!state?.payload?.asOf||realLast.date===state.payload.asOf;
-  result.innerHTML=`<div class="r168-result r171-chart" data-r171-version="R171">
+  result.innerHTML=`<div class="r168-result r171-chart" data-r171-version="R174">
    <div class="r168-date">${realLast.date} 盤後｜${dateMatch?'大盤與個股盤後日期一致':'大盤與個股盤後日期不同，只看各自歷史'}</div>
    <div style="font-size:23px;font-weight:800;margin:4px 0">${fmt(realLast.close)} <span style="font-size:16px;color:${tone}">${diff>0?'+':''}${diff.toFixed(2)}%</span></div>
    <div class="r171-toolbar" role="group" aria-label="加權K線操控">
@@ -4110,6 +4294,7 @@ const R168HomeIndex=(()=>{
    </div>
    <div class="r171-inspector" role="status" aria-live="polite" data-r171-inspector>點選K棒可查看單日開高低收</div>
    <div class="r171-viewport ${showFib?'':'r171-hidden-fib'} ${showRange?'':'r171-hidden-range'} ${showGaps?'':'r171-hidden-gaps'}" data-r171-viewport aria-label="可左右滑動的完整加權指數K線">${svg}</div>
+   ${r174IndexExtras(bars)}
    <div class="r171-tip">${shown.length}根日K｜左右滑動查看；前段／後段瀏覽歷史；點K棒看價量｜${verifiedVolume?'官方成交量':'成交量尚未核實'}</div>
    <div class="r168-ma"><span style="color:#ffd36e">MA5 ${latestSelectedMA[0]===null?'—':fmt(latestSelectedMA[0])}</span><span style="color:#8dafff">MA10 ${latestSelectedMA[1]===null?'—':fmt(latestSelectedMA[1])}</span><span style="color:#eaa8ec">MA20 ${latestSelectedMA[2]===null?'—':fmt(latestSelectedMA[2])}</span></div>
    <div class="r171-chart-legend"><span style="color:#ff777f">■ 上漲</span><span style="color:#3bd1b4">■ 下跌</span><span style="color:#ffd36e">━ MA5</span><span style="color:#8dafff">━ MA10</span><span style="color:#eaa8ec">━ MA20</span></div>
@@ -4810,8 +4995,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R172-20261120-compact-index-chart';
- const BUILD_LABEL='r172 · 大盤K線與個股同尺寸';
+ const BUILD_ID='R175-20261122-stock-index-ma-compare';
+ const BUILD_LABEL='r175 · 個股／大盤MA5·10·20比對';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  // R161: The static index.html has kept r50/r60-era labels even after

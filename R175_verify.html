@@ -1,0 +1,17 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>超盤手 RADAR｜R175 個股／大盤同日MA對照驗證</title><style>body{margin:0;background:#071927;color:#e8f4fa;font:14px/1.65 system-ui,'Noto Sans TC',sans-serif}main{max-width:720px;padding:16px;margin:auto}h1{font-size:23px}section{background:#0f283b;border:1px solid #3e839b;border-radius:12px;padding:13px;margin:12px 0}b{color:#e9f9fc}.good{color:#53e2af}.bad{color:#ff8992}.warn{color:#ffd47f}small{color:#b2cbd7}a{color:#66dfec;overflow-wrap:anywhere}code{overflow-wrap:anywhere}</style></head><body><main><h1>超盤手 RADAR｜R175</h1><p>本頁只檢查版本、元件與資料日期，不代替盤後交易判斷。</p><section id="check">正在讀取正式網站程式……</section><section><b>預期畫面（個股）</b><p>明日持股操作｜K線分析｜法人動向｜技術指標｜歷史大量K</p><p>成本(元)、股數(股)可輸入；策略由成本與收盤自動顯示；保留風險減碼、MA5防守帶、支撐／頸線／壓力／突破，更新同日大盤與個股 MA5／10／20 的均線值（個股元／指數點）、各自距均線元點及％、相對差距pp和雙弱／雙強判斷；保留支撐預警。</p><b>預期畫面（加權指數）</b><p>維持同個股的K線繪圖引擎，圖下有支撐預警、關鍵價位及MA5／10／20距離，缺乏可靠轉折時不顯示虛構頸線。</p></section><section id="data">正在核對正式資料日期……</section><p><a href="./">返回超盤手</a> · <a href="https://github.com/love18960928-lgtm/chaopan-radar/actions">GitHub Actions</a></p></main><script>
+const safe=s=>String(s??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
+const line=(ok,title,detail)=>`<p class="${ok===true?'good':ok===false?'bad':'warn'}"><b>${ok===true?'✓':ok===false?'✕':'!'} ${safe(title)}</b><br><small>${safe(detail)}</small></p>`;
+(async()=>{
+let t='';try{
+ const resp=await fetch('./app-detail-swipe-v222.js?audit='+Date.now(),{cache:'no-store'});if(!resp.ok)throw Error('HTTP '+resp.status);
+ const js=await resp.text();
+ t+=line(js.includes('CHAOPAN_RADAR_BUILD: R175-20261122-stock-index-ma-compare'),'R175 版號',js.slice(0,100));
+ for(const [label,str] of Object.entries({'成本／股數輸入':'r82-cost-input','自動判斷策略':'r174AutoMode','個股大盤同日均線距離':'r175MarketStockModel','個股與大盤各算自有MA':'r175-compare-row','同日與缺資料防呆':'stockReady&&stockBars.length','個股支撐預警':'r174StockSupportAlert','加權指數支撐與關鍵價位':'r174IndexExtras','K線分析分頁':"['chart','K線分析']",'法人動向分頁':"['institution','法人動向']",'技術指標分頁':"['technical','技術指標']",'歷史大量K分頁':"['large','歷史大量K']",'原本風險減碼引擎':'function r99Action('}))t+=line(js.includes(str),label,js.includes(str)?'程式包含此模組':'尚未載入R175檔案');
+ }catch(err){t=line(false,'主程式讀取失敗',String(err.message||err));}
+ document.querySelector('#check').innerHTML=t;
+ const jobs=[['個股主資料','./data/radar.json'],['全市場資料','./data/universe.json'],['加權指數日K','./data/taiex-daily.json']];let txt='';let dates={};
+ for(const [name,path] of jobs){try{const r=await fetch(path+'?audit='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();const day=d.asOf||d.tradingDate||'未知';dates[name]=day;txt+=line(Boolean(day&&day!=='未知'),name,'資料日期：'+day);}catch(e){txt+=line(false,name,String(e.message||e));}}
+ if(dates['個股主資料']&&dates['全市場資料'])txt+=line(dates['個股主資料']===dates['全市場資料'],'個股市場日期一致','radar / universe 必須同交易日');
+ document.querySelector('#data').innerHTML=txt;
+})();
+</script></body></html>
