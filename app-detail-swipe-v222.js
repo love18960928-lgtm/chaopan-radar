@@ -5068,7 +5068,7 @@ document.addEventListener('click',function(e){
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
  const BUILD_ID='R176-20261122-stock-index-ma-compare';
- const BUILD_LABEL='r175 · 個股／大盤MA5·10·20比對';
+ const BUILD_LABEL='r176 · 單頁整合版';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  // R161: The static index.html has kept r50/r60-era labels even after
