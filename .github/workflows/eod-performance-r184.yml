@@ -1,0 +1,71 @@
+name: R184 盤後效能診斷（不發布）
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'snapshot：離線策略運算；collector：完整收集效能（不提交）'
+        type: choice
+        options:
+          - snapshot
+          - collector
+        default: snapshot
+permissions:
+  contents: read
+concurrency:
+  group: eod-radar-r184-performance-diagnostic
+  cancel-in-progress: false
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Profile actual main branch code (no push)
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          python -u - <<'PY'
+          import cProfile, json, os, pathlib, pstats, sys, time, runpy, io
+          root = pathlib.Path.cwd()
+          sys.path.insert(0, str(root / 'scripts'))
+          mode = os.environ.get('MODE', 'snapshot')
+          if mode not in ('snapshot', 'collector'):
+              raise ValueError('Invalid mode')
+          if mode == 'snapshot':
+              from rules import build_snapshot
+              t = time.perf_counter()
+              raw = json.loads((root / 'storage/history.json').read_text(encoding='utf-8'))
+              stocks = {s['market'] + s['code']: s for s in raw['stocks']}
+              if not stocks:
+                  raise ValueError('No existing history; cannot benchmark')
+              print(f'History load: {time.perf_counter()-t:.3f}s, stocks={len(stocks)}, bars={sum(len(s.get("bars", [])) for s in stocks.values())}', flush=True)
+              def work():
+                  out = build_snapshot(stocks)
+                  print('Snapshot result:', {k: out.get(k) for k in ('asOf','eligibleCount','candidateCount')}, flush=True)
+          else:
+              def work():
+                  sys.argv = ['scripts/collector.py', '--backfill', '0', '--delay', '1.1']
+                  runpy.run_path(str(root / 'scripts/collector.py'), run_name='__main__')
+          p = cProfile.Profile()
+          t = time.perf_counter()
+          try:
+              p.runcall(work)
+          finally:
+              elapsed = time.perf_counter()-t
+              buf = io.StringIO()
+              print(f'R184 mode={mode}; profiled wall time={elapsed:.3f}s', file=buf)
+              stats = pstats.Stats(p, stream=buf).strip_dirs()
+              stats.sort_stats('cumulative').print_stats(25)
+              stats.sort_stats('tottime').print_stats(25)
+              stats.sort_stats('cumulative').print_stats(r'build_snapshot|score_company|atomic_json|enrich_financials|fetch_market')
+              result = buf.getvalue()
+              print(result, flush=True)
+              if os.environ.get('GITHUB_STEP_SUMMARY'):
+                  with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as f:
+                      f.write('## R184 performance profile (not published)\n\n```text\n' + result + '\n```\n')
+          PY
