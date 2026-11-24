@@ -56,11 +56,30 @@ class TestETFData(unittest.TestCase):
   import datetime
   with self.assertRaisesRegex(RuntimeError,'不發布空資料'):
    etf.make_payload(['00406A'],1,datetime.date(2026,11,24),0,lambda _: {'stat':'沒有符合條件的資料','data':[]})
- def test_seed_official_one_day_only(self):
-  seed=json.loads((HERE/'data/etf-daily.json').read_text(encoding='utf-8'))
-  self.assertEqual(seed['asOf'],'2026-11-23')
-  self.assertEqual(seed['rows'][0]['code'],'00406A')
-  self.assertEqual(seed['rows'][0]['bars'][0][4],6.16)
-  self.assertEqual(len(seed['rows'][0]['bars']),1)
+ def test_published_etf_file_is_valid_when_present(self):
+  # The stock EOD workflow may run before the *independent* ETF feed exists.
+  # Validate the ETF feed when published, without blocking ordinary stocks.
+  path=HERE.parent/'data'/'etf-daily.json'
+  if not path.is_file():
+   self.skipTest('ETF independent data feed has not been published yet')
+  payload=json.loads(path.read_text(encoding='utf-8'))
+  self.assertEqual(payload.get('schema'),1)
+  self.assertEqual(payload.get('kind'),'etf-official-eod')
+  rows=payload.get('rows',[])
+  self.assertIsInstance(rows,list)
+  self.assertTrue(rows,'A published ETF feed cannot be empty')
+  latest=[]
+  for row in rows:
+   bars=row.get('bars',[])
+   self.assertTrue(bars,f"{row.get('code')} has no verified price bars")
+   self.assertTrue(all(len(b)==6 and isinstance(b[0],str) for b in bars))
+   dates=[b[0] for b in bars]
+   self.assertEqual(dates,sorted(set(dates)))
+   self.assertEqual(row.get('latestDate'),dates[-1])
+   self.assertEqual(row.get('barCount'),len(bars))
+   self.assertAlmostEqual(float(row.get('close')),float(bars[-1][4]),places=6)
+   latest.append(dates[-1])
+  self.assertEqual(payload.get('asOf'),max(latest))
+
 
 if __name__=='__main__':unittest.main()
