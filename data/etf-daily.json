@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "etf-official-eod",
-  "asOf": "2026-11-23",
+  "asOf": "2026-11-24",
   "source": "TWSE STOCK_DAY official monthly EOD",
   "note": "ETF獨立行情；配息、法人、淨值未接入不填零。日K價為未還原歷史，不是報酬率。",
   "rows": [
@@ -12,10 +12,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=00406A&response=json",
-      "latestDate": "2026-11-23",
-      "close": 6.16,
-      "changeAmount": 0.29,
-      "changePct": 4.9404,
+      "latestDate": "2026-11-24",
+      "close": 6.67,
+      "changeAmount": 0.51,
+      "changePct": 8.2792,
       "bars": [
         [
           "2026-06-11",
@@ -904,14 +904,32 @@
           5.7,
           6.16,
           1224087559
+        ],
+        [
+          "2026-11-24",
+          6.77,
+          6.77,
+          6.6,
+          6.67,
+          2060938298
         ]
       ],
-      "barCount": 111,
+      "barCount": 112,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
-      "institutional": null
+      "institutional": {
+        "date": "2026-11-24",
+        "source": "TWSE T86",
+        "unit": "shares",
+        "foreignNetShares": -112164856,
+        "trustNetShares": 0,
+        "dealerNetShares": -1411840672,
+        "dealerOwnNetShares": -396000,
+        "dealerHedgeNetShares": -1411444672,
+        "totalNetShares": -1524005528
+      }
     },
     {
       "code": "0050",
@@ -920,10 +938,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=0050&response=json",
-      "latestDate": "2026-11-23",
-      "close": 87.0,
-      "changeAmount": 2.55,
-      "changePct": 3.0195,
+      "latestDate": "2026-11-24",
+      "close": 95.7,
+      "changeAmount": 8.7,
+      "changePct": 10.0,
       "bars": [
         [
           "2026-03-02",
@@ -2372,14 +2390,32 @@
           83.5,
           87.0,
           510651850
+        ],
+        [
+          "2026-11-24",
+          95.7,
+          95.7,
+          95.7,
+          95.7,
+          55100953
         ]
       ],
-      "barCount": 181,
+      "barCount": 182,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
-      "institutional": null
+      "institutional": {
+        "date": "2026-11-24",
+        "source": "TWSE T86",
+        "unit": "shares",
+        "foreignNetShares": -4135779,
+        "trustNetShares": 0,
+        "dealerNetShares": 1564036,
+        "dealerOwnNetShares": 1872000,
+        "dealerHedgeNetShares": -307964,
+        "totalNetShares": -2571743
+      }
     },
     {
       "code": "0056",
@@ -2388,10 +2424,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=0056&response=json",
-      "latestDate": "2026-11-23",
-      "close": 45.4,
-      "changeAmount": 1.09,
-      "changePct": 2.4599,
+      "latestDate": "2026-11-24",
+      "close": 49.94,
+      "changeAmount": 4.54,
+      "changePct": 10.0,
       "bars": [
         [
           "2026-03-02",
@@ -3840,14 +3876,32 @@
           43.9,
           45.4,
           106880007
+        ],
+        [
+          "2026-11-24",
+          49.94,
+          49.94,
+          49.84,
+          49.94,
+          71057303
         ]
       ],
-      "barCount": 181,
+      "barCount": 182,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
-      "institutional": null
+      "institutional": {
+        "date": "2026-11-24",
+        "source": "TWSE T86",
+        "unit": "shares",
+        "foreignNetShares": -611273,
+        "trustNetShares": 946000,
+        "dealerNetShares": -46493646,
+        "dealerOwnNetShares": -687646,
+        "dealerHedgeNetShares": -45806000,
+        "totalNetShares": -46158919
+      }
     },
     {
       "code": "006208",
@@ -3856,10 +3910,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=006208&response=json",
-      "latestDate": "2026-11-23",
-      "close": 195.55,
-      "changeAmount": 5.75,
-      "changePct": 3.0295,
+      "latestDate": "2026-11-24",
+      "close": 215.1,
+      "changeAmount": 19.55,
+      "changePct": 9.9974,
       "bars": [
         [
           "2026-03-02",
@@ -5308,14 +5362,32 @@
           188.75,
           195.55,
           10310959
+        ],
+        [
+          "2026-11-24",
+          215.1,
+          215.1,
+          213.5,
+          215.1,
+          8388110
         ]
       ],
-      "barCount": 181,
+      "barCount": 182,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
-      "institutional": null
+      "institutional": {
+        "date": "2026-11-24",
+        "source": "TWSE T86",
+        "unit": "shares",
+        "foreignNetShares": 304813,
+        "trustNetShares": 0,
+        "dealerNetShares": -6210982,
+        "dealerOwnNetShares": 999018,
+        "dealerHedgeNetShares": -7210000,
+        "totalNetShares": -5906169
+      }
     },
     {
       "code": "00878",
@@ -5324,10 +5396,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=00878&response=json",
-      "latestDate": "2026-11-23",
-      "close": 28.05,
-      "changeAmount": 0.02,
-      "changePct": 0.0714,
+      "latestDate": "2026-11-24",
+      "close": 30.81,
+      "changeAmount": 2.76,
+      "changePct": 9.8396,
       "bars": [
         [
           "2026-03-02",
@@ -6776,14 +6848,32 @@
           27.51,
           28.05,
           107900124
+        ],
+        [
+          "2026-11-24",
+          30.85,
+          30.85,
+          30.7,
+          30.81,
+          97227817
         ]
       ],
-      "barCount": 181,
+      "barCount": 182,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
-      "institutional": null
+      "institutional": {
+        "date": "2026-11-24",
+        "source": "TWSE T86",
+        "unit": "shares",
+        "foreignNetShares": -1240687,
+        "trustNetShares": 0,
+        "dealerNetShares": -59906317,
+        "dealerOwnNetShares": -197000,
+        "dealerHedgeNetShares": -59709317,
+        "totalNetShares": -61147004
+      }
     },
     {
       "code": "00919",
@@ -6792,10 +6882,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=00919&response=json",
-      "latestDate": "2026-11-23",
-      "close": 27.12,
-      "changeAmount": -0.37,
-      "changePct": -1.3459,
+      "latestDate": "2026-11-24",
+      "close": 29.5,
+      "changeAmount": 2.38,
+      "changePct": 8.7758,
       "bars": [
         [
           "2026-03-02",
@@ -8244,14 +8334,32 @@
           26.45,
           27.12,
           184735005
+        ],
+        [
+          "2026-11-24",
+          29.83,
+          29.83,
+          29.3,
+          29.5,
+          183471178
         ]
       ],
-      "barCount": 181,
+      "barCount": 182,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
-      "institutional": null
+      "institutional": {
+        "date": "2026-11-24",
+        "source": "TWSE T86",
+        "unit": "shares",
+        "foreignNetShares": -11582823,
+        "trustNetShares": 0,
+        "dealerNetShares": -101002179,
+        "dealerOwnNetShares": 0,
+        "dealerHedgeNetShares": -101002179,
+        "totalNetShares": -112585002
+      }
     },
     {
       "code": "00929",
@@ -8260,10 +8368,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=00929&response=json",
-      "latestDate": "2026-11-23",
-      "close": 21.71,
-      "changeAmount": 0.64,
-      "changePct": 3.0375,
+      "latestDate": "2026-11-24",
+      "close": 23.8,
+      "changeAmount": 2.09,
+      "changePct": 9.6269,
       "bars": [
         [
           "2026-03-02",
@@ -9712,14 +9820,32 @@
           20.93,
           21.71,
           51548809
+        ],
+        [
+          "2026-11-24",
+          23.88,
+          23.88,
+          23.5,
+          23.8,
+          94975159
         ]
       ],
-      "barCount": 181,
+      "barCount": 182,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
-      "institutional": null
+      "institutional": {
+        "date": "2026-11-24",
+        "source": "TWSE T86",
+        "unit": "shares",
+        "foreignNetShares": -7778667,
+        "trustNetShares": 0,
+        "dealerNetShares": -53383353,
+        "dealerOwnNetShares": -223000,
+        "dealerHedgeNetShares": -53160353,
+        "totalNetShares": -61162020
+      }
     },
     {
       "code": "00940",
@@ -9728,10 +9854,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=00940&response=json",
-      "latestDate": "2026-11-23",
-      "close": 10.86,
-      "changeAmount": 0.23,
-      "changePct": 2.1637,
+      "latestDate": "2026-11-24",
+      "close": 11.65,
+      "changeAmount": 0.79,
+      "changePct": 7.2744,
       "bars": [
         [
           "2026-03-02",
@@ -11180,14 +11306,32 @@
           10.56,
           10.86,
           21452719
+        ],
+        [
+          "2026-11-24",
+          11.55,
+          11.85,
+          11.55,
+          11.65,
+          20073672
         ]
       ],
-      "barCount": 181,
+      "barCount": 182,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
-      "institutional": null
+      "institutional": {
+        "date": "2026-11-24",
+        "source": "TWSE T86",
+        "unit": "shares",
+        "foreignNetShares": -5340864,
+        "trustNetShares": 0,
+        "dealerNetShares": -1577000,
+        "dealerOwnNetShares": -401000,
+        "dealerHedgeNetShares": -1176000,
+        "totalNetShares": -6917864
+      }
     },
     {
       "code": "00981A",
@@ -11196,10 +11340,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=00981A&response=json",
-      "latestDate": "2026-11-23",
-      "close": 20.04,
-      "changeAmount": 1.46,
-      "changePct": 7.8579,
+      "latestDate": "2026-11-24",
+      "close": 22.04,
+      "changeAmount": 2.0,
+      "changePct": 9.98,
       "bars": [
         [
           "2026-03-02",
@@ -12648,14 +12792,32 @@
           18.16,
           20.04,
           510555524
+        ],
+        [
+          "2026-11-24",
+          22.04,
+          22.04,
+          21.85,
+          22.04,
+          1997067422
         ]
       ],
-      "barCount": 181,
+      "barCount": 182,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
-      "institutional": null
+      "institutional": {
+        "date": "2026-11-24",
+        "source": "TWSE T86",
+        "unit": "shares",
+        "foreignNetShares": 27623183,
+        "trustNetShares": 792000,
+        "dealerNetShares": -1382685672,
+        "dealerOwnNetShares": 40388000,
+        "dealerHedgeNetShares": -1423073672,
+        "totalNetShares": -1354270489
+      }
     }
   ],
   "warnings": []
