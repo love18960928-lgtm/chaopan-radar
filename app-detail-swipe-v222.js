@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R185-20261124-render-optimization */
+/* CHAOPAN_RADAR_BUILD: R190-20261124-etf-institutions */
 /* Prior tested build (historical, not deployed version): CHAOPAN_RADAR_BUILD: R165-20261120-visual-card-red-up-green-down */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
@@ -2767,7 +2767,7 @@ function r175MarketStockModel(c){
  const ic=Number(ix.at(-1)[4]),ip=Number(ix.at(-2)[4]);
  const stockReady=stock.ok&&stockBars.length>=26&&stockBars.at(-1)[0]===c.date&&stockBars.at(-2)[0]<c.date;
  const sc=stockReady?stock.close:null,sp=stockReady?Number(stockBars.at(-2)[4]):null;
- const dayStock=sp>0?(sc/sp-1)*100:null,dayIndex=(ic/ip-1)*100;
+ const dayStock=c?.assetType==='ETF'?(stockReady?r189OfficialChange(c):null):(sp>0?(sc/sp-1)*100:null),dayIndex=(ic/ip-1)*100;
  const delta=dayStock===null?null:dayStock-dayIndex;
  const rows=[5,10,20].map(n=>{
   const maIndex=ix.slice(-n).reduce((sum,b)=>sum+Number(b[4]),0)/n;
@@ -2914,7 +2914,7 @@ function nextSessionDefenseCard(c){
  const priceLimits=data.fresh?r164LimitBand(c):null;
  return `<section class="r82-decision r91-decision r164-board r165-reference r176-main-card" data-code="${esc(code)}" aria-label="明日持股操作同頁圖形總覽">
  <div class="r176-main-banner"><span>明日持股操作</span><strong>自動策略｜<span class="r174-auto-mode" aria-live="polite">${esc(r174AutoMode(cost===''?NaN:Number(cost),p))}</span></strong></div>
- <div class="r176-banner-date">${esc(c?.date||'日期待核對')} 盤後 · R185 ｜ 持有週期 <select class="r92-mode" aria-label="持有週期"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
+ <div class="r176-banner-date">${esc(c?.date||'日期待核對')} 盤後 · R190 ｜ 持有週期 <select class="r92-mode" aria-label="持有週期"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
  ${r164MABox(c,data)}
  <div class="r176-top-position"><section class="r164-panel r164-position"><div class="r164-inputs">
   <label>成本（元）<input class="r82-cost-input" type="number" inputmode="decimal" min="0" step="any" value="${esc(cost)}" placeholder="成本" /></label>
@@ -2969,7 +2969,7 @@ function r176ResearchMini(c){
  const insMax=goodIns?Math.max(1,...insDefs.map(([,k])=>Math.abs(Number(ins[k])))):1;
  const insRows=insDefs.map(([name,k])=>{
   const v=goodIns?Number(ins[k]):null,dist=goodIns?Math.max(8,100*Math.abs(v)/insMax):0;
-  return `<div class="r176-metric-row"><small>${name}</small><b class="${goodIns?r164PctColor(v):''}">${goodIns?`${v>0?'+':''}${r164Fmt(Math.round(v/1000))}張`:'待核對'}</b></div><div class="r176-mini-bar"><i style="--mini-pct:${dist}%;--mini-color:${v>0?'#fa6f7d':'#3ee2ab'}"></i></div>`;
+  return `<div class="r176-metric-row"><small>${name}</small><b class="${goodIns?r164PctColor(v):''}">${goodIns?(c?.assetType==='ETF'?r190EtfLots(v):`${v>0?'+':''}${r164Fmt(Math.round(v/1000))}張`):'待核對'}</b></div><div class="r176-mini-bar"><i style="--mini-pct:${dist}%;--mini-color:${v>0?'#fa6f7d':'#3ee2ab'}"></i></div>`;
  }).join('');
  const indicator=hist?indicatorSnapshot(c):null;
  const indRows=[['RSI',indicator?.rsi,100],['MACD',indicator?.macd,null],['KD(K)',indicator?.k,100]].map(([label,val,scale])=>{
@@ -3037,7 +3037,7 @@ function arrangeR41Detail(c){
   const marketChange=numeric(c.changePct),quoteClass=r164PctColor(marketChange);
   head.classList.add('r164-detail-heading','r176-detail-heading');
   const industryLabel=String(c.industry||c.fundamentals?.industry||'').trim();
-  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R185</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
+  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R190</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
  }
  const page=document.createElement('div');page.className='r176-one-page';page.setAttribute('aria-label','個股完整單頁操作儀表板');
  const card=document.createElement('div');card.innerHTML=nextSessionDefenseCard(c);r82BindCost(card,c);page.append(card);
@@ -4870,6 +4870,25 @@ function r177StoredHolding(code,field){
  try{return localStorage.getItem('chaopan-etf-'+code+'-'+field)||''}catch(_){return ''}
 }
 /* R182: ETF and equity share visual components, not equity decision rules. */
+function r189ExpectedDate(){return r177EtfDate({latestDate:state.payload?.asOf});}
+function r189EtfFresh(date){const expected=r189ExpectedDate();return Boolean(date&&expected&&date>=expected);}
+function r189OfficialChange(r){
+ const close=r177Num(r?.close),amount=r177Num(r?.changeAmount),pct=r177Num(r?.changePct);
+ if(!(close>0)||pct===null||amount===null||!(close-amount>0))return null;
+ return Math.abs(100*amount/(close-amount)-pct)<=0.02?pct:null;
+}
+function r189FeedReady(d,previous){
+ const expected=r189ExpectedDate(),rows=d?.rows||[],required=new Set(['00406A',...(previous?.rows||[]).map(r=>r.code)]);
+ return Boolean(expected&&rows.length&&rows.every(r=>r.latestDate>=expected)&&[...required].every(code=>rows.some(r=>r.code===code&&r.bars.length>=20)));
+}
+function r190Institutional(r,date){
+ const i=r?.institutional,keys=['foreignNetShares','trustNetShares','dealerNetShares','dealerOwnNetShares','dealerHedgeNetShares','totalNetShares'];
+ if(!date||i?.date!==date||i.source!=='TWSE T86'||i.unit!=='shares'||!keys.every(k=>Number.isSafeInteger(i[k])))return null;
+ if(i.dealerNetShares!==i.dealerOwnNetShares+i.dealerHedgeNetShares||i.totalNetShares!==i.foreignNetShares+i.trustNetShares+i.dealerNetShares)return null;
+ return i;
+}
+function r190EtfLots(v){return (v>0?'+':'')+(v/1000).toLocaleString('zh-TW',{maximumFractionDigits:3})+'張';}
+function r190DealerDetail(i){return i?`<section class="r164-panel"><div class="r174-small-title"><strong>ETF 自營商拆解</strong><small>${esc(i.date)} · T86</small></div><div class="r174-warning-cells"><div><small>自行買賣</small><b class="${r164PctColor(i.dealerOwnNetShares)}">${r190EtfLots(i.dealerOwnNetShares)}</b></div><div><small>避險</small><b class="${r164PctColor(i.dealerHedgeNetShares)}">${r190EtfLots(i.dealerHedgeNetShares)}</b></div></div><div class="r182-note">官方股數÷1000；避險不等同個股出貨訊號。</div></section>`:'';}
 function r182EtfModel(r){
  const bars=r177EtfBars(r),date=bars.at(-1)?.[0]||null,close=date?Number(r.close):null;
  const mean=a=>a.reduce((s,b)=>s+b[4],0)/a.length;
@@ -4877,7 +4896,7 @@ function r182EtfModel(r){
  const prior=bars.slice(-21,-1),support=prior.length===20?Math.min(...prior.map(b=>b[3])):null,pressure=prior.length===20?Math.max(...prior.map(b=>b[2])):null;
  const tr=bars.length>=15?bars.slice(-14).map((b,i)=>{const p=bars[bars.length-15+i][4];return Math.max(b[2]-b[3],Math.abs(b[2]-p),Math.abs(b[3]-p));}):[];
  const atr=tr.length?tr.reduce((a,b)=>a+b,0)/14:null;
- const priorClose=bars.at(-2)?.[4],change=priorClose?(close/priorClose-1)*100:null;
+ const change=date?r189OfficialChange(r):null;
  return {bars,date,close,mas,support,pressure,atr,change};
 }
 function r182EtfMaStrip(m){
@@ -4898,7 +4917,8 @@ function r182EtfSupport(m,code){
 function renderR177EtfDetail(r){
  const content=$('#modalContent');if(!content||!r)return;r164EnsureStyle();
  const m=r182EtfModel(r),{bars,date,close}=m,code=String(r.code||'').toUpperCase();
- const c={code,name:r.name,market:'上市',assetType:'ETF',date,close,bars};
+ const c={code,name:r.name,market:'上市',assetType:'ETF',date,close,bars,changePct:r.changePct,changeAmount:r.changeAmount,institutional:r190Institutional(r,date)};
+ const fresh=r189EtfFresh(date),expected=r189ExpectedDate();
  const cost=r177StoredHolding(code,'cost'),qty=r177StoredHolding(code,'shares'),unit=r177StoredHolding(code,'unit')==='lots'?'lots':'shares',mode=r177StoredHolding(code,'mode')||'medium';
  const touch=m.mas[0].touch,buffer=touch&&m.atr!==null?Math.max(.004,Math.min(.018,.5*m.atr/touch)):null;
  const def=[['彈起',buffer===null?null:touch*(1+buffer),'r164-positive'],['MA5觸線',touch,'r164-neutral'],['容忍',buffer===null?null:touch*(1-buffer),'r164-negative'],['防守',buffer===null?null:touch*(1-2*buffer),'r164-negative']];
@@ -4909,19 +4929,20 @@ function renderR177EtfDetail(r){
  const makeFullChart=()=>bars.length>=5?makeChart(bars,null,state.chartDays,[],[],null,date,{indexMode:true}):'<div class="empty-state">日K資料未足5根／尚未同步</div>';
  const chart=state.r182ChartOpen?makeFullChart():'';
  const note=date?`${date}｜${bars.length}根日K｜證交所 STOCK_DAY｜未經除息還原${state.payload?.asOf&&date<state.payload.asOf?'｜資料較個股盤後舊':''}${r177EtfError?'｜'+r177EtfError:''}`:'ETF資料待核對';
- content.innerHTML=`<div class="detail-title r164-detail-heading r176-detail-heading"><div class="r164-heading-id"><small>ETF ANALYSIS / 上市 · R185</small>${esc(code)} ${esc(r.name||'ETF')}<span class="r169-industry">ETF</span></div><div class="r164-heading-quote"><strong>${r177Fixed(close)}</strong><small class="${r164PctColor(m.change)}">${r177Pct(m.change)}</small></div></div><div class="r176-one-page r182-etf" data-etf-id="${esc(code)}">
- <style>#modalContent .r182-etf .r182-unit{font:inherit;background:#092a38;color:#dffaff;border:1px solid #4f91a1;border-radius:6px;max-width:100%;padding:3px}#modalContent .r182-etf .r176-risk-layout .r174-warning-cells{grid-template-columns:repeat(2,minmax(0,1fr))}#modalContent .r182-etf .r182-range{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}#modalContent .r182-etf .r182-range button{background:#10384b;border:1px solid #37788d;border-radius:7px;color:#dffaff;padding:6px 12px}#modalContent .r182-etf .r182-range .active{background:#36ceb8;color:#05242f}#modalContent .r182-etf .r182-chart svg{width:100%;height:auto}#modalContent .r182-etf .r182-note{font-size:10px;color:#a9c6d0;overflow-wrap:anywhere}</style>
- <section class="r164-board r165-reference r176-main-card"><div class="r176-main-banner"><span>明日持股操作</span><strong>ETF觀察｜<span class="r182-auto">待輸入</span></strong></div><div class="r176-banner-date">${esc(date||'日期待核對')} 盤後 · R185 ｜持有週期 <select class="r92-mode r182-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
+ content.innerHTML=`<div class="detail-title r164-detail-heading r176-detail-heading"><div class="r164-heading-id"><small>ETF ANALYSIS / 上市 · R190</small>${esc(code)} ${esc(r.name||'ETF')}<span class="r169-industry">ETF</span></div><div class="r164-heading-quote"><strong>${r177Fixed(close)}</strong><small class="${r164PctColor(m.change)}">${r177Pct(m.change)}</small></div></div><div class="r176-one-page r182-etf" data-etf-id="${esc(code)}">
+ <style>#modalContent .r182-etf .r182-unit{font:inherit;background:#092a38;color:#dffaff;border:1px solid #4f91a1;border-radius:6px;max-width:100%;padding:3px}#modalContent .r182-etf .r176-risk-layout .r174-warning-cells{grid-template-columns:repeat(2,minmax(0,1fr))}#modalContent .r182-etf .r182-range{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}#modalContent .r182-etf .r182-range button{background:#10384b;border:1px solid #37788d;border-radius:7px;color:#dffaff;padding:6px 12px}#modalContent .r182-etf .r182-range .active{background:#36ceb8;color:#05242f}#modalContent .r182-etf .r182-chart svg{width:100%;height:auto}#modalContent .r182-etf .r182-qty{font-size:11px;min-width:0;width:100%;box-sizing:border-box}#modalContent .r182-etf .r182-note{font-size:10px;color:#a9c6d0;overflow-wrap:anywhere}</style>
+ <section class="r164-board r165-reference r176-main-card"><div class="r176-main-banner"><span>${fresh?'明日持股操作':'歷史持股觀察'}</span><strong>ETF觀察｜<span class="r182-auto">待輸入</span></strong></div><div class="r176-banner-date">${esc(date||'日期待核對')} 盤後 · R190 ｜持有週期 <select class="r92-mode r182-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
+ ${!fresh?`<div role="status" style="color:#ffd25e;font-size:12px;padding:6px 0">⚠ ETF ${esc(date||'日期未知')}｜${expected?'個股盤後 '+esc(expected):'最新交易日待核對'}；僅供歷史參考，暫停明日操作判斷。</div>`:''}
  ${r182EtfMaStrip(m)}
  <div class="r176-top-position"><section class="r164-panel r164-position"><div class="r164-inputs"><label>成本（元）<input class="r182-cost" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="成本"></label><label>數量 <select class="r182-unit"><option value="shares" ${unit==='shares'?'selected':''}>股</option><option value="lots" ${unit==='lots'?'selected':''}>張</option></select><input class="r182-qty" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" placeholder="數量"></label></div><div class="r164-pnlbox r182-pnl" aria-live="polite"></div></section><section class="r164-panel r176-strategy"><small>持股狀態</small><strong class="r182-status">待輸入</strong></section></div>
  <div class="r176-risk-layout"><section class="r164-panel r164-action-preview"><div class="r174-small-title"><strong>◎ 風險減碼參考</strong></div><div class="r174-warning-cells"><div><small>開高／反彈</small><b>${r164Fmt(m.mas[0].today)}</b></div><div><small>開低／防守</small><b>${r164Fmt(m.support)}</b></div></div><div class="r182-note">均線及歷史低點觀察，未驗證ETF減碼模型，不產生委託股數。</div></section><section class="r164-panel r176-advice"><h3>▤ 建議觀察</h3><strong class="r182-advice">待核對</strong><p>以ETF自身均線及大盤比較，不套用個股出貨公式。</p></section></div>
  ${compare}<div class="r176-slim-panels">${r182EtfLevelStrip('MA5<br>防守帶',def,m,'ATR觀察帶，尚未回測；非委託價格')}${r182EtfLevelStrip('關鍵<br>價位',keys,m,'前20日高低點參考；頸線與突破尚未驗證')}</div>${r182EtfSupport(m,code)}<div class="r176-bottom-caption">盤後觀察參考｜未含配息、費用；不自動委託</div></section>
- ${research}<details class="r176-full-chart r182-full" ${state.r182ChartOpen?'open':''}><summary>K線完整分析｜20／60／120日・價量</summary><div class="r182-range">${[20,60,120].map(x=>`<button type="button" data-r182-days="${x}" class="${state.chartDays===x?'active':''}">${x}日</button>`).join('')}</div><div class="r182-chart">${chart}</div><div class="r182-note">${esc(note)}</div></details><section class="r164-panel"><div class="r174-small-title"><strong>ETF 專屬資料</strong></div><div class="r174-warning-cells"><div><small>淨值</small><b>待核對</b></div><div><small>折溢價</small><b>待核對</b></div><div><small>配息</small><b>待核對</b></div></div><div class="r182-note">未取得可核對來源，不補零。</div></section></div>`;
+ ${research}${r190DealerDetail(c.institutional)}<details class="r176-full-chart r182-full" ${state.r182ChartOpen?'open':''}><summary>K線完整分析｜20／60／120日・價量</summary><div class="r182-range">${[20,60,120].map(x=>`<button type="button" data-r182-days="${x}" class="${state.chartDays===x?'active':''}">${x}日</button>`).join('')}</div><div class="r182-chart">${chart}</div><div class="r182-note">${esc(note)}</div></details><section class="r164-panel"><div class="r174-small-title"><strong>ETF 專屬資料</strong></div><div class="r174-warning-cells"><div><small>淨值</small><b>待核對</b></div><div><small>折溢價</small><b>待核對</b></div><div><small>配息</small><b>待核對</b></div></div><div class="r182-note">未取得可核對來源，不補零。</div></section></div>`;
  const root=content.querySelector('.r182-etf'),q=s=>root.querySelector(s),ci=q('.r182-cost'),qi=q('.r182-qty'),ui=q('.r182-unit'),mi=q('.r182-mode'),full=q('.r182-full');
  function refresh(){const cv=r177Num(ci.value),v=r177Num(qi.value),shares=v===null?NaN:v*(ui.value==='lots'?1000:1),valid=close!==null&&cv>0&&Number.isSafeInteger(v)&&v>0&&Number.isSafeInteger(shares)&&shares<=1e8;
  q('.r182-pnl').innerHTML=valid?r164PnlHTML(cv,shares,close)+`<small>${shares.toLocaleString('zh-TW')}股｜未含配息</small>`:'<small>輸入成本與數量（股／張）</small>';
  const status=valid?close>cv?'帳面獲利':close<cv?'帳面虧損':'成本附近':'輸入成本後顯示';q('.r182-auto').textContent=status;q('.r182-status').textContent=status;
- const k=mi.value==='short'?5:mi.value==='long'?60:20,ma=bars.length>=k?bars.slice(-k).reduce((s,b)=>s+b[4],0)/k:null;q('.r182-advice').textContent=ma===null?'資料待核對':close<ma?`低於MA${k}・防守觀察`:`站上MA${k}・趨勢觀察`;
+ const k=mi.value==='short'?5:mi.value==='long'?60:20,ma=bars.length>=k?bars.slice(-k).reduce((s,b)=>s+b[4],0)/k:null;q('.r182-advice').textContent=!fresh?'最新盤後待核對':ma===null?'資料待核對':close<ma?`低於MA${k}・防守觀察`:`站上MA${k}・趨勢觀察`;
  try{for(const [key,value] of [['cost',cv>0?ci.value:''],['shares',Number.isSafeInteger(v)&&v>0?qi.value:''],['unit',ui.value],['mode',mi.value]]){if(value)localStorage.setItem('chaopan-etf-'+code+'-'+key,value);else localStorage.removeItem('chaopan-etf-'+code+'-'+key)}}catch(_){}
  }
  [ci,qi].forEach(el=>el.addEventListener('input',refresh));[ui,mi].forEach(el=>el.addEventListener('change',refresh));refresh();
@@ -4968,9 +4989,9 @@ async function r177LoadEtfs(){
      if(!r.ok)throw Error('ETF資料檔 HTTP '+r.status);
      const d=r181NormalizeETF(await r.json());
      if(!next)next=d;
-     else{const rows=new Map(next.rows.map(x=>[x.code,x]));for(const x of d.rows){const a=rows.get(x.code);if(!a||x.latestDate>a.latestDate||x.latestDate===a.latestDate&&x.bars.length>a.bars.length)rows.set(x.code,x);}next={...d,asOf:[next.asOf,d.asOf].sort().at(-1),rows:[...rows.values()],invalid:[...new Set([...next.invalid,...d.invalid])]};}
-     if(d.rows.some(x=>x.code==='00406A'&&x.bars.length>=20))break;
-     lastError='00406A歷史資料未滿20根';
+     else{const rows=new Map(next.rows.map(x=>[x.code,x]));for(const x of d.rows){const a=rows.get(x.code);if(!a||x.latestDate>a.latestDate||x.latestDate===a.latestDate&&x.bars.length>=a.bars.length)rows.set(x.code,x);}next={...d,asOf:[next.asOf,d.asOf].sort().at(-1),rows:[...rows.values()],invalid:[...new Set([...next.invalid,...d.invalid])]};}
+     if(r189FeedReady(next,r177EtfDirectory))break;
+     lastError='ETF日期或歷史根數待核對';
     }catch(e){lastError=String(e.message||e);}
    }
    if(!next)throw Error(lastError||'ETF資料無法取得');
@@ -4981,7 +5002,7 @@ async function r177LoadEtfs(){
    const incoming=new Set(next.rows.map(x=>x.code));
    for(const code of old.keys())if(!incoming.has(code))retained.push(code);
    r177EtfDirectory={...next,rows:[...old.values()]};
-   const warnings=[];if(next.invalid.length)warnings.push('未通過驗證：'+next.invalid.join('、'));if(retained.length)warnings.push('保留上次核實資料：'+retained.join('、'));if(lastError&&!next.rows.some(x=>x.code==='00406A'&&x.bars.length>=20))warnings.push(lastError);
+   const warnings=[];if(next.invalid.length)warnings.push('未通過驗證：'+next.invalid.join('、'));if(retained.length)warnings.push('保留上次核實資料：'+retained.join('、'));if(lastError&&!r189FeedReady(r177EtfDirectory,null))warnings.push(lastError);
    r177EtfError=warnings.join('；');r181LastLoad=Date.now();
   }catch(e){r177EtfError=String(e.message||e);console.warn('R181 ETF',e)}
   finally{r177EtfLoading=null;quickDraw()}
@@ -5031,14 +5052,14 @@ async function quickOpen(market,code){
  if(r177EtfRows().some(r=>String(r.code).toUpperCase()===code.toUpperCase()&&r.market===market)){
    const find=()=>r177EtfRows().find(r=>String(r.code).toUpperCase()===code.toUpperCase()&&r.market===market);
    const prior=find(),hasBars=Boolean(r177EtfDirectory&&prior?.bars?.length);
-   const refreshNeeded=!hasBars||r177EtfError||Date.now()-r181LastLoad>60000;
+   const refreshNeeded=!hasBars||!r189EtfFresh(r177EtfDate(prior))||r177EtfError||Date.now()-r181LastLoad>60000;
    state.detail=null;state.etfDetail={...prior,isR177Etf:true};
    // Open immediately; a background fetch never blocks the detail view.
    const opened=state.etfDetail;
    if(refreshNeeded)r177LoadEtfs().then(()=>{
      if(state.etfDetail!==opened||$('#modalOverlay').hidden)return;
      const next=find();if(!next||next===prior||(!next.bars?.length))return;
-     if(hasBars&&next.latestDate===prior.latestDate&&next.close===prior.close&&next.bars.length===prior.bars.length)return;
+     if(hasBars&&JSON.stringify(next)===JSON.stringify(prior))return;
      // Avoid replacing focused input fields or changing the user's scroll position.
      const active=document.activeElement;
      if(active?.matches?.('#modalContent input,#modalContent select')){toast('ETF已核對；重新開啟以查看最新資料');return;}
@@ -5261,8 +5282,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R185-20261124-render-optimization';
- const BUILD_LABEL='r185 · 顯示效能優化版';
+ const BUILD_ID='R190-20261124-etf-institutions';
+ const BUILD_LABEL='r190 · ETF法人整合版';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  // R161: The static index.html has kept r50/r60-era labels even after
