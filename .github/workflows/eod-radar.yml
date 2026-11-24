@@ -11,14 +11,13 @@ on:
         required: false
         default: '0'
   schedule:
-    # 台灣週一至週五 09:00–20:30，每30分鐘嘗試補抓官方已公布資料。
-    # GitHub Actions 使用 UTC；01:00–12:30 UTC = 台灣09:00–20:30。
-    # 官方資料未公布時不會憑空產生新行情；排程亦可能延遲。
-    - cron: '*/30 1-12 * * 1-5'
-    # 週一至週五23:00再補抓一次晚間可能延後的資料。
-    - cron: '0 15 * * 1-5'
-    # 週一至週六08:30補查前一交易日資料。
-    - cron: '30 0 * * 1-6'
+    # R185: Taiwan weekdays 14:37, 15:47, 17:17, 19:17, 23:17.
+    # Stagger from top/bottom of hour; preserve late official data catch-up.
+    - cron: '37 6 * * 1-5'
+    - cron: '47 7 * * 1-5'
+    - cron: '17 9,11,15 * * 1-5'
+    # Taiwan Mon-Sat 08:37 catch up previous trading day.
+    - cron: '37 0 * * 1-6'
 permissions:
   contents: write
 concurrency:
@@ -42,15 +41,16 @@ jobs:
             echo "::error::目前 collector.py 不支援 backfill_offset_days；請先使用 0，勿靜默忽略回補日期偏移"
             exit 1
           fi
-          python scripts/collector.py --backfill "$BACKFILL" --delay 1.1
-          python -m unittest discover -s scripts -p 'test_*.py' -v
+          time python -u scripts/collector.py --backfill "$BACKFILL" --delay 1.1
+      - name: Verify all strategy and data rules (required)
+        run: time python -m unittest discover -s scripts -p 'test_*.py' -v
       - name: Collect verified supplemental official EOD data
         # Optional feed may be missing: do not break existing OHLCV data.
         run: |
           if [ -f data/radar.json ]; then
             AS_OF=$(python -c 'import json;print(json.load(open("data/radar.json")).get("asOf",""))')
             if echo "$AS_OF" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
-              if ! python scripts/market_intel_v311.py --as-of "$AS_OF"; then
+              if ! time python -u scripts/market_intel_v311.py --as-of "$AS_OF"; then
                 echo "::warning::官方盤後輔助來源抓取失敗；交易訊號不會套用未驗證法人資料，請看後續資料狀態報告"
               fi
             else
@@ -64,7 +64,7 @@ jobs:
         # recorded as unavailable, not as zero and not as a verified risk signal.
         # All other data-integrity failures still fail the job.
         run: |
-          python scripts/update_institutions.py --radar data/radar.json --allow-unavailable
+          time python -u scripts/update_institutions.py --radar data/radar.json --allow-unavailable
           python - <<'PYVERIFY'
           import json
           obj=json.load(open('data/radar.json', encoding='utf-8'))
@@ -79,11 +79,11 @@ jobs:
               assert rows, 'no same-day institutional candidates persisted'
           PYVERIFY
       - name: Build independently searchable stocks
-        run: python scripts/build_stock_lookup.py
+        run: time python -u scripts/build_stock_lookup.py
       - name: Rebuild all four three-low payloads from validated EOD data
-        run: python scripts/build_three_low.py
+        run: time python -u scripts/build_three_low.py
       - name: Validate published snapshots, canonical levels and stock lookup
-        run: python scripts/verify_release_gate_r4410.py
+        run: time python -u scripts/verify_release_gate_r4410.py
       - name: Explain market and institutional freshness in Actions summary
         if: always()
         run: python scripts/eod_freshness_report_r4411.py
