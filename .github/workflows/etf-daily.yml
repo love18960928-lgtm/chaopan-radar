@@ -1,4 +1,4 @@
-name: ETF official daily K (R190)
+name: ETF official daily K (R191)
 on:
   workflow_dispatch:
     inputs:
@@ -54,10 +54,15 @@ jobs:
           print(2 if complete and os.environ.get('FULL_HISTORY')!='true' else 9)
           PYMONTHS
           )
-          python -u scripts/update_etf_daily.py --months "$months" --delay 0.9 --output /tmp/r188-etf-fetched.json
+          rm -f /tmp/r188-etf-fetched.json
+          if ! python -u scripts/update_etf_daily.py --months "$months" --delay 0.9 --output /tmp/r188-etf-fetched.json; then
+            echo "::warning::Monthly ETF source failed; attempting dated MI_INDEX fallback"
+            rm -f /tmp/r188-etf-fetched.json
+          fi
       - name: Merge verified bars without discarding existing history
         if: ${{ !inputs.publish_only }}
         run: |
+          if [ ! -f /tmp/r188-etf-fetched.json ]; then echo 'No monthly payload; retain existing history'; exit 0; fi
           python -u - <<'PYMERGE'
           import json, math, datetime as dt
           from pathlib import Path
@@ -104,6 +109,112 @@ jobs:
               temp=p.with_suffix('.r188.tmp'); temp.write_text(json.dumps(doc,ensure_ascii=False,indent=2)+'\n'); temp.replace(p)
               for r in doc['rows']: print('ETF_ROW',r['code'],r['latestDate'],r['barCount'])
           PYMERGE
+      - name: Repair missing latest ETF bars from official daily MI_INDEX (R191)
+        if: ${{ !inputs.publish_only }}
+        env:
+          EXPECTED_DATE: ${{ inputs.expected_date }}
+        run: |
+          python -u - <<'PYDAILY'
+          import datetime as dt, json, math, os, re, time, html, urllib.request
+          from pathlib import Path
+          
+          SOURCE='TWSE MI_INDEX official daily EOD'
+          API='https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX'
+          FIELDS={'code':'證券代號','name':'證券名稱','volume':'成交股數','open':'開盤價','high':'最高價','low':'最低價','close':'收盤價','sign':'漲跌(+/-)','delta':'漲跌價差'}
+          def norm(x):
+              return re.sub(r'\s+','',str(x)).replace('（','(').replace('）',')')
+          def number(x):
+              s=str(x).replace(',','').strip()
+              if not re.fullmatch(r'[+-]?\d+(?:\.\d+)?',s): raise ValueError('invalid number')
+              f=float(s)
+              if not math.isfinite(f): raise ValueError('nonfinite')
+              return f
+          
+          def parse_daily(doc, day, codes):
+              date=dt.date.fromisoformat(day)
+              if doc.get('stat')!='OK' or str(doc.get('date','')) not in (day,date.strftime('%Y%m%d')):
+                  raise ValueError('MI_INDEX date or status mismatch')
+              tables=doc.get('tables',[])
+              if not tables: tables=[doc]  # also accept single-table response
+              matching=[]
+              for table in tables:
+                  fields=[norm(f) for f in table.get('fields',[])]
+                  if all(fields.count(label)==1 for label in FIELDS.values()):
+                      matching.append((table,{k:fields.index(label) for k,label in FIELDS.items()}))
+              if len(matching)!=1: raise ValueError('MI_INDEX expected exactly one quote table')
+              table,idx=matching[0]
+              roc=re.search(r'(\d{2,3})年\s*(\d{1,2})月\s*(\d{1,2})日',str(table.get('title','')))
+              if roc and dt.date(int(roc[1])+1911,int(roc[2]),int(roc[3]))!=date: raise ValueError('MI_INDEX table date mismatch')
+              rows={}; seen=set()
+              for row in table.get('data',[]):
+                  if not isinstance(row,list) or len(row)<=idx['code']: continue
+                  code=str(row[idx['code']]).strip()
+                  if code not in codes: continue
+                  if code in seen: raise ValueError('duplicate ETF quote '+code)
+                  seen.add(code)
+                  try:
+                      name=str(row[idx['name']]).strip(); o,h,l,c,v=[number(row[idx[k]]) for k in ('open','high','low','close','volume')]
+                      if not name or min(o,h,l,c)<=0 or h<max(o,l,c) or l>min(o,h,c) or v<0 or int(v)!=v: raise ValueError('invalid OHLCV')
+                      sign=norm(html.unescape(re.sub(r'<[^>]*>','',str(row[idx['sign']])))).replace('＋','+').replace('－','-')
+                      try:
+                          delta=abs(number(row[idx['delta']]))
+                          change=delta if sign=='+' else -delta if sign=='-' else 0.0 if sign=='' and delta==0 else None
+                      except (ValueError,IndexError): change=None
+                      previous=c-change if change is not None else None
+                      pct=round(change/previous*100,4) if previous is not None and previous>0 else None
+                      rows[code]={'code':code,'name':name,'market':'上市','assetType':'ETF','source':SOURCE,'sourceUrl':API+'?date='+date.strftime('%Y%m%d')+'&type=ALLBUT0999&response=json','latestDate':day,'close':c,'changeAmount':change,'changePct':pct,'bars':[[day,o,h,l,c,int(v)]],'barCount':1,'dataQuality':'short_history','nav':None,'premiumDiscountPct':None,'dividends':None,'institutional':None}
+                  except (ValueError,IndexError,TypeError) as exc: print('MI_INDEX invalid ETF row',code,str(exc),flush=True)
+              return rows
+          
+          def apply_daily(doc, fresh, codes, day):
+              if doc is None: doc={'schema':1,'kind':'etf-official-eod','source':'TWSE official EOD','note':'ETF獨立官方日K；歷史未還原，不填假資料。','rows':[],'warnings':[]}
+              if doc.get('schema')!=1 or doc.get('kind')!='etf-official-eod': raise ValueError('ETF schema mismatch')
+              rows={r['code']:r for r in doc['rows']}
+              if len(rows)!=len(doc['rows']): raise ValueError('duplicate existing code')
+              for code in codes:
+                  prior=rows.get(code)
+                  if prior and prior['latestDate']>=day: continue
+                  new=fresh.get(code)
+                  if not new: continue
+                  if new['latestDate']!=day or new['bars'][-1][0]!=day: raise ValueError('unexpected daily date')
+                  bars={b[0]:b for b in prior['bars']} if prior else {}
+                  bars[day]=new['bars'][0]
+                  row=dict(new,bars=[bars[d] for d in sorted(bars)],barCount=len(bars),dataQuality='verified_ohlcv' if len(bars)>=20 else 'short_history')
+                  # Keep historical distribution records, but never carry forward stale daily NAV or flows.
+                  if prior and prior.get('dividends') is not None: row['dividends']=prior['dividends']
+                  rows[code]=row
+                  print('ETF_MI_INDEX_APPLIED',code,day,row['close'],row['barCount'],flush=True)
+              if not rows: raise ValueError('No verified ETF rows, cannot publish')
+              result=dict(doc,rows=list(rows.values()),asOf=max(r['latestDate'] for r in rows.values()))
+              return result
+          
+          def fetch(day):
+              url=API+'?date='+day.replace('-','')+'&type=ALLBUT0999&response=json'
+              for i in range(3):
+                  try:
+                      req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0','Accept':'application/json','Cache-Control':'no-cache'})
+                      with urllib.request.urlopen(req,timeout=25) as res: return json.loads(res.read(16_000_000).decode('utf-8-sig'))
+                  except (OSError,ValueError) as exc:
+                      if i==2: raise
+                      print('MI_INDEX retry',i+1,type(exc).__name__,flush=True); time.sleep(i+1)
+          
+          def main():
+              p=Path('data/etf-daily.json'); doc=json.loads(p.read_text(encoding='utf-8')) if p.exists() else None
+              codes=json.loads(Path('data/etf-watchlist.json').read_text(encoding='utf-8'))['codes']
+              day=os.environ.get('EXPECTED_DATE','').strip() or json.loads(Path('data/radar.json').read_text(encoding='utf-8')).get('asOf','')
+              if dt.date.fromisoformat(day).isoformat()!=day or day>dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date().isoformat(): raise ValueError('invalid expected_date')
+              existing={r['code']:r for r in doc['rows']} if doc else {}
+              stale=[c for c in codes if c not in existing or existing[c]['latestDate']<day]
+              print('ETF_MI_INDEX_TARGET',day,'stale',','.join(stale),flush=True)
+              if not stale: return
+              fresh=parse_daily(fetch(day),day,set(stale))
+              result=apply_daily(doc,fresh,codes,day)
+              temp=p.with_suffix('.r191.tmp'); temp.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n',encoding='utf-8'); temp.replace(p)
+              remaining=[c for c in stale if c not in fresh]
+              if remaining: print('::warning::ETF MI_INDEX still missing '+','.join(remaining),flush=True)
+          
+          if __name__=='__main__': main()
+          PYDAILY
       - name: Fetch same-date ETF institutional flows (T86)
         if: ${{ !inputs.publish_only }}
         run: |
@@ -180,7 +291,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/etf-daily.json
           if git diff --cached --quiet; then echo "ETF data unchanged"; exit 0; fi
-          git commit -m "data: R190 refresh verified ETF EOD and T86"
+          git commit -m "data: R191 refresh verified ETF EOD and T86"
           for attempt in 1 2 3 4 5; do
             git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
             if git merge-base --is-ancestor HEAD origin/main; then echo "ETF_PUSH_OK already published"; exit 0; fi
@@ -242,6 +353,6 @@ jobs:
               stale=check_fresh(raw,codes,minimum)
               publish(raw,'https://love18960928-lgtm.github.io/chaopan-radar/'+FILE,os.environ['GITHUB_API_URL']+'/repos/'+os.environ['GITHUB_REPOSITORY']+'/pages/builds',os.environ['GH_TOKEN'])
               if stale: raise RuntimeError('ETF still missing/stale: '+','.join(stale)+'; available verified data retained and published')
-              print('R188_ETF_OK',minimum)
+              print('R191_ETF_OK',minimum)
           if __name__=='__main__': main()
           PYPUBLISH
