@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "kind": "etf-official-eod",
+  "asOf": "2026-11-23",
+  "source": "TWSE STOCK_DAY official monthly EOD",
+  "note": "官方11/23單日行情種子資料：歷史日K、均線待透過ETF工作流程回補。ETF法人、配息、NAV需另驗證。",
+  "rows": [
+    {
+      "code": "00406A",
+      "name": "主動中信台灣收益",
+      "market": "上市",
+      "assetType": "ETF",
+      "source": "TWSE official 2026-11-23",
+      "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=00406A&response=json",
+      "latestDate": "2026-11-23",
+      "close": 6.16,
+      "changeAmount": 0.29,
+      "changePct": 4.9404,
+      "bars": [
+        [
+          "2026-11-23",
+          5.77,
+          6.2,
+          5.7,
+          6.16,
+          1224087559
+        ]
+      ],
+      "barCount": 1,
+      "dataQuality": "short_history",
+      "nav": null,
+      "premiumDiscountPct": null,
+      "dividends": null,
+      "institutional": null
+    },
+    {
+      "code": "0050",
+      "name": "元大台灣50",
+      "market": "上市",
+      "assetType": "ETF",
+      "source": "TWSE official 2026-11-23",
+      "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=0050&response=json",
+      "latestDate": "2026-11-23",
+      "close": 87.0,
+      "changeAmount": 2.55,
+      "changePct": 3.0195,
+      "bars": [
+        [
+          "2026-11-23",
+          84.4,
+          87.5,
+          83.5,
+          87.0,
+          510651850
+        ]
+      ],
+      "barCount": 1,
+      "dataQuality": "short_history",
+      "nav": null,
+      "premiumDiscountPct": null,
+      "dividends": null,
+      "institutional": null
+    }
+  ],
+  "warnings": [
+    "尚未執行 ETF 歷史K線回補；目前只有11/23單日官方行情"
+  ]
+}
