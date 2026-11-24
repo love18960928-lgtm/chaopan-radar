@@ -95,7 +95,41 @@ jobs:
           if [ -f data/market-intel.json ]; then git add data/market-intel.json; fi
           if ! git diff --cached --quiet; then
             git commit -m "data: update V2.2 unified radar"
-            git push
+            # R186: safe non-fast-forward recovery; never force-push or merge generated JSON.
+            for attempt in 1 2 3 4 5; do
+              echo "R186 publish attempt $attempt/5"
+              git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+              if git merge-base --is-ancestor HEAD origin/main; then
+                echo "R186_PUBLISH_OK already on main $(git rev-parse HEAD)"
+                exit 0
+              fi
+              base=$(git rev-parse HEAD^)
+              if ! git merge-base --is-ancestor "$base" origin/main; then
+                echo "::error::Remote main history changed unexpectedly; start a new workflow on latest main."
+                exit 1
+              fi
+              if [ "$base" != "$(git rev-parse origin/main)" ]; then
+                # A different writer may have published data or changed the analysis engine.
+                # Never auto-merge generated JSON or publish results from superseded inputs.
+                if ! git diff --quiet "$base" origin/main -- scripts/ storage/ data/radar.json data/universe.json data/stock-lookup/ data/market-intel.json three-low-data.json three-low-price-context.json three-low-volume-context.json ma240-three-low-context.json .github/workflows/eod-radar.yml; then
+                  echo "::error::Market data or computation inputs changed on main; run a NEW workflow on latest main. No remote data overwritten."
+                  exit 1
+                fi
+                if ! git rebase origin/main; then
+                  git rebase --abort || true
+                  echo "::error::Rebase conflict; run a NEW workflow on latest main."
+                  exit 1
+                fi
+              fi
+              if git push origin HEAD:refs/heads/main; then
+                echo "R186_PUBLISH_OK $(git rev-parse HEAD)"
+                exit 0
+              fi
+              echo "::warning::Push rejected or interrupted; fetching latest main before retry."
+              if [ "$attempt" -lt 5 ]; then sleep "$((attempt * 2))"; fi
+            done
+            echo "::error::Push retries exhausted; no force push attempted."
+            exit 1
           else
             echo "No data changes; existing published snapshot retained"
           fi
