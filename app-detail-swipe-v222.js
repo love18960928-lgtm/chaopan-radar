@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R190-20261124-etf-institutions */
+/* CHAOPAN_RADAR_BUILD: R193-20261124-index-sync */
 /* Prior tested build (historical, not deployed version): CHAOPAN_RADAR_BUILD: R165-20261120-visual-card-red-up-green-down */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
@@ -2914,7 +2914,7 @@ function nextSessionDefenseCard(c){
  const priceLimits=data.fresh?r164LimitBand(c):null;
  return `<section class="r82-decision r91-decision r164-board r165-reference r176-main-card" data-code="${esc(code)}" aria-label="明日持股操作同頁圖形總覽">
  <div class="r176-main-banner"><span>明日持股操作</span><strong>自動策略｜<span class="r174-auto-mode" aria-live="polite">${esc(r174AutoMode(cost===''?NaN:Number(cost),p))}</span></strong></div>
- <div class="r176-banner-date">${esc(c?.date||'日期待核對')} 盤後 · R190 ｜ 持有週期 <select class="r92-mode" aria-label="持有週期"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
+ <div class="r176-banner-date">${esc(c?.date||'日期待核對')} 盤後 · R193 ｜ 持有週期 <select class="r92-mode" aria-label="持有週期"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
  ${r164MABox(c,data)}
  <div class="r176-top-position"><section class="r164-panel r164-position"><div class="r164-inputs">
   <label>成本（元）<input class="r82-cost-input" type="number" inputmode="decimal" min="0" step="any" value="${esc(cost)}" placeholder="成本" /></label>
@@ -3037,7 +3037,7 @@ function arrangeR41Detail(c){
   const marketChange=numeric(c.changePct),quoteClass=r164PctColor(marketChange);
   head.classList.add('r164-detail-heading','r176-detail-heading');
   const industryLabel=String(c.industry||c.fundamentals?.industry||'').trim();
-  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R190</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
+  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R193</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
  }
  const page=document.createElement('div');page.className='r176-one-page';page.setAttribute('aria-label','個股完整單頁操作儀表板');
  const card=document.createElement('div');card.innerHTML=nextSessionDefenseCard(c);r82BindCost(card,c);page.append(card);
@@ -4091,7 +4091,7 @@ function mainTrendResearchPanel(c){
  * consumes data/taiex-daily.json produced by a separate TWSE EOD workflow.
  * A missing/old feed is shown as pending, never as tomorrow's live benchmark. */
 const R166IndexDaily=(()=>{
- let snapshot=null, error='加權指數歷史K線檔尚未產生', promise=null, attempted=false;
+ let snapshot=null, error='加權指數歷史K線檔尚未產生', promise=null, attempted=false, lastAttempt=0, running=false;
  const validDate=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&!Number.isNaN(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
  const n=v=>v===null||v===undefined||v===''?null:Number.isFinite(Number(v))?Number(v):null;
  function normalize(raw){
@@ -4117,34 +4117,37 @@ const R166IndexDaily=(()=>{
  }
  function getLatest(){return snapshot?.bars||null;}
  function status(){return snapshot?{ok:true,asOf:snapshot.asOf,volumeSource:snapshot.volumeSource}:{ok:false,reason:error};}
- function install(raw){const parsed=normalize(raw);if(!parsed){error='證交所K線格式、日期或歷史根數不足';return false;}snapshot=parsed;error='';return true;}
- function retry(){attempted=false;promise=null;return ensure();}
+ function install(raw){const parsed=normalize(raw);if(!parsed){error='證交所K線格式、日期或歷史根數不足';return false;}if(snapshot&&parsed.asOf<snapshot.asOf)return false;snapshot=parsed;error='';return true;}
+ function retry(){if(running)return promise;attempted=false;lastAttempt=0;return ensure();}
  function ensure(){
-  if(typeof window==='undefined'||window.__RADAR_PREVIEW__||attempted)return promise;
-  attempted=true;
+  if(typeof window==='undefined'||window.__RADAR_PREVIEW__)return promise;
+  const expected=String(state.payload?.asOf||state.detail?.date||'');
+  if(running||(attempted&&(!validDate(expected)||get(expected)||Date.now()-lastAttempt<60000)))return promise;
   if(typeof fetch!=='function')return null;
+  attempted=true;lastAttempt=Date.now();running=true;
   promise=(async()=>{
    try{
-    // GitHub Pages sometimes lags a bot-authored data commit. Read the
-    // published site first, then the repository's RAW JSON as a fallback.
     const urls=['./data/taiex-daily.json?rev='+Date.now(),
       'https://raw.githubusercontent.com/love18960928-lgtm/chaopan-radar/main/data/taiex-daily.json?rev='+Date.now()];
-    let lastError='not published';
+    const before=snapshot;let lastError='not published';
     for(const url of urls){
+     const ctrl=typeof AbortController==='function'?new AbortController():null;
+     const timer=ctrl?setTimeout(()=>ctrl.abort(),8000):null;
      try{
-      const response=await fetch(url,{cache:'no-store'});
+      const response=await fetch(url,{cache:'no-store',...(ctrl?{signal:ctrl.signal}:{})});
       if(!response.ok)throw Error('HTTP '+response.status);
-      if(install(await response.json())){lastError='';break;}
-      lastError=error;
+      if(install(await response.json())){lastError='';if(!validDate(expected)||get(expected))break;}
+      else lastError=error||'older index snapshot';
      }catch(e){lastError=String(e?.message||e).slice(0,90)}
+     finally{if(timer!==null)clearTimeout(timer);}
     }
-    if(lastError)throw Error(lastError);
-    // Rebuild the open stock UI once; no use of this file for trading decisions.
-    if(state.detail&&state.detail.market==='上市'&&typeof renderDetail==='function'){
+    if(!snapshot)throw Error(lastError);
+    if(snapshot!==before&&state.detail&&state.detail.market==='上市'&&typeof renderDetail==='function'){
      const sheet=document.querySelector('#modalOverlay .sheet'),scroll=sheet?.scrollTop||0;
      renderDetail();if(sheet)sheet.scrollTop=scroll;
     }
    }catch(e){error='加權指數歷史資料尚未同步（'+String(e.message||'連線失敗').slice(0,70)+'）';}
+   finally{running=false;}
   })();
   return promise;
  }
@@ -4929,9 +4932,9 @@ function renderR177EtfDetail(r){
  const makeFullChart=()=>bars.length>=5?makeChart(bars,null,state.chartDays,[],[],null,date,{indexMode:true}):'<div class="empty-state">日K資料未足5根／尚未同步</div>';
  const chart=state.r182ChartOpen?makeFullChart():'';
  const note=date?`${date}｜${bars.length}根日K｜證交所 STOCK_DAY｜未經除息還原${state.payload?.asOf&&date<state.payload.asOf?'｜資料較個股盤後舊':''}${r177EtfError?'｜'+r177EtfError:''}`:'ETF資料待核對';
- content.innerHTML=`<div class="detail-title r164-detail-heading r176-detail-heading"><div class="r164-heading-id"><small>ETF ANALYSIS / 上市 · R190</small>${esc(code)} ${esc(r.name||'ETF')}<span class="r169-industry">ETF</span></div><div class="r164-heading-quote"><strong>${r177Fixed(close)}</strong><small class="${r164PctColor(m.change)}">${r177Pct(m.change)}</small></div></div><div class="r176-one-page r182-etf" data-etf-id="${esc(code)}">
+ content.innerHTML=`<div class="detail-title r164-detail-heading r176-detail-heading"><div class="r164-heading-id"><small>ETF ANALYSIS / 上市 · R193</small>${esc(code)} ${esc(r.name||'ETF')}<span class="r169-industry">ETF</span></div><div class="r164-heading-quote"><strong>${r177Fixed(close)}</strong><small class="${r164PctColor(m.change)}">${r177Pct(m.change)}</small></div></div><div class="r176-one-page r182-etf" data-etf-id="${esc(code)}">
  <style>#modalContent .r182-etf .r182-unit{font:inherit;background:#092a38;color:#dffaff;border:1px solid #4f91a1;border-radius:6px;max-width:100%;padding:3px}#modalContent .r182-etf .r176-risk-layout .r174-warning-cells{grid-template-columns:repeat(2,minmax(0,1fr))}#modalContent .r182-etf .r182-range{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}#modalContent .r182-etf .r182-range button{background:#10384b;border:1px solid #37788d;border-radius:7px;color:#dffaff;padding:6px 12px}#modalContent .r182-etf .r182-range .active{background:#36ceb8;color:#05242f}#modalContent .r182-etf .r182-chart svg{width:100%;height:auto}#modalContent .r182-etf .r182-qty{font-size:11px;min-width:0;width:100%;box-sizing:border-box}#modalContent .r182-etf .r182-note{font-size:10px;color:#a9c6d0;overflow-wrap:anywhere}</style>
- <section class="r164-board r165-reference r176-main-card"><div class="r176-main-banner"><span>${fresh?'明日持股操作':'歷史持股觀察'}</span><strong>ETF觀察｜<span class="r182-auto">待輸入</span></strong></div><div class="r176-banner-date">${esc(date||'日期待核對')} 盤後 · R190 ｜持有週期 <select class="r92-mode r182-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
+ <section class="r164-board r165-reference r176-main-card"><div class="r176-main-banner"><span>${fresh?'明日持股操作':'歷史持股觀察'}</span><strong>ETF觀察｜<span class="r182-auto">待輸入</span></strong></div><div class="r176-banner-date">${esc(date||'日期待核對')} 盤後 · R193 ｜持有週期 <select class="r92-mode r182-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
  ${!fresh?`<div role="status" style="color:#ffd25e;font-size:12px;padding:6px 0">⚠ ETF ${esc(date||'日期未知')}｜${expected?'個股盤後 '+esc(expected):'最新交易日待核對'}；僅供歷史參考，暫停明日操作判斷。</div>`:''}
  ${r182EtfMaStrip(m)}
  <div class="r176-top-position"><section class="r164-panel r164-position"><div class="r164-inputs"><label>成本（元）<input class="r182-cost" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="成本"></label><label>數量 <select class="r182-unit"><option value="shares" ${unit==='shares'?'selected':''}>股</option><option value="lots" ${unit==='lots'?'selected':''}>張</option></select><input class="r182-qty" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" placeholder="數量"></label></div><div class="r164-pnlbox r182-pnl" aria-live="polite"></div></section><section class="r164-panel r176-strategy"><small>持股狀態</small><strong class="r182-status">待輸入</strong></section></div>
@@ -5282,8 +5285,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R190-20261124-etf-institutions';
- const BUILD_LABEL='r190 · ETF法人整合版';
+ const BUILD_ID='R193-20261124-index-sync';
+ const BUILD_LABEL='r193 · 大盤同步修正版';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  // R161: The static index.html has kept r50/r60-era labels even after
