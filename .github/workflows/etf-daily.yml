@@ -1,0 +1,36 @@
+name: ETF official daily K (R177)
+on:
+  workflow_dispatch:
+  schedule:
+    # Taiwan 17:30 and next-day 08:30, with post-close source publishing delays.
+    - cron: '30 9 * * 1-5'
+    - cron: '30 0 * * 2-6'
+permissions:
+  contents: write
+concurrency:
+  group: chaopan-etf-eod
+  cancel-in-progress: false
+jobs:
+  etf-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify ETF parser and data-safety rules
+        run: python -m unittest scripts/test_etf_daily.py -v
+      - name: Fetch official ETF history (no stock or T86 dependency)
+        run: python scripts/update_etf_daily.py --months 9 --delay 0.9
+      - name: Commit only independent ETF feed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/etf-daily.json
+          if ! git diff --cached --quiet; then
+            git commit -m "data: refresh verified ETF official EOD"
+            git push
+          else
+            echo "ETF market data unchanged"
+          fi
