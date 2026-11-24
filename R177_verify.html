@@ -1,0 +1,15 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>超盤手 R177｜ETF 資料與版本驗證</title><style>body{margin:0;background:#071b2b;color:#e3f7fc;font:14px/1.5 system-ui,'Noto Sans TC',sans-serif}main{padding:14px;max-width:720px;margin:auto}.panel{border:1px solid #2cc8d6;border-radius:12px;background:#102b3b;margin:12px 0;padding:12px}.ok{color:#5bdfb3}.no{color:#ff818d}.warn{color:#e6c171}small{color:#c1d2db}a{color:#75e7eb}</style></head><body><main><h2>超盤手 R177｜ETF 驗證</h2><div class="panel" id="code">正在檢查前端……</div><div class="panel" id="feed">正在檢查 ETF 資料檔……</div><div class="panel"><b>核對重點</b><p>00406A｜主動中信台灣收益，ETF與個股分開處理；有官方日K時顯示MA5／10／20與持股成本試算；缺資料時只能顯示待更新。</p><small>ETF資料有獨立交易日，不會用個股或加權指數的日期硬填。請勿將此頁當成即時行情。</small></div><a href="./">回超盤手</a></main><script>
+const txt=(id,html)=>document.getElementById(id).innerHTML=html,esc=s=>String(s??'').replace(/[&<>]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
+const ln=(ok,title,msg)=>`<p class="${ok?'ok':'no'}">${ok?'✓':'✕'} ${esc(title)} <small>${esc(msg)}</small></p>`;
+(async()=>{
+ let r='';try{const res=await fetch('./app-detail-swipe-v222.js?t='+Date.now(),{cache:'no-store'});if(!res.ok)throw Error('HTTP '+res.status);const src=await res.text();for(const [title,tag] of [['R177 版本','CHAOPAN_RADAR_BUILD: R177-'],['首頁版本標籤','r177 · ETF資料整合版'],['ETF 字母代號搜尋','r177EtfCode'],['ETF 官方資料讀取','data/etf-daily.json'],['ETF 持股試算','ETF 持股試算'],['原本單頁 R176 保留','r176-one-page'],['原本風險規則保留','function r99Action(']])r+=ln(src.includes(tag),title,src.includes(tag)?'前端已包含':'找不到程式，請確認上傳與快取');}
+ catch(e){r=ln(false,'前端讀取失敗',e.message)}txt('code',r);
+ let f='';try{const res=await fetch('./data/etf-daily.json?t='+Date.now(),{cache:'no-store'});if(!res.ok)throw Error('HTTP '+res.status+'；請執行 Official ETF daily K (R177)');const d=await res.json();
+ f+=ln(d.schema===1&&Array.isArray(d.rows),'ETF資料格式',`官方資料日期：${d.asOf||'未知'}｜檔數 ${d.rows?.length||0}`);
+ const q=d.rows?.find(x=>String(x.code)==='00406A');
+ const valid=q&&Array.isArray(q.bars)&&q.bars.length&&q.bars.at(-1)?.[0]===q.date&&Math.abs(q.bars.at(-1)?.[4]-q.close)<.011;
+ f+=ln(Boolean(valid),'00406A日K／收盤同日',q?`ETF日期 ${q.date||'未知'}｜日K ${q.bars?.length||0} 根｜收盤 ${q.close??'待更新'}`:'ETF 00406A 未入庫');
+ if(valid){const bars=q.bars;for(const n of [5,10,20]){const ready=bars.length>=n;f+=ln(ready,`MA${n}資料`,ready?`足${n}根日K，可計算`:`目前只有${bars.length}根，暫不能計算`)}}
+ }catch(e){f=ln(false,'ETF資料檔未就緒',e.message)}txt('feed',f);
+})();
+</script></body></html>
