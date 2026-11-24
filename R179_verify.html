@@ -1,0 +1,36 @@
+<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>R179 ETF 前端驗證</title><style>body{background:#101e29;color:#eef7fa;font:16px system-ui;margin:16px;line-height:1.6}h1{font-size:23px}section{background:#192e3b;border:1px solid #416270;padding:14px;border-radius:12px;margin:12px 0;overflow-wrap:anywhere}b{color:#a7e9d4}.ok{color:#75e3ac}.bad{color:#ff8594}.wait{color:#f8ce7e}button{padding:12px;border:0;border-radius:9px;background:#8be1cc;color:#102029;font:inherit}input{font:inherit;width:110px;padding:8px}small{color:#b5c7cf}pre{white-space:pre-wrap}</style><h1>R179 ETF 前端驗證</h1><small>獨立只讀檢查，不更動 App、不覆蓋歷史行情。以 R177 App 同一份行情驗證與均線公式測試。</small><p><input id="code" value="00406A" aria-label="ETF代號"> <button id="run">重新驗證</button></p><section id="feed">資料檔：檢查中</section><section id="calc">均線：檢查中</section><section id="build">主程式：檢查中</section><section id="cache">快取：檢查中</section><small>測試頁可讀取不等於已安裝 App 的頁面渲染成功。請回 App 查同一代號確認。</small><script>
+const R177ETFModel=(()=>{
+ const validDay=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&!Number.isNaN(Date.parse(x+'T00:00:00Z'))&&new Date(x+'T00:00:00Z').toISOString().slice(0,10)===x;
+ const val=x=>x===null||x===undefined||x===''?null:Number.isFinite(Number(x))?Number(x):null;
+ function normalize(raw){
+  if(raw?.schema!==1||raw?.kind!=='etf-official-eod'||!Array.isArray(raw.rows)||!validDay(raw.asOf))return null;
+  const rows=[];
+  for(const row of raw.rows){
+   if(!/^0[0-9]{3,5}[A-Z]?$/.test(String(row?.code||''))||!validDay(row.latestDate)||!Array.isArray(row.bars)||row.bars.length<1||row.bars.length>5000)continue;
+   const bars=[];let prev='';let valid=true;
+   for(const b of row.bars){
+    if(!Array.isArray(b)||b.length<6||!validDay(b[0])||b[0]<=prev){valid=false;break}
+    const ns=b.slice(1,6).map(val);
+    if(ns.some(x=>x===null)||Math.min(...ns.slice(0,4))<=0||ns[4]<0||ns[1]<Math.max(ns[0],ns[3])||ns[2]>Math.min(ns[0],ns[3])||ns[2]>ns[1]){valid=false;break}
+    prev=b[0];bars.push([b[0],...ns]);
+   }
+   if(!valid||prev!==row.latestDate||prev>raw.asOf||val(row.close)===null||Math.abs(Number(row.close)-bars.at(-1)[4])>.00001)continue;
+   rows.push({...row,code:String(row.code),name:String(row.name||row.code),bars,close:Number(row.close),changePct:val(row.changePct)});
+  }
+  return rows.length?{asOf:raw.asOf,rows,note:String(raw.note||''),warnings:Array.isArray(raw.warnings)?raw.warnings:[]}:null;
+ }
+ const ma=(bars,n)=>bars.length>=n?bars.slice(-n).reduce((a,b)=>a+Number(b[4]),0)/n:null;
+ const maDirection=(bars,n)=>bars.length<n+1?'待足夠資料':ma(bars,n)>bars.slice(-n-1,-1).reduce((a,b)=>a+Number(b[4]),0)/n?'↗':ma(bars,n)<bars.slice(-n-1,-1).reduce((a,b)=>a+Number(b[4]),0)/n?'↘':'→';
+ const gap=(close,average)=>Number.isFinite(close)&&average>0?(close/average-1)*100:null;
+ const status=(cost,close)=>!Number.isFinite(cost)||cost<=0?'輸入成本':close<cost?'均線防守':close>cost?'獲利保護':'成本保衛';
+ return Object.freeze({normalize,ma,maDirection,gap,status});
+})();
+
+const $=id=>document.getElementById(id);
+const show=(id,msg,cls)=>{$(id).textContent=msg;$(id).className=cls};
+async function get(path){const r=await fetch(path+'?r179='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);return r}
+async function run(){const code=$('code').value.trim().toUpperCase();for(const id of ['feed','calc','build','cache'])show(id,'檢查中…','wait');
+try{const raw=await (await get('./data/etf-daily.json')).json();const entry=Array.isArray(raw.rows)?raw.rows.find(r=>r.code===code):null;if(!entry)throw Error('找不到 '+code);const normalized=R177ETFModel.normalize(raw);const row=normalized?.rows.find(r=>r.code===code);show('feed',`資料檔可讀｜${code}｜資料日期 ${raw.asOf}｜原始K線 ${Array.isArray(entry.bars)?entry.bars.length:0} 根`,'ok');if(!row)throw Error('此代號未通過 R177 App 日期／價量／末日收盤格式檢查');const lines=[`前端格式驗證通過｜${row.name}｜${row.latestDate}｜收盤 ${row.close.toFixed(2)}`,`有效K線 ${row.bars.length} 根`];for(const n of [5,10,20]){const ma=R177ETFModel.ma(row.bars,n);const gap=R177ETFModel.gap(row.close,ma);lines.push(`MA${n}：${ma===null?'資料不足':ma.toFixed(3)+'｜距離 '+gap.toFixed(2)+'%｜'+R177ETFModel.maDirection(row.bars,n)}`)}show('calc',lines.join('\n'),row.bars.length>=20?'ok':'wait');$('calc').style.whiteSpace='pre-line'}catch(e){if($('feed').className==='wait')show('feed','ETF資料讀取失敗：'+e.message,'bad');show('calc','無法計算：'+e.message,'bad')}
+try{const page=await (await get('./index.html')).text();const doc=new DOMParser().parseFromString(page,'text/html');const scripts=[...doc.querySelectorAll('script[src]')].map(s=>s.getAttribute('src'));const match=scripts.find(s=>s.includes('app-detail-swipe-v222.js'));if(!match)throw Error('首頁未直接引用 app-detail-swipe-v222.js；實際引用：'+scripts.join(', '));const url=new URL(match,location.href);if(url.origin!==location.origin)throw Error('主程式不是本站來源');url.searchParams.set('r179',Date.now());const resp=await fetch(url,{cache:'no-store'});if(!resp.ok)throw Error('主程式 HTTP '+resp.status);const js=await resp.text();const marker=js.match(/CHAOPAN_RADAR_BUILD:\s*([^*\n]+)/)?.[1]?.trim()||'未找到版本標記';const has=js.includes('etf-daily.json')&&js.includes('r177OpenETF');show('build',`首頁引用：${match}｜程式標記：${marker}｜ETF入口：${has?'存在':'未找到（若新版本改名需另查）'}`,has?'ok':'wait')}catch(e){show('build','主程式檢查：'+e.message,'wait')}
+show('cache',navigator.serviceWorker?.controller?'目前測試頁由 Service Worker 控制；即使使用 no-store，仍可能由其回傳快取。若 App 畫面不同，請另查 sw.js 與首頁版本。':'本測試頁目前未受 Service Worker 控制；已安裝 App 仍可能不同。','wait')}
+$('run').onclick=run;run();</script></html>
