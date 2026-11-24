@@ -1,34 +1,164 @@
-name: Official TAIEX daily K history (R170)
+name: 加權指數盤後自動更新 (R193)
 on:
-  schedule:
-    # Asia/Taipei 16:20 and 18:20, weekdays. TWSE publication may lag.
-    - cron: '20 8,10 * * 1-5'
   workflow_dispatch:
+    inputs:
+      expected_date:
+        description: 'Minimum required index date (YYYY-MM-DD); blank follows stock radar'
+        required: false
+        default: ''
+      publish_only:
+        description: 'Publish existing verified index JSON only'
+        type: boolean
+        default: false
+  workflow_run:
+    workflows: ['大量K雷達盤後自動更新']
+    types: [completed]
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/taiex-daily.yml'
+  schedule:
+    - cron: '27 7 * * 1-5' # Taipei 15:27
+    - cron: '37 8 * * 1-5' # 16:37
+    - cron: '7 10 * * 1-5' # 18:07
+    - cron: '57 15 * * 1-5' # 23:57
+    - cron: '57 0 * * 2-6' # 08:57 next morning
 permissions:
   contents: write
+  pages: write
+concurrency:
+  group: chaopan-taiex-eod
+  cancel-in-progress: false
 jobs:
-  update-taiex:
+  index-update:
+    if: >-
+      ${{ github.event_name != 'workflow_run' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.head_branch == 'main' &&
+           github.event.workflow_run.head_repository.full_name == github.repository) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
-          persist-credentials: true
-      - uses: actions/setup-python@v5
+          fetch-depth: 0
+          ref: main
+      - uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
-      - name: Fetch official index OHLC and volume
-        run: python -u scripts/update_taiex_daily.py
-      - name: Validate and commit the index JSON only
+          python-version: '3.12'
+      - name: Require main
+        run: test "$GITHUB_REF" = refs/heads/main
+      - name: Fetch official index and require stock trading date
+        if: ${{ !inputs.publish_only }}
+        env:
+          EXPECTED_DATE: ${{ inputs.expected_date }}
         run: |
-          python -m json.tool data/taiex-daily.json > /dev/null
-          python -c "import json; d=json.load(open('data/taiex-daily.json')); assert len(d['bars'])>=45; print('Index asOf:',d['asOf'],'bars:',len(d['bars']))"
+          python -u - <<'PYINDEX'
+          import datetime as dt, json, os, sys, math
+          from pathlib import Path
+          sys.path.insert(0,'scripts')
+          import update_taiex_daily as src
+          p=Path('data/taiex-daily.json')
+          today=dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()
+          def target():
+              radar=json.loads(Path('data/radar.json').read_text(encoding='utf-8'))
+              d=os.environ.get('EXPECTED_DATE','').strip() or radar['asOf']
+              if dt.date.fromisoformat(d).isoformat()!=d or d>today.isoformat(): raise ValueError('invalid target date')
+              return d
+          def validated(obj):
+              if obj.get('schema')!='chaopan-taiex-daily-v1' or obj.get('source') not in ('TWSE/TAIEX/MI_5MINS_HIST','TWSE/indicesReport/MI_5MINS_HIST'): raise ValueError('schema/source')
+              bars=obj['bars']; last=''; result={}
+              for b in bars:
+                  d,o,h,l,c,v=b
+                  if dt.date.fromisoformat(d).isoformat()!=d or d<=last or d>today.isoformat(): raise ValueError('invalid date sequence')
+                  if not all(isinstance(x,(int,float)) and math.isfinite(x) and x>0 for x in (o,h,l,c)) or h<max(o,c) or l>min(o,c) or h<l: raise ValueError('invalid OHLC')
+                  if v is not None and (not isinstance(v,(int,float)) or not math.isfinite(v) or v<0): raise ValueError('invalid volume')
+                  result[d]=b; last=d
+              if len(bars)<45 or last!=obj['asOf']: raise ValueError('invalid history')
+              return result
+          def update(old,minimum,fetcher=src.monthly):
+              try: rows=validated(old)
+              except (ValueError,TypeError,KeyError): rows={}
+              if rows and minimum in rows and max(rows)>=minimum:
+                  # Already current: avoid unnecessary fetch and byte changes.
+                  return old
+              if not rows:
+                  full=src.produce(today=today,fetcher=fetcher); rows=validated(full); old=full
+              else:
+                  for month in src.months_back(today,2):
+                      part=src.parse_ohlc(fetcher(month,'TAIEX/MI_5MINS_HIST'))
+                      try: vol=src.parse_volume(fetcher(month,'exchangeReport/FMTQIK'),{d:v[3] for d,v in part.items()})
+                      except Exception: vol={}
+                      for d,ohlc in part.items():
+                          if d>today.isoformat(): continue
+                          prior=rows.get(d); v=vol.get(d)
+                          if v is None and prior and prior[1:5]==ohlc: v=prior[5]
+                          rows[d]=[d,*ohlc,v]
+              if minimum not in rows: raise RuntimeError('Official index has no required stock date '+minimum+'; old data preserved')
+              out=dict(old); out.update(bars=[rows[d] for d in sorted(rows)[-200:]],asOf=max(rows),generatedAt=dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'))
+              validated(out); return out
+          def main():
+              old=json.loads(p.read_text(encoding='utf-8')) if p.exists() else {}
+              minimum=target(); obj=update(old,minimum); rows=validated(obj)
+              if minimum not in rows: raise ValueError('required index date missing')
+              if obj!=old:
+                  p.parent.mkdir(parents=True,exist_ok=True); tmp=p.with_suffix('.tmp');tmp.write_text(json.dumps(obj,ensure_ascii=False,separators=(',',':'))+'\n',encoding='utf-8');tmp.replace(p)
+              print('R193_INDEX_OK',obj['asOf'],len(rows),'target',minimum,flush=True)
+          if __name__=='__main__': main()
+          PYINDEX
+      - name: Commit only independent TAIEX feed with safe retry
+        if: ${{ !inputs.publish_only }}
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/taiex-daily.json
-          if ! git diff --cached --quiet; then
-            git commit -m "data: refresh official TAIEX OHLC daily K"
-            git push
-          else
-            echo "No index data change"
-          fi
+          if git diff --cached --quiet; then echo "TAIEX data unchanged"; exit 0; fi
+          git commit -m "data: R193 refresh official TAIEX"
+          for attempt in 1 2 3 4 5; do
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+            if git merge-base --is-ancestor HEAD origin/main; then echo "TAIEX_PUSH_OK already published"; exit 0; fi
+            base=$(git rev-parse HEAD^)
+            git merge-base --is-ancestor "$base" origin/main || { echo "::error::Remote history changed"; exit 1; }
+            if [ "$base" != "$(git rev-parse origin/main)" ]; then
+              if ! git diff --quiet "$base" origin/main -- data/taiex-daily.json scripts/update_taiex_daily.py .github/workflows/taiex-daily.yml; then
+                echo "::error::TAIEX inputs or TAIEX output changed remotely; run new workflow; no data overwritten"; exit 1
+              fi
+              if ! git rebase origin/main; then git rebase --abort || true; exit 1; fi
+            fi
+            if git push origin HEAD:refs/heads/main; then echo "TAIEX_PUSH_OK"; exit 0; fi
+            sleep "$((attempt * 2))"
+          done
+          echo "::error::TAIEX push retries exhausted; no force push"; exit 1
+      - name: Publish Pages and verify same-date index
+        timeout-minutes: 12
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_DATE: ${{ inputs.expected_date }}
+        run: |
+          python -u - <<'PYPUBLISH'
+          import os,json,time,subprocess,urllib.request,urllib.error,datetime as dt,hashlib
+          def get_main(path): return subprocess.check_output(['git','show','origin/main:'+path])
+          def request(url,method='GET',token=None):
+              headers={'User-Agent':'Chaopan-R193','Cache-Control':'no-cache'}
+              if token: headers.update({'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'})
+              with urllib.request.urlopen(urllib.request.Request(url,data=b'' if method=='POST' else None,headers=headers,method=method),timeout=25) as r: return r.status,r.read()
+          def main():
+              subprocess.run(['git','fetch','--no-tags','origin','+refs/heads/main:refs/remotes/origin/main'],check=True)
+              raw=get_main('data/taiex-daily.json'); obj=json.loads(raw); day=os.environ.get('EXPECTED_DATE','').strip() or json.loads(get_main('data/radar.json'))['asOf']
+              bars=obj['bars']; dates=[b[0] for b in bars]
+              if obj.get('schema')!='chaopan-taiex-daily-v1' or len(bars)<45 or dates!=sorted(set(dates)) or obj['asOf']!=dates[-1] or day not in dates: raise ValueError('index missing required stock date '+day)
+              site='https://love18960928-lgtm.github.io/chaopan-radar/data/taiex-daily.json'
+              def check():
+                  try: return hashlib.sha256(request(site+'?r193='+str(time.time_ns()))[1]).digest()==hashlib.sha256(raw).digest()
+                  except (OSError,ValueError): return False
+              if not check():
+                  try: print('PAGES_BUILD',request(os.environ['GITHUB_API_URL']+'/repos/'+os.environ['GITHUB_REPOSITORY']+'/pages/builds','POST',os.environ['GH_TOKEN'])[0])
+                  except urllib.error.HTTPError as e: print('::warning::Pages build HTTP '+str(e.code))
+                  for _ in range(18):
+                      time.sleep(15)
+                      if check(): break
+                  else: raise RuntimeError('Index committed but Pages not yet serving matching data; use publish_only')
+              print('R193_PAGES_OK',day,obj['asOf'])
+          if __name__=='__main__': main()
+          PYPUBLISH
