@@ -1,36 +1,247 @@
-name: ETF official daily K (R177)
+name: ETF official daily K (R190)
 on:
   workflow_dispatch:
+    inputs:
+      expected_date:
+        description: 'Expected minimum date YYYY-MM-DD; blank uses stock radar date'
+        required: false
+        default: ''
+      publish_only:
+        description: 'Publish existing ETF JSON without fetching again'
+        type: boolean
+        default: false
+      full_history:
+        description: 'Refetch 9 months instead of 2 months when history exists'
+        type: boolean
+        default: false
   schedule:
-    # Taiwan 17:30 and next-day 08:30, with post-close source publishing delays.
-    - cron: '30 9 * * 1-5'
-    - cron: '30 0 * * 2-6'
+    - cron: '43 9,11,15 * * 1-5'
+    - cron: '43 0 * * 2-6'
 permissions:
   contents: write
+  pages: write
 concurrency:
   group: chaopan-etf-eod
   cancel-in-progress: false
 jobs:
   etf-update:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 55
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      - name: Require main
+        run: test "$GITHUB_REF" = refs/heads/main
       - name: Verify ETF parser and data-safety rules
+        if: ${{ !inputs.publish_only }}
         run: python -m unittest scripts/test_etf_daily.py -v
-      - name: Fetch official ETF history (no stock or T86 dependency)
-        run: python scripts/update_etf_daily.py --months 9 --delay 0.9
-      - name: Commit only independent ETF feed
+      - name: Fetch official ETF history (incremental when initialized)
+        if: ${{ !inputs.publish_only }}
+        env:
+          FULL_HISTORY: ${{ inputs.full_history }}
+        run: |
+          months=$(python - <<'PYMONTHS'
+          import json, os
+          try:
+              codes=json.load(open('data/etf-watchlist.json'))['codes']
+              rows={r['code']:r for r in json.load(open('data/etf-daily.json'))['rows']}
+              complete=all(len(rows[c]['bars'])>=60 for c in codes)
+          except (OSError,ValueError,KeyError,TypeError): complete=False
+          print(2 if complete and os.environ.get('FULL_HISTORY')!='true' else 9)
+          PYMONTHS
+          )
+          python -u scripts/update_etf_daily.py --months "$months" --delay 0.9 --output /tmp/r188-etf-fetched.json
+      - name: Merge verified bars without discarding existing history
+        if: ${{ !inputs.publish_only }}
+        run: |
+          python -u - <<'PYMERGE'
+          import json, math, datetime as dt
+          from pathlib import Path
+
+          def date(s):
+              if not isinstance(s,str) or dt.date.fromisoformat(s).isoformat()!=s: raise ValueError('invalid date')
+              return s
+
+          def checked_rows(doc):
+              if doc.get('schema')!=1 or doc.get('kind')!='etf-official-eod': raise ValueError('ETF schema mismatch')
+              rows={}
+              for r in doc['rows']:
+                  code=r['code']; bars=r['bars']; days=[]
+                  if code in rows or not bars: raise ValueError('duplicate code or empty bars')
+                  for b in bars:
+                      if len(b)!=6: raise ValueError('bar shape')
+                      d,o,h,l,c,v=b; days.append(date(d))
+                      if not all(isinstance(x,(int,float)) and not isinstance(x,bool) and math.isfinite(x) for x in b[1:]) or min(o,h,l,c)<=0 or h<max(o,l,c) or l>min(o,h,c) or v<0: raise ValueError('invalid OHLCV')
+                  if days!=sorted(set(days)) or r['latestDate']!=days[-1] or r['barCount']!=len(bars) or r['close']!=bars[-1][4]: raise ValueError('row integrity '+code)
+                  rows[code]=r
+              if not rows or doc['asOf']!=max(r['latestDate'] for r in rows.values()): raise ValueError('invalid asOf')
+              return rows
+
+          def merge(old,new):
+              prev=checked_rows(old) if old else {}; fresh=checked_rows(new); result=dict(prev)
+              for code,r in fresh.items():
+                  prior=prev.get(code)
+                  if not prior: result[code]=r; continue
+                  bars={b[0]:b for b in prior['bars']}; bars.update({b[0]:b for b in r['bars']})
+                  # Keep latest metadata from the row that actually has latest quote, never downgrade it.
+                  meta=dict(r if r['latestDate']>=prior['latestDate'] else prior)
+                  meta['bars']=[bars[d] for d in sorted(bars)]
+                  meta['barCount']=len(meta['bars']); meta['dataQuality']='verified_ohlcv' if meta['barCount']>=20 else 'short_history'
+                  meta['close']=meta['bars'][-1][4]
+                  # For a retained later quote, keep its official change metadata. Never infer ex-dividend change from stale rows.
+                  result[code]=meta
+              doc=dict(new, rows=list(result.values()), asOf=max(r['latestDate'] for r in result.values()))
+              checked_rows(doc); return doc
+
+          if __name__=='__main__':
+              p=Path('data/etf-daily.json'); old=json.loads(p.read_text()) if p.exists() else None
+              new=json.loads(Path('/tmp/r188-etf-fetched.json').read_text())
+              doc=merge(old,new)
+              temp=p.with_suffix('.r188.tmp'); temp.write_text(json.dumps(doc,ensure_ascii=False,indent=2)+'\n'); temp.replace(p)
+              for r in doc['rows']: print('ETF_ROW',r['code'],r['latestDate'],r['barCount'])
+          PYMERGE
+      - name: Fetch same-date ETF institutional flows (T86)
+        if: ${{ !inputs.publish_only }}
+        run: |
+          python -u - <<'PYT86'
+          import datetime as dt, json, re, sys, urllib.request
+          from pathlib import Path
+          FIELDS={
+           'code':'證券代號', 'foreignNetShares':'外陸資買賣超股數(不含外資自營商)',
+           'trustNetShares':'投信買賣超股數','dealerNetShares':'自營商買賣超股數',
+           'dealerOwnNetShares':'自營商買賣超股數(自行買賣)', 'dealerHedgeNetShares':'自營商買賣超股數(避險)',
+           'totalNetShares':'三大法人買賣超股數'}
+          
+          def norm(s): return re.sub(r'\s+','',str(s)).replace('（','(').replace('）',')')
+          def integer(v):
+              s=str(v).strip().replace(',','')
+              if not re.fullmatch(r'[+-]?\d+',s): raise ValueError('invalid share count')
+              return int(s)
+          def parse(doc, day, codes):
+              d=dt.date.fromisoformat(day); compact=d.strftime('%Y%m%d')
+              title=str(doc.get('title','')); roc=re.search(r'(\d{2,3})年\s*(\d{1,2})月\s*(\d{1,2})日',title)
+              title_day=dt.date(int(roc[1])+1911,int(roc[2]),int(roc[3])).isoformat() if roc else None
+              raw=doc.get('date'); raw_day=str(raw) if raw is not None else None
+              if doc.get('stat')!='OK' or (raw_day is None and title_day is None) or (raw_day is not None and raw_day not in (day,compact)) or (title_day is not None and title_day!=day): raise ValueError('T86 date or status mismatch')
+              f=[norm(x) for x in doc['fields']]; idx={}
+              for key,label in FIELDS.items():
+                  if f.count(label)!=1: raise ValueError('T86 missing/duplicate column '+label)
+                  idx[key]=f.index(label)
+              out={}; seen=set()
+              for row in doc['data']:
+                  if not isinstance(row,list) or len(row)<=idx['code']: continue
+                  code=str(row[idx['code']]).strip()
+                  if code not in codes: continue
+                  if code in seen: out.pop(code,None); continue
+                  seen.add(code)
+                  try:
+                      rec={k:integer(row[i]) for k,i in idx.items() if k!='code'}
+                      if rec['dealerNetShares']!=rec['dealerOwnNetShares']+rec['dealerHedgeNetShares'] or rec['totalNetShares']!=sum(rec[k] for k in ('foreignNetShares','trustNetShares','dealerNetShares')): raise ValueError('T86 reconciliation failed')
+                      out[code]={'date':day,'source':'TWSE T86','unit':'shares',**rec}
+                  except (ValueError,IndexError,TypeError): print('T86 invalid row',code,flush=True)
+              return out
+          
+          def fetch(day):
+              url='https://www.twse.com.tw/rwd/zh/fund/T86?date='+day.replace('-','')+'&selectType=ALLBUT0999&response=json'
+              with urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0','Accept':'application/json'}),timeout=25) as r:
+                  return json.loads(r.read(8_000_000).decode('utf-8-sig'))
+          
+          def enrich(doc,fetcher=fetch):
+              rows=doc['rows']; groups={}
+              for r in rows:
+                  groups.setdefault(r['latestDate'],set()).add(r['code'])
+              # Only query the latest date and retain other dates as unavailable.
+              day=max(groups); result={}
+              try: result=parse(fetcher(day),day,groups[day])
+              except Exception as exc: print('::warning::ETF T86 unavailable: '+str(exc)[:180],flush=True)
+              for r in rows:
+                  rec=result.get(r['code']) if r['latestDate']==day else None
+                  # Never present a stale or unverified row as current.
+                  r['institutional']=rec
+                  print('ETF_T86',r['code'],r['latestDate'],'verified' if rec else 'unavailable',flush=True)
+              return doc
+          
+          if __name__=='__main__':
+              p=Path('data/etf-daily.json'); doc=json.loads(p.read_text(encoding='utf-8'))
+              enrich(doc)
+              temp=p.with_suffix('.r190.tmp');temp.write_text(json.dumps(doc,ensure_ascii=False,indent=2)+'\n',encoding='utf-8');temp.replace(p)
+          PYT86
+      - name: Verify merged ETF data
+        if: ${{ !inputs.publish_only }}
+        run: python -m unittest scripts/test_etf_daily.py -v
+      - name: Commit only independent ETF feed with safe retry
+        if: ${{ !inputs.publish_only }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/etf-daily.json
-          if ! git diff --cached --quiet; then
-            git commit -m "data: refresh verified ETF official EOD"
-            git push
-          else
-            echo "ETF market data unchanged"
-          fi
+          if git diff --cached --quiet; then echo "ETF data unchanged"; exit 0; fi
+          git commit -m "data: R190 refresh verified ETF EOD and T86"
+          for attempt in 1 2 3 4 5; do
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+            if git merge-base --is-ancestor HEAD origin/main; then echo "ETF_PUSH_OK already published"; exit 0; fi
+            base=$(git rev-parse HEAD^)
+            git merge-base --is-ancestor "$base" origin/main || { echo "::error::Remote history changed"; exit 1; }
+            if [ "$base" != "$(git rev-parse origin/main)" ]; then
+              if ! git diff --quiet "$base" origin/main -- data/etf-daily.json data/etf-watchlist.json scripts/update_etf_daily.py scripts/test_etf_daily.py .github/workflows/etf-daily.yml; then
+                echo "::error::ETF inputs or ETF output changed remotely; run new workflow; no data overwritten"; exit 1
+              fi
+              if ! git rebase origin/main; then git rebase --abort || true; exit 1; fi
+            fi
+            if git push origin HEAD:refs/heads/main; then echo "ETF_PUSH_OK"; exit 0; fi
+            sleep "$((attempt * 2))"
+          done
+          echo "::error::ETF push retries exhausted; no force push"; exit 1
+      - name: Publish Pages and verify ETF date for every watched code
+        timeout-minutes: 12
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_DATE: ${{ inputs.expected_date }}
+        run: |
+          python -u - <<'PYPUBLISH'
+          import os, json, time, subprocess, urllib.request, urllib.error, datetime as dt, hashlib
+          FILE='data/etf-daily.json'
+          def request(url,method='GET',token=None):
+              h={'User-Agent':'Chaopan-R188','Cache-Control':'no-cache'}
+              if token: h.update({'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'})
+              with urllib.request.urlopen(urllib.request.Request(url,data=b'' if method=='POST' else None,headers=h,method=method),timeout=25) as r: return r.status,r.read()
+          def get_main(path):
+              return subprocess.check_output(['git','show','origin/main:'+path])
+          def check_fresh(raw,codes,minimum):
+              obj=json.loads(raw); rows={r['code']:r for r in obj['rows']}; stale=[]
+              if minimum and dt.date.fromisoformat(minimum).isoformat()!=minimum: raise ValueError('invalid expected date')
+              for c in codes:
+                  r=rows.get(c); d=r['latestDate'] if r else 'missing'
+                  print('ETF_DATE',c,d,'expected',minimum,flush=True)
+                  if not r or (minimum and d<minimum): stale.append(c)
+              return stale
+
+          def publish(expected,site,api,token,attempts=18,interval=15):
+              def check():
+                  try:
+                      _,raw=request(site+'?r188='+str(time.time_ns())); return hashlib.sha256(raw).digest()==hashlib.sha256(expected).digest()
+                  except (OSError,ValueError) as e: print('ETF_PAGES_PENDING',type(e).__name__); return False
+              if check(): print('ETF_PAGES_OK already current'); return
+              try:
+                  status,_=request(api,'POST',token); print('ETF_PAGES_BUILD',status)
+              except urllib.error.HTTPError as e: print('::warning::Pages build HTTP '+str(e.code)+'; checking live site')
+              for _ in range(attempts):
+                  time.sleep(interval)
+                  if check(): print('ETF_PAGES_OK'); return
+              raise RuntimeError('ETF data committed but Pages has not served matching bytes; use publish_only, do not re-fetch')
+
+          def main():
+              subprocess.run(['git','fetch','--no-tags','origin','+refs/heads/main:refs/remotes/origin/main'],check=True)
+              raw=get_main(FILE); codes=json.loads(get_main('data/etf-watchlist.json'))['codes']
+              minimum=os.environ.get('EXPECTED_DATE','').strip() or json.loads(get_main('data/radar.json')).get('asOf','')
+              if not minimum: raise ValueError('cannot verify date; enter expected_date')
+              stale=check_fresh(raw,codes,minimum)
+              publish(raw,'https://love18960928-lgtm.github.io/chaopan-radar/'+FILE,os.environ['GITHUB_API_URL']+'/repos/'+os.environ['GITHUB_REPOSITORY']+'/pages/builds',os.environ['GH_TOKEN'])
+              if stale: raise RuntimeError('ETF still missing/stale: '+','.join(stale)+'; available verified data retained and published')
+              print('R188_ETF_OK',minimum)
+          if __name__=='__main__': main()
+          PYPUBLISH
