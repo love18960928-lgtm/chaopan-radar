@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R193-20261124-index-sync */
+/* CHAOPAN_RADAR_BUILD: R194-20261125-cost-defense */
 /* Prior tested build (historical, not deployed version): CHAOPAN_RADAR_BUILD: R165-20261120-visual-card-red-up-green-down */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
@@ -2578,9 +2578,45 @@ const R176_CSS = `
 @media(min-width:630px){#modalContent .r176-one-page .r176-research-grid{gap:10px}#modalContent .r176-research-mini h3{font-size:15px}#modalContent .r176-research-mini b{font-size:13px}#modalContent .r176-one-page .r176-top-position{gap:10px}#modalContent .r176-one-page .r164-position .r164-pnlbox strong{font-size:19px}}
 @media(max-width:375px){#modalContent .r176-one-page .r176-risk-layout{grid-template-columns:1fr}#modalContent .r176-research-mini h3{font-size:10px}#modalContent .r176-one-page .r176-top-position{grid-template-columns:minmax(0,1fr) minmax(0,.64fr)}#modalContent .r176-one-page .r176-top-position .r164-position{grid-column:1/-1}#modalContent .r176-one-page .r176-strategy{min-height:38px}}
 `;
+const R194_COST_CSS = `
+#modalContent .r194-cost-card{box-sizing:border-box;border:1.5px solid #eac65f;border-radius:13px;padding:9px;background:linear-gradient(150deg,#062b39,#071d2a);color:#e2f6fc;min-width:0;box-shadow:inset 0 0 0 1px #b8983420}
+#modalContent .r194-cost-head{display:flex;align-items:center;justify-content:space-between;gap:5px;flex-wrap:wrap;margin-bottom:4px}
+#modalContent .r194-cost-head strong{font-size:14px;color:#f6d36b}
+#modalContent .r194-cell[data-r194-ma="5"]{border-color:#36dfa3}#modalContent .r194-cell[data-r194-ma="5"] .r194-cell-title{color:#36dfa3}
+#modalContent .r194-cell[data-r194-ma="10"]{border-color:#eaca55}#modalContent .r194-cell[data-r194-ma="10"] .r194-cell-title{color:#eaca55}
+#modalContent .r194-cell[data-r194-ma="20"]{border-color:#f8a251}#modalContent .r194-cell[data-r194-ma="20"] .r194-cell-title{color:#f8a251}
+#modalContent .r194-extra{border-top:1px solid #b79b5260;margin-top:7px;padding-top:5px;font-size:11px;color:#f5d577}
+#modalContent .r194-extra>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:4px}
+#modalContent .r194-extra-item{display:flex;flex-wrap:wrap;gap:3px 6px;align-items:baseline;min-width:0;color:#d6ebf5;overflow-wrap:anywhere}
+#modalContent .r194-extra-item small{width:100%;font-size:10px}#modalContent .r194-extra-item .r194-value{font-size:11px}
+#modalContent .r194-relative{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 7px;padding:7px;margin:7px 0;border:1px solid #eac65f;border-radius:9px;background:#09232f}
+#modalContent .r194-relative>div:first-child{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}#modalContent .r194-relative small{font-size:10px;color:#e2d1a1}#modalContent .r194-relative strong{font-size:14px}
+#modalContent .r194-dots{display:flex;align-items:center;gap:3px;font-size:10px;color:#cfebf5}#modalContent .r194-dots i{width:9px;height:9px;border:1px solid #7793a1;border-radius:50%;background:#263f4c}#modalContent .r194-dots i.lit{background:#43dcb2;border-color:#43dcb2}
+#modalContent .r194-relative-note{grid-column:1/-1;line-height:1.4;overflow-wrap:anywhere}
+#modalContent .r194-peak{display:flex;flex-wrap:wrap;align-items:center;gap:5px 8px;border:1px solid #43849a;border-radius:9px;padding:5px 7px;background:#092a38;font-size:11px;color:#c0d8e5}
+#modalContent .r194-peak label{display:flex;gap:5px;align-items:center;white-space:nowrap}#modalContent .r194-peak-input{width:75px;min-width:0;color:#edfaff;border:1px solid #4a90a5;border-radius:5px;background:#081e2a;padding:4px;font:inherit;box-sizing:border-box}#modalContent .r194-peak-values{display:flex;flex-wrap:wrap;gap:4px 8px;flex:1;min-width:120px}#modalContent .r194-peak-values small{font-size:10px}
+#modalContent .r194-cost-head small,#modalContent .r194-cost-note{font-size:10px;line-height:1.4;color:#b4cbd7;overflow-wrap:anywhere}
+#modalContent .r194-cost-card button{font-family:inherit;cursor:pointer;min-width:0;box-sizing:border-box}
+#modalContent .r194-cost-edit,#modalContent .r194-basis button{border:1px solid #3c8299;border-radius:7px;background:#0a2c3c;color:#bce9f2;font-size:10px;font-weight:700;padding:5px 7px}
+#modalContent .r194-basis{display:flex;gap:5px;margin:7px 0;align-items:center;flex-wrap:wrap}
+#modalContent .r194-basis button[aria-pressed=true]{border-color:#57e6e0;background:#13444d;color:#dbffff}
+#modalContent .r194-part{display:flex;flex-direction:column;gap:2px;min-width:0;border-top:1px solid #35748880;padding-top:5px}#modalContent .r194-body{margin-top:7px}#modalContent .r194-below .r194-value{margin:0 4px}#modalContent .r194-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+#modalContent .r194-cell{width:100%;text-align:left;padding:7px 5px;border:1px solid #35a5bd;border-radius:9px;background:linear-gradient(155deg,#092f3b,#071e2d);color:#e4faff;display:flex;flex-direction:column;gap:4px;overflow-wrap:anywhere}
+#modalContent .r194-cell[aria-pressed=true]{border-color:#59d9e7;box-shadow:inset 0 0 0 1px #3db0c57a}
+#modalContent .r194-cell-title{font-size:14px;color:#a7ecf4;font-weight:800;line-height:1.2}
+#modalContent .r194-cell small{font-size:10px;color:#c4d7e2;line-height:1.25}
+#modalContent .r194-value{font-size:13px;font-weight:800;line-height:1.25;color:#effaff;font-variant-numeric:tabular-nums}
+#modalContent .r194-field{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:2px;min-width:0}
+#modalContent .r194-role{font-size:10px;color:#f5ce73;line-height:1.3}
+#modalContent .r194-summary{margin-top:7px;border:1px solid #d87989;border-radius:9px;padding:7px 5px;text-align:center;background:#3b2437;color:#e9f8ff;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+#modalContent .r194-summary b{font-size:12px}
+#modalContent .r194-below{display:block;border-top:1px solid #58708070;padding-top:3px;margin-top:3px;color:#d6e9f3}
+#modalContent .r194-cost-note{display:block;margin-top:5px}
+@media(max-width:375px){#modalContent .r194-cost-card{padding:6px}#modalContent .r194-cell{padding:5px 3px}#modalContent .r194-cell small,#modalContent .r194-role{font-size:9px}#modalContent .r194-value{font-size:12px}#modalContent .r194-cost-head strong{font-size:12px}}
+`;
 function r164EnsureStyle(){
  if(typeof document==='undefined'||!document.head||document.getElementById('r164-dashboard-style'))return;
- const s=document.createElement('style');s.id='r164-dashboard-style';s.textContent=R164_CSS+R174_CSS+R175_CSS+R176_CSS;document.head.appendChild(s);
+ const s=document.createElement('style');s.id='r164-dashboard-style';s.textContent=R164_CSS+R174_CSS+R175_CSS+R176_CSS+R194_COST_CSS;document.head.appendChild(s);
 }
 function r164PriceTick(p){return p<10?.01:p<50?.05:p<100?.1:p<500?.5:p<1000?1:p<5000?5:10;}
 function r164Snap(p,how){
@@ -2669,7 +2705,7 @@ function r164MABox(c,data){
  }
  if(data.ok)try{
   const checked=globalThis.ChaopanCompareR162?.inspect?.(c,state.marketIntel,20,state.mode!=='demo');
-  if(checked?.ok){const excess=checked.excess;market=`<span class="r164-market-label ${r164PctColor(excess)}">${excess>=0?'個股較強':'個股較弱'}<small style="display:block">${r164Pct(excess)}</small><small style="display:block">大盤 ${r164Pct((checked.indices.at(-1).close/checked.indices.at(-2).close-1)*100)}</small></span>`;}
+  if(checked?.ok){const excess=checked.excess;market=`<span class="r164-market-label ${r164PctColor(excess)}">${excess>=0?'個股較強':'個股較弱'}<small style="display:block">20日 ${Number.isFinite(excess)?`${excess>0?'+':''}${excess.toFixed(2)}pp`:'—'}</small><small style="display:block">大盤 ${r164Pct((checked.indices.at(-1).close/checked.indices.at(-2).close-1)*100)}</small></span>`;}
  }catch(e){}
  badges+=`<button type="button" class="r164-ma-item r167-index-open" aria-label="查看加權指數K線圖（開啟走勢圖分頁）" title="點擊開啟加權指數日K"><b>大盤 K</b><strong style="font-size:14px">${market}</strong><small class="r167-index-hint">點我看日K ⤴</small><span class="r164-track"><i class="r164-fill" style="--length:20%;--accent:#36bee2"></i></span></button>`;
  return `<section class="r164-panel r164-ma-panel r163-compact-risk" aria-label="MA5 MA10 MA20 大盤圖形化趨勢"><div class="r164-strip"><div class="r164-headblock">均線<br>趨勢</div><div class="r164-strip-data"><div class="r164-mas">${badges}</div></div></div>${!data.ok?`<div class="r164-status">${esc(data.reason||"資料待核對")} · 不提供隔日價位</div>`:!data.fresh?`<div class="r164-status">${esc(c.date)} 歷史均線 · 舊資料不可當作明日委託價</div>`:''}</section>`;
@@ -2694,7 +2730,7 @@ function r164DefenseBox(c,data){
 }
 function r164PnlHTML(cost,qty,close){
  const valid=Number.isFinite(cost)&&cost>0&&Number.isSafeInteger(qty)&&qty>0&&qty<=1e8&&Number.isFinite(close)&&close>0;
- if(!valid)return `<small>輸入成本與股數，自動計算損益</small>`;
+ if(!valid){if(Number.isFinite(cost)&&cost>0&&Number.isFinite(close)&&close>0){const pc=(close/cost-1)*100;return `<small>帳面損益率（未計費）</small><strong class="${r164PctColor(pc)}">${r164Pct(pc)}</strong><small>輸入股數顯示金額</small>`;}return `<small>輸入成本與股數，自動計算損益</small>`;}
  const pnl=(close-cost)*qty,pc=(close/cost-1)*100;
  return `<small>帳面損益（未計費）</small><strong class="${r164PctColor(pnl)}">${pnl>0?'+':''}${r164Fmt(Math.round(pnl))}</strong><small class="${r164PctColor(pc)}">${r164Pct(pc)} · ${pnl>0?'獲利中':pnl<0?'虧損中':'打平'}</small>`;
 }
@@ -2790,6 +2826,13 @@ function r175MarketStockModel(c){
  }
  return {ok:true,stockReady,ic,dayIndex,dayStock,delta,rows,trend,date:c.date,fresh:stock.fresh};
 }
+function r194RelativeSummary(m){
+ if(!m?.ok||!m.stockReady||!Array.isArray(m.rows)||m.rows.length!==3||!m.rows.every(r=>Number.isFinite(r.relative)))return '';
+ const strong=m.rows.filter(r=>r.relative>.5).length,weak=m.rows.filter(r=>r.relative<-.5).length;
+ const score=Math.round(3+2*(strong-weak)/3), label=['','明顯偏弱','偏弱','分歧／同步','偏強','明顯偏強'][score];
+ const text=m.rows.map(r=>'MA'+r.n+' '+(r.relative>.5?'較強':r.relative<-.5?'較弱':'接近同步')).join('｜');
+ return `<div class="r194-relative"><div><small>⚖ 與大盤相比｜均線強弱</small><strong class="${r164PctColor(score-3)}">${label}</strong></div><div class="r194-dots" aria-label="相對強弱 ${score}／5">${Array.from({length:5},(_,i)=>`<i class="${i<score?'lit':''}"></i>`).join('')}<b>${score}/5</b></div><small class="r194-relative-note">${text}；僅均線相對位置評級，不代表勝率。</small></div>`;
+}
 function r174IndexCompare(c){
  const m=r175MarketStockModel(c);
  if(!m.ok)return `<section class="r164-panel r174-index-compare r175-compare r176-compact-compare" aria-label="個股與大盤均線比對">
@@ -2804,7 +2847,7 @@ function r174IndexCompare(c){
    <div class="r175-ma-id">MA${r.n}</div>
    <div class="r175-compare-cell r175-stock-side"><small>個股 ${money(r.maStock)}元</small><strong class="${col(r.stockPct)}">${p(r.stockPct)}</strong><small class="${col(r.stockDiff)}">${signed(r.stockDiff,'元')}</small></div>
    <div class="r175-compare-cell r175-index-side"><small>大盤 ${money(r.maIndex)}點</small><strong class="${col(r.indexPct)}">${p(r.indexPct)}</strong><small class="${col(r.indexPoint)}">${signed(r.indexPoint,'點')}</small></div>
-   <div class="r175-ma-result"><b class="${col(r.relative)}">${p(r.relative)}<small>pp</small></b><span>${r.signal}</span></div>
+   <div class="r175-ma-result"><b class="${col(r.relative)}">${Number.isFinite(r.relative)?`${r.relative>0?'+':''}${r.relative.toFixed(2)}`:'—'}<small>pp</small></b><span>${r.signal}</span></div>
  </div>`).join('');
  const dayDiff=m.delta===null?'個股日漲跌待核對':`${m.delta>0?'+':''}${m.delta.toFixed(2)}pp`;
  const trendColor=/均弱|偏弱/.test(m.trend)?'r164-negative':/均強|抗跌/.test(m.trend)?'r164-positive':'';
@@ -2814,6 +2857,7 @@ function r174IndexCompare(c){
   <div class="r175-compare-daily"><span>大盤 ${money(m.ic)}點 <b class="${col(m.dayIndex)}">${p(m.dayIndex)}</b></span><span>${label} <b class="${col(m.delta)}">${dayDiff}</b></span></div>
   <div class="r175-column-head"><span>均線</span><span>個股：元／距MA</span><span>大盤：點／距MA</span><span>差距／強弱</span></div>
   <div class="r175-compare-rows">${table}</div>
+  ${r194RelativeSummary(m)}
   <small class="r174-source">${esc(m.date)}${m.fresh?' 同日盤後':' 歷史盤後'}｜個股與大盤各算自己的均線距離；兩者差距以百分點(pp)比較，不混算元與指數點；均弱／均強指與均線相對位置，不代表完整趨勢</small>
  </section>`;
 }
@@ -2897,6 +2941,49 @@ function r174IndexExtras(bars){
  </section>`;
 }
 
+// R194 cost defense is an independent, read-only scenario calculator.
+// It never produces orders or modifies the strategy engine.
+const r194ValidPrice=v=>typeof v==='number'&&Number.isFinite(v)&&v>0;
+function r194Scenario(value,cost,qty,close){
+ if(!r194ValidPrice(value)||!r194ValidPrice(close))return null;
+ const hasCost=r194ValidPrice(cost),hasQty=Number.isSafeInteger(qty)&&qty>0&&qty<=1e8;
+ const pct=hasCost?(value/cost-1)*100:null,amount=hasCost&&hasQty?(value-cost)*qty:null;
+ return {value,distance:(value/close-1)*100,pct:Number.isFinite(pct)?pct:null,amount:Number.isFinite(amount)?amount:null,role:value<close?'下方回測':value>close?'上方關卡':'位於觸線'};
+}
+function r194Money(v){if(!Number.isFinite(v))return '—';const x=Math.round(v);return (x>0?'+':'')+r164Fmt(x)+' 元';}
+function r194Price(v){return r194ValidPrice(v)?v.toLocaleString('zh-TW',{maximumFractionDigits:4}):'—';}
+function r194CostHTML(data,cost,qty){
+ const close=data?.close,hasCost=r194ValidPrice(cost),hasQty=Number.isSafeInteger(qty)&&qty>0&&qty<=1e8;
+ const basisName=data?.fresh?'隔日觸線':'歷史觸線';
+ const models=[5,10,20].map(n=>{const m=data?.ok?data.mas?.find(x=>x.n===n):null;return {n,today:r194Scenario(m?.today,cost,qty,close),touch:r194Scenario(m?.touch,cost,qty,close)};});
+ const pnl=v=>v&&Number.isFinite(v.pct)?`<b class="r194-value ${r164PctColor(v.pct)}">${r164Pct(v.pct)}</b>${hasQty?`<b class="r194-value ${r164PctColor(v.amount)}">${r194Money(v.amount)}</b>`:''}`:'<small>—</small>';
+ const part=(v,label)=>`<div class="r194-part"><small>${label} · ${v?.role||'待核對'}</small><b class="r194-value">${r194Price(v?.value)}</b>${hasCost?pnl(v):`<b class="r194-value ${r164PctColor(v?.distance)}">${v?r164Pct(v.distance):'—'}</b>`}</div>`;
+ const cells=models.map(({n,today,touch})=>`<div class="r194-cell" data-r194-ma="${n}"><span class="r194-cell-title">MA${n} ${today?.value<close?'防守':today?.value>close?'關卡':'觀察'}</span>${part(today,'當日MA')}${part(touch,basisName)}</div>`).join('');
+ const v=models[0].today;
+ const ext=hasCost&&v&&v.value<=close?[3,5].map(n=>{const x=r194Scenario(v.value*(1-n/100),cost,qty,close);return `<span class="r194-extra-item"><small>低於當日MA5 ${n}%</small><b>${r194Price(x.value)}</b>${pnl(x)}</span>`;}).join(''):'';
+ return `${hasCost?`<small class="r194-cost-note">依成本 ${r194Price(cost)} 元${hasQty?`／${qty.toLocaleString('zh-TW')} 股`:""}｜價位情境損益</small>`:""}<div class="r194-grid">${cells}</div>${ext?`<div class="r194-extra"><b>延伸試算</b><div>${ext}</div></div>`:''}<small class="r194-cost-note">${!data?.fresh?'歷史資料｜非明日委託價；':''}${!hasCost?'距收盤百分比｜輸入成本後顯示損益率；':!hasQty?'尚未輸入有效股數，只計損益率；':''}${hasCost?'未含費用、配息及滑價；情境非減碼指令。':'距離以收盤為基準。'}</small>`;
+}
+
+function r194PeakHTML(close,peak){
+ if(!r194ValidPrice(close)||!r194ValidPrice(peak)||peak<close)return '<small>選填持股期間最高收盤價（須不低於目前收盤）</small>';
+ return `<span>距最高 <b class="${r164PctColor(close-peak)}">${r164Pct((close/peak-1)*100)}</b></span><span>回檔3% <b>${r194Price(peak*.97)}</b></span><span>5% <b>${r194Price(peak*.95)}</b></span>`;
+}
+function r194PeakCard(code,close,asset){
+ let peak='';try{peak=localStorage.getItem('chaopan-r194-peak-'+asset+'-'+code)||'';}catch(_){}
+ return `<div class="r194-peak" data-r194-peak-key="${esc(asset+'-'+code)}"><label>最高收盤 <input type="number" min="0" step="any" inputmode="decimal" placeholder="選填" value="${esc(peak)}" class="r194-peak-input"/></label><div class="r194-peak-values">${r194PeakHTML(close,Number(peak))}</div></div>`;
+}
+function r194CostCard(data,cost,qty){
+ return `<section class="r164-panel r194-cost-card" aria-label="成本防守試算"><div class="r194-cost-head"><strong>◈ 均線防守試算</strong><button class="r194-cost-edit" type="button">修改成本</button></div><small class="r194-cost-note">未輸入成本：技術走勢｜輸入後：各均線損益</small><div class="r194-body">${r194CostHTML(data,cost,qty)}</div></section>`;
+}
+function r194BindCost(root,input){
+ const box=root.querySelector('.r194-cost-card');if(!box)return ()=>{};
+ const body=box.querySelector('.r194-body');
+ const peakBox=root.querySelector('.r194-peak'),peakInput=peakBox?.querySelector('input');let latestClose=null;
+ if(peakInput)peakInput.addEventListener('input',()=>{const peak=Number(peakInput.value);try{const k='chaopan-r194-peak-'+peakBox.dataset.r194PeakKey;if(r194ValidPrice(peak))localStorage.setItem(k,String(peak));else localStorage.removeItem(k);}catch(_){}peakBox.querySelector('.r194-peak-values').innerHTML=r194PeakHTML(latestClose,peak);});
+ box.querySelector('.r194-cost-edit')?.addEventListener('click',()=>input?.focus());
+ return (data,cost,qty)=>{latestClose=data?.close;body.innerHTML=r194CostHTML(data,cost,qty);if(peakInput)peakBox.querySelector('.r194-peak-values').innerHTML=r194PeakHTML(latestClose,Number(peakInput.value));};
+}
+
 function nextSessionDefenseCard(c){
  r164EnsureStyle();
  const code=String(c?.code||''),key='chaopan-r82-cost-'+code,
@@ -2914,7 +3001,7 @@ function nextSessionDefenseCard(c){
  const priceLimits=data.fresh?r164LimitBand(c):null;
  return `<section class="r82-decision r91-decision r164-board r165-reference r176-main-card" data-code="${esc(code)}" aria-label="明日持股操作同頁圖形總覽">
  <div class="r176-main-banner"><span>明日持股操作</span><strong>自動策略｜<span class="r174-auto-mode" aria-live="polite">${esc(r174AutoMode(cost===''?NaN:Number(cost),p))}</span></strong></div>
- <div class="r176-banner-date">${esc(c?.date||'日期待核對')} 盤後 · R193 ｜ 持有週期 <select class="r92-mode" aria-label="持有週期"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
+ <div class="r176-banner-date">${esc(c?.date||'日期待核對')} 盤後 · R194 ｜ 持有週期 <select class="r92-mode" aria-label="持有週期"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
  ${r164MABox(c,data)}
  <div class="r176-top-position"><section class="r164-panel r164-position"><div class="r164-inputs">
   <label>成本（元）<input class="r82-cost-input" type="number" inputmode="decimal" min="0" step="any" value="${esc(cost)}" placeholder="成本" /></label>
@@ -2924,7 +3011,9 @@ function nextSessionDefenseCard(c){
  </div>
  <div class="r176-risk-layout"><section class="r164-panel r164-action-preview"><div class="r164-quick-action">${r164ActionPreview(plan,c,data)}</div></section>
  <section class="r164-panel r176-advice"><h3>▤ 建議操作</h3><strong>${esc(advice.title)}</strong><p>${esc(advice.body)}</p></section></div>
+ ${r194PeakCard(code,p,'stock')}
  ${r174IndexCompare(c)}
+ ${r194CostCard(data,Number(cost),Number(qty))}
  <div class="r176-slim-panels">${r164DefenseBox(c,data)}${r164KeyBox(c,data)}</div>
  ${r174StockSupportAlert(c,data)}
  <div class="r164-price-limit">${priceLimits?`<span>漲幅參考 <b class="r164-positive">${r164Fmt(priceLimits.up)} (${r164Pct(100*(priceLimits.up/data.close-1))})</b></span><span>跌幅參考 <b class="r164-negative">${r164Fmt(priceLimits.down)} (${r164Pct(100*(priceLimits.down/data.close-1))})</b></span>`:'<span>特殊／非最新交易日：漲跌停價格待交易所核對</span>'}</div>
@@ -2934,11 +3023,12 @@ function nextSessionDefenseCard(c){
 function r82BindCost(card,c){
  const input=card.querySelector('.r82-cost-input'),qtyInput=card.querySelector('.r91-qty-input'),pnl=card.querySelector('.r91-pnl'),modeInput=card.querySelector('.r92-mode'),auto=card.querySelector('.r174-auto-mode'),quick=card.querySelector('.r164-quick-action');
  if(!input||!qtyInput||!pnl||!quick)return;
+ const refreshCostDefense=r194BindCost(card,input);
  const key='chaopan-r82-cost-'+String(c.code||''),qtyKey='chaopan-r91-qty-'+String(c.code||''),modeKey='chaopan-r92-mode-'+String(c.code||'');
  const update=()=>{
   const cost=input.value.trim()===''?NaN:Number(input.value),qty=qtyInput.value.trim()===''?NaN:Number(qtyInput.value),mode=modeInput?.value||'medium';
   const a=r99Action(c,cost,qty,mode);
-  quick.innerHTML=r164ActionPreview(a,c,r164Data(c));pnl.innerHTML=r164PnlHTML(cost,qty,numeric(c.close));
+  const data=r164Data(c);quick.innerHTML=r164ActionPreview(a,c,data);pnl.innerHTML=r164PnlHTML(cost,qty,numeric(c.close));refreshCostDefense(data,cost,qty);
   const strategyName=r174AutoMode(cost,numeric(c.close));
   if(auto)auto.textContent=strategyName;
   const chip=card.querySelector('.r176-strategy-status');if(chip)chip.textContent=strategyName;
@@ -3037,7 +3127,7 @@ function arrangeR41Detail(c){
   const marketChange=numeric(c.changePct),quoteClass=r164PctColor(marketChange);
   head.classList.add('r164-detail-heading','r176-detail-heading');
   const industryLabel=String(c.industry||c.fundamentals?.industry||'').trim();
-  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R193</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
+  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R194</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
  }
  const page=document.createElement('div');page.className='r176-one-page';page.setAttribute('aria-label','個股完整單頁操作儀表板');
  const card=document.createElement('div');card.innerHTML=nextSessionDefenseCard(c);r82BindCost(card,c);page.append(card);
@@ -4932,18 +5022,20 @@ function renderR177EtfDetail(r){
  const makeFullChart=()=>bars.length>=5?makeChart(bars,null,state.chartDays,[],[],null,date,{indexMode:true}):'<div class="empty-state">日K資料未足5根／尚未同步</div>';
  const chart=state.r182ChartOpen?makeFullChart():'';
  const note=date?`${date}｜${bars.length}根日K｜證交所 STOCK_DAY｜未經除息還原${state.payload?.asOf&&date<state.payload.asOf?'｜資料較個股盤後舊':''}${r177EtfError?'｜'+r177EtfError:''}`:'ETF資料待核對';
- content.innerHTML=`<div class="detail-title r164-detail-heading r176-detail-heading"><div class="r164-heading-id"><small>ETF ANALYSIS / 上市 · R193</small>${esc(code)} ${esc(r.name||'ETF')}<span class="r169-industry">ETF</span></div><div class="r164-heading-quote"><strong>${r177Fixed(close)}</strong><small class="${r164PctColor(m.change)}">${r177Pct(m.change)}</small></div></div><div class="r176-one-page r182-etf" data-etf-id="${esc(code)}">
+ content.innerHTML=`<div class="detail-title r164-detail-heading r176-detail-heading"><div class="r164-heading-id"><small>ETF ANALYSIS / 上市 · R194</small>${esc(code)} ${esc(r.name||'ETF')}<span class="r169-industry">ETF</span></div><div class="r164-heading-quote"><strong>${r177Fixed(close)}</strong><small class="${r164PctColor(m.change)}">${r177Pct(m.change)}</small></div></div><div class="r176-one-page r182-etf" data-etf-id="${esc(code)}">
  <style>#modalContent .r182-etf .r182-unit{font:inherit;background:#092a38;color:#dffaff;border:1px solid #4f91a1;border-radius:6px;max-width:100%;padding:3px}#modalContent .r182-etf .r176-risk-layout .r174-warning-cells{grid-template-columns:repeat(2,minmax(0,1fr))}#modalContent .r182-etf .r182-range{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}#modalContent .r182-etf .r182-range button{background:#10384b;border:1px solid #37788d;border-radius:7px;color:#dffaff;padding:6px 12px}#modalContent .r182-etf .r182-range .active{background:#36ceb8;color:#05242f}#modalContent .r182-etf .r182-chart svg{width:100%;height:auto}#modalContent .r182-etf .r182-qty{font-size:11px;min-width:0;width:100%;box-sizing:border-box}#modalContent .r182-etf .r182-note{font-size:10px;color:#a9c6d0;overflow-wrap:anywhere}</style>
- <section class="r164-board r165-reference r176-main-card"><div class="r176-main-banner"><span>${fresh?'明日持股操作':'歷史持股觀察'}</span><strong>ETF觀察｜<span class="r182-auto">待輸入</span></strong></div><div class="r176-banner-date">${esc(date||'日期待核對')} 盤後 · R193 ｜持有週期 <select class="r92-mode r182-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
+ <section class="r164-board r165-reference r176-main-card"><div class="r176-main-banner"><span>${fresh?'明日持股操作':'歷史持股觀察'}</span><strong>ETF觀察｜<span class="r182-auto">待輸入</span></strong></div><div class="r176-banner-date">${esc(date||'日期待核對')} 盤後 · R194 ｜持有週期 <select class="r92-mode r182-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
  ${!fresh?`<div role="status" style="color:#ffd25e;font-size:12px;padding:6px 0">⚠ ETF ${esc(date||'日期未知')}｜${expected?'個股盤後 '+esc(expected):'最新交易日待核對'}；僅供歷史參考，暫停明日操作判斷。</div>`:''}
  ${r182EtfMaStrip(m)}
  <div class="r176-top-position"><section class="r164-panel r164-position"><div class="r164-inputs"><label>成本（元）<input class="r182-cost" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="成本"></label><label>數量 <select class="r182-unit"><option value="shares" ${unit==='shares'?'selected':''}>股</option><option value="lots" ${unit==='lots'?'selected':''}>張</option></select><input class="r182-qty" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" placeholder="數量"></label></div><div class="r164-pnlbox r182-pnl" aria-live="polite"></div></section><section class="r164-panel r176-strategy"><small>持股狀態</small><strong class="r182-status">待輸入</strong></section></div>
  <div class="r176-risk-layout"><section class="r164-panel r164-action-preview"><div class="r174-small-title"><strong>◎ 風險減碼參考</strong></div><div class="r174-warning-cells"><div><small>開高／反彈</small><b>${r164Fmt(m.mas[0].today)}</b></div><div><small>開低／防守</small><b>${r164Fmt(m.support)}</b></div></div><div class="r182-note">均線及歷史低點觀察，未驗證ETF減碼模型，不產生委託股數。</div></section><section class="r164-panel r176-advice"><h3>▤ 建議觀察</h3><strong class="r182-advice">待核對</strong><p>以ETF自身均線及大盤比較，不套用個股出貨公式。</p></section></div>
- ${compare}<div class="r176-slim-panels">${r182EtfLevelStrip('MA5<br>防守帶',def,m,'ATR觀察帶，尚未回測；非委託價格')}${r182EtfLevelStrip('關鍵<br>價位',keys,m,'前20日高低點參考；頸線與突破尚未驗證')}</div>${r182EtfSupport(m,code)}<div class="r176-bottom-caption">盤後觀察參考｜未含配息、費用；不自動委託</div></section>
+ ${r194PeakCard(code,close,'etf')}${compare}${r194CostCard({...m,ok:!!date&&r194ValidPrice(close),fresh},Number(cost),Number(qty)*(unit==='lots'?1000:1))}<div class="r176-slim-panels">${r182EtfLevelStrip('MA5<br>防守帶',def,m,'ATR觀察帶，尚未回測；非委託價格')}${r182EtfLevelStrip('關鍵<br>價位',keys,m,'前20日高低點參考；頸線與突破尚未驗證')}</div>${r182EtfSupport(m,code)}<div class="r176-bottom-caption">盤後觀察參考｜未含配息、費用；不自動委託</div></section>
  ${research}${r190DealerDetail(c.institutional)}<details class="r176-full-chart r182-full" ${state.r182ChartOpen?'open':''}><summary>K線完整分析｜20／60／120日・價量</summary><div class="r182-range">${[20,60,120].map(x=>`<button type="button" data-r182-days="${x}" class="${state.chartDays===x?'active':''}">${x}日</button>`).join('')}</div><div class="r182-chart">${chart}</div><div class="r182-note">${esc(note)}</div></details><section class="r164-panel"><div class="r174-small-title"><strong>ETF 專屬資料</strong></div><div class="r174-warning-cells"><div><small>淨值</small><b>待核對</b></div><div><small>折溢價</small><b>待核對</b></div><div><small>配息</small><b>待核對</b></div></div><div class="r182-note">未取得可核對來源，不補零。</div></section></div>`;
  const root=content.querySelector('.r182-etf'),q=s=>root.querySelector(s),ci=q('.r182-cost'),qi=q('.r182-qty'),ui=q('.r182-unit'),mi=q('.r182-mode'),full=q('.r182-full');
+ const refreshCostDefense=r194BindCost(root,ci);const costDefenseData={...m,ok:!!date&&r194ValidPrice(close),fresh};
  function refresh(){const cv=r177Num(ci.value),v=r177Num(qi.value),shares=v===null?NaN:v*(ui.value==='lots'?1000:1),valid=close!==null&&cv>0&&Number.isSafeInteger(v)&&v>0&&Number.isSafeInteger(shares)&&shares<=1e8;
- q('.r182-pnl').innerHTML=valid?r164PnlHTML(cv,shares,close)+`<small>${shares.toLocaleString('zh-TW')}股｜未含配息</small>`:'<small>輸入成本與數量（股／張）</small>';
+ refreshCostDefense(costDefenseData,cv,Number.isSafeInteger(v)&&v>0?shares:NaN);
+ q('.r182-pnl').innerHTML=valid?r164PnlHTML(cv,shares,close)+`<small>${shares.toLocaleString('zh-TW')}股｜未含配息</small>`:r164PnlHTML(cv,NaN,close);
  const status=valid?close>cv?'帳面獲利':close<cv?'帳面虧損':'成本附近':'輸入成本後顯示';q('.r182-auto').textContent=status;q('.r182-status').textContent=status;
  const k=mi.value==='short'?5:mi.value==='long'?60:20,ma=bars.length>=k?bars.slice(-k).reduce((s,b)=>s+b[4],0)/k:null;q('.r182-advice').textContent=!fresh?'最新盤後待核對':ma===null?'資料待核對':close<ma?`低於MA${k}・防守觀察`:`站上MA${k}・趨勢觀察`;
  try{for(const [key,value] of [['cost',cv>0?ci.value:''],['shares',Number.isSafeInteger(v)&&v>0?qi.value:''],['unit',ui.value],['mode',mi.value]]){if(value)localStorage.setItem('chaopan-etf-'+code+'-'+key,value);else localStorage.removeItem('chaopan-etf-'+code+'-'+key)}}catch(_){}
@@ -5285,8 +5377,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R193-20261124-index-sync';
- const BUILD_LABEL='r193 · 大盤同步修正版';
+ const BUILD_ID='R194-20261125-cost-defense';
+ const BUILD_LABEL='r194 · 成本防守試算版';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  // R161: The static index.html has kept r50/r60-era labels even after
