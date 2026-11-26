@@ -1,4 +1,4 @@
-name: ETF 盤後自動更新 (R197)
+name: ETF 盤後自動更新 (R201)
 on:
   workflow_dispatch:
     inputs:
@@ -417,11 +417,20 @@ jobs:
                   # Independently verified announcement, not an estimated distribution.
                   if code=='00406A' and '2026-11-03' not in events:
                       records.append({'exDate':'2026-11-03','payDate':'2026-11-27','amount':0.138,'source':'TWSE announcement 2026-10-30'})
-                  oldrec=previous.get('latest')
-                  if isinstance(oldrec,dict) and oldrec.get('source') in (SOURCE,'TWSE announcement 2026-10-30') and day(oldrec.get('exDate')) and day(oldrec.get('payDate')) and num(oldrec.get('amount')) and oldrec['exDate'] not in events and not any(z['exDate']==oldrec['exDate'] for z in records): records.append(oldrec)
-                  latest=max(records,key=lambda x:x['exDate'],default=None)
-                  next_ex='2026-12-02' if code=='00406A' and today<='2026-12-02' and (not latest or latest['exDate']<'2026-12-02') else None
-                  r['distributionDetail']={'latest':latest,'nextExPending':next_ex} if latest or next_ex else None
+                  # R201: retain verified history, but never silently resolve conflicting source records.
+                  conflicts={ex for ex,v in events.items() if len(v)!=1}
+                  conflicts.update(ex for ex in previous.get('conflictDates',[]) if day(ex) and ex not in events)
+                  oldhist=previous.get('history') or []
+                  for oldrec in [*oldhist,previous.get('latest')]:
+                      if not isinstance(oldrec,dict) or oldrec.get('source') not in (SOURCE,'TWSE announcement 2026-10-30'): continue
+                      ex,pay,amt=day(oldrec.get('exDate')),day(oldrec.get('payDate')),num(oldrec.get('amount'))
+                      if not ex or not pay or pay<ex or amt is None or amt<=0 or ex in events or ex in conflicts: continue
+                      if not any(z['exDate']==ex for z in records): records.append({'exDate':ex,'payDate':pay,'amount':amt,'source':oldrec['source']})
+                  records=sorted((z for z in records if z['exDate'] not in conflicts),key=lambda x:x['exDate'])
+                  latest=records[-1] if records else None
+                  # Preserve unresolved announced date until a verified amount is collected, including after ex-date.
+                  next_ex='2026-12-02' if code=='00406A' and not any(z['exDate']=='2026-12-02' for z in records) else None
+                  r['distributionDetail']={'latest':latest,'history':records,'conflictDates':sorted(conflicts),'nextExPending':next_ex} if records or next_ex or conflicts else None
                   print('R197_ETF_EXTRA',code,date,'NAV',bool(r.get('navDetail')),'DIV',bool(latest),flush=True)
                   if not r.get('navDetail'): print('::warning::ETF NAV unavailable for '+code+' '+date+'; no stale NAV used',flush=True)
                   if not latest: print('::warning::ETF distribution unavailable for '+code,flush=True)
