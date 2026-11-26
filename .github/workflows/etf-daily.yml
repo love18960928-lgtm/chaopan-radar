@@ -1,4 +1,4 @@
-name: ETF official daily K (R191)
+name: ETF 盤後自動更新 (R195)
 on:
   workflow_dispatch:
     inputs:
@@ -14,9 +14,24 @@ on:
         description: 'Refetch 9 months instead of 2 months when history exists'
         type: boolean
         default: false
+  # Chain only successful runs of the existing stock EOD workflow on main.
+  workflow_run:
+    workflows: ['大量K雷達盤後自動更新']
+    types: [completed]
+    branches: [main]
+  # Human upload of this file/watchlist triggers a recovery run once.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/etf-daily.yml'
+      - 'data/etf-watchlist.json'
+  # Independent catch-up if stock workflow is delayed or fails (Taipei UTC+8).
   schedule:
-    - cron: '43 9,11,15 * * 1-5'
-    - cron: '43 0 * * 2-6'
+    - cron: '7 7 * * 1-5'   # 15:07
+    - cron: '17 8 * * 1-5'  # 16:17
+    - cron: '47 9 * * 1-5'  # 17:47
+    - cron: '43 15 * * 1-5' # 23:43
+    - cron: '43 0 * * 2-6'  # Tue-Sat 08:43
 permissions:
   contents: write
   pages: write
@@ -25,17 +40,45 @@ concurrency:
   cancel-in-progress: false
 jobs:
   etf-update:
+    # workflow_run has write privileges: accept only successful same-repo main runs.
+    if: >-
+      ${{ github.event_name != 'workflow_run' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.head_branch == 'main' &&
+           github.event.workflow_run.head_repository.full_name == github.repository) }}
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: main
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Require main
         run: test "$GITHUB_REF" = refs/heads/main
+      - name: R192 verify trigger and select stock trading date
+        id: target
+        env:
+          REQUESTED_DATE: ${{ inputs.expected_date }}
+          TRIGGER: ${{ github.event_name }}
+        run: |
+          python -u - <<'PYTARGET'
+          import datetime as dt, json, os
+          from pathlib import Path
+          day=os.environ.get('REQUESTED_DATE','').strip()
+          if not day:
+              radar=json.loads(Path('data/radar.json').read_text(encoding='utf-8'))
+              day=radar.get('asOf','')
+              if any((radar.get('marketAsOf') or {}).get(m)!=day for m in ('上市','上櫃')):
+                  raise ValueError('Stock market dates inconsistent; cannot choose ETF target')
+          if dt.date.fromisoformat(day).isoformat()!=day or day>dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date().isoformat():
+              raise ValueError('Invalid ETF target date')
+          print('R192_TRIGGER',os.environ.get('TRIGGER'),'TARGET',day,flush=True)
+          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as f:
+              f.write('day='+day+'\n')
+          PYTARGET
       - name: Verify ETF parser and data-safety rules
         if: ${{ !inputs.publish_only }}
         run: python -m unittest scripts/test_etf_daily.py -v
@@ -43,7 +86,22 @@ jobs:
         if: ${{ !inputs.publish_only }}
         env:
           FULL_HISTORY: ${{ inputs.full_history }}
+          TARGET_DATE: ${{ steps.target.outputs.day }}
         run: |
+          rm -f /tmp/r188-etf-fetched.json
+          if python - <<'PYREADY'
+          import json, os, sys
+          try:
+              codes=json.load(open('data/etf-watchlist.json',encoding='utf-8'))['codes']
+              rows={r['code']:r for r in json.load(open('data/etf-daily.json',encoding='utf-8'))['rows']}
+              ready=bool(codes) and all(len(rows[c]['bars'])>=60 and rows[c]['latestDate']>=os.environ['TARGET_DATE'] and rows[c]['bars'][-1][0]==rows[c]['latestDate'] for c in codes)
+          except (OSError,ValueError,KeyError,IndexError,TypeError): ready=False
+          sys.exit(0 if ready and os.environ.get('FULL_HISTORY')!='true' else 1)
+          PYREADY
+          then
+            echo 'R192 ETF history already current; skip repeated monthly downloads; still check T86 and Pages'
+            exit 0
+          fi
           months=$(python - <<'PYMONTHS'
           import json, os
           try:
@@ -112,7 +170,7 @@ jobs:
       - name: Repair missing latest ETF bars from official daily MI_INDEX (R191)
         if: ${{ !inputs.publish_only }}
         env:
-          EXPECTED_DATE: ${{ inputs.expected_date }}
+          EXPECTED_DATE: ${{ steps.target.outputs.day }}
         run: |
           python -u - <<'PYDAILY'
           import datetime as dt, json, math, os, re, time, html, urllib.request
@@ -281,7 +339,96 @@ jobs:
               enrich(doc)
               temp=p.with_suffix('.r190.tmp');temp.write_text(json.dumps(doc,ensure_ascii=False,indent=2)+'\n',encoding='utf-8');temp.replace(p)
           PYT86
-      - name: Verify merged ETF data
+      - name: Collect ETF NAV and distributions (R195 open data)
+        if: ${{ !inputs.publish_only }}
+        timeout-minutes: 3
+        run: |
+          python -u - <<'PYEXTRA'
+          import csv, datetime as dt, io, json, math, re, unicodedata, urllib.request, urllib.parse
+          from pathlib import Path
+          NAV_URL='https://www.sitca.org.tw/MemberK0000/F/03/nav.csv'
+          DIV_URL='https://www.sitca.org.tw/MemberK0000/F/03/'+urllib.parse.quote('160547投信投顧公會境內基金配息資料.csv')
+          SOURCE='SITCA open data 11109/160547'
+          
+          def norm(s): return re.sub(r'\s+','',unicodedata.normalize('NFKC',str(s or ''))).strip('\ufeff')
+          def day(s):
+              s=norm(s).replace('年','/').replace('月','/').replace('日','').replace('-','/')
+              try:
+                  if re.fullmatch(r'\d{7,8}',s): a,b,c=s[:-4],s[-4:-2],s[-2:]
+                  else: a,b,c=s.split('/')
+                  y=int(a)+(1911 if len(a)<=3 else 0)
+                  return dt.date(y,int(b),int(c)).isoformat()
+              except (TypeError,ValueError): return None
+          
+          def num(s):
+              try:
+                  v=float(norm(s).replace(',','')); return v if math.isfinite(v) and v>=0 else None
+              except (ValueError,TypeError): return None
+          
+          def parse_csv(raw,required):
+              for enc in ('utf-8-sig','cp950','big5'):
+                  try: text=raw.decode(enc); break
+                  except UnicodeDecodeError: continue
+              else: raise ValueError('CSV encoding unknown')
+              reader=csv.DictReader(io.StringIO(text)); fields=[norm(x) for x in (reader.fieldnames or [])]
+              if not set(required)<=set(fields) or len(fields)!=len(set(fields)): raise ValueError('CSV header mismatch: '+str(fields))
+              return [{norm(k):v for k,v in r.items() if k is not None} for r in reader]
+          
+          def fetch(url):
+              req=urllib.request.Request(url,headers={'User-Agent':'Chaopan-R195','Accept':'text/csv,*/*'})
+              with urllib.request.urlopen(req,timeout=25) as resp:
+                  raw=resp.read(32_000_001)
+              if len(raw)>32_000_000: raise ValueError('CSV exceeds size limit')
+              return raw
+          
+          def twd(s): return norm(s).upper() in ('TWD','NTD','台幣','臺幣','新台幣','新臺幣','新台幣元','新臺幣元')
+          
+          def enrich(doc,navrows,divrows,today):
+              for r in doc['rows']:
+                  code=r['code']; date=r['latestDate']; close=num(r['close'])
+                  matched=[x for x in navrows if norm(x.get('受益憑證代號')).upper()==code and twd(x.get('幣別'))]
+                  ids={norm(x.get('基金統編')) for x in matched if re.fullmatch(r'\d{8}',norm(x.get('基金統編')))}
+                  values={num(x.get('基金淨值')) for x in matched if day(x.get('日期'))==date}
+                  valid=len(ids)==1 and len(values)==1 and None not in values and next(iter(values))>0 and close is not None and close>0 and date<=today
+                  # Do not overwrite same-date verified data on transient source failure.
+                  old=r.get('navDetail') or {}
+                  if valid:
+                      nav=next(iter(values)); r['navDetail']={'date':date,'nav':nav,'source':SOURCE,'currency':'TWD'}
+                  elif old.get('date')!=date or old.get('source')!=SOURCE: r['navDetail']=None
+                  # Bind dividend records to fund tax ID, not approximate name matching.
+                  previous=r.get('distributionDetail') or {}
+                  events={}
+                  for x in divrows:
+                      if len(ids)!=1 or norm(x.get('基金統編')) not in ids or not twd(x.get('配息幣別')): continue
+                      ex,pay,amt=day(x.get('除息日')),day(x.get('收益分配發放日')),num(x.get('每單位分派金額'))
+                      if not ex or not pay or pay<ex or amt is None or amt<=0: continue
+                      events.setdefault(ex,set()).add((pay,amt))
+                  records=[{'exDate':ex,'payDate':next(iter(v))[0],'amount':next(iter(v))[1],'source':SOURCE} for ex,v in events.items() if len(v)==1]
+                  # Independently verified announcement, not an estimated distribution.
+                  if code=='00406A' and '2026-11-03' not in events:
+                      records.append({'exDate':'2026-11-03','payDate':'2026-11-27','amount':0.138,'source':'TWSE announcement 2026-10-30'})
+                  oldrec=previous.get('latest')
+                  if isinstance(oldrec,dict) and oldrec.get('source') in (SOURCE,'TWSE announcement 2026-10-30') and day(oldrec.get('exDate')) and day(oldrec.get('payDate')) and num(oldrec.get('amount')) and oldrec['exDate'] not in events and not any(z['exDate']==oldrec['exDate'] for z in records): records.append(oldrec)
+                  latest=max(records,key=lambda x:x['exDate'],default=None)
+                  next_ex='2026-12-02' if code=='00406A' and today<='2026-12-02' and (not latest or latest['exDate']<'2026-12-02') else None
+                  r['distributionDetail']={'latest':latest,'nextExPending':next_ex} if latest or next_ex else None
+                  print('R195_ETF_EXTRA',code,date,'NAV',bool(r.get('navDetail')),'DIV',bool(latest),flush=True)
+              return doc
+          
+          def main():
+              nav=[]; div=[]
+              for name,url,fields in [('nav',NAV_URL,['日期','基金統編','基金淨值','幣別','受益憑證代號']),('div',DIV_URL,['基金統編','配息幣別','除息日','收益分配發放日','每單位分派金額'])]:
+                  try:
+                      rows=parse_csv(fetch(url),fields)
+                      if name=='nav': nav=rows
+                      else: div=rows
+                      print('R195_CSV',name,len(rows),flush=True)
+                  except Exception as e: print('::warning::R195 '+name+' source unavailable: '+str(e)[:180],flush=True)
+              p=Path('data/etf-daily.json'); doc=json.loads(p.read_text(encoding='utf-8'))
+              enrich(doc,nav,div,dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date().isoformat())
+              temp=p.with_suffix('.r195.tmp'); temp.write_text(json.dumps(doc,ensure_ascii=False,indent=2)+'\n',encoding='utf-8');temp.replace(p)
+          if __name__=='__main__': main()
+          PYEXTRA
         if: ${{ !inputs.publish_only }}
         run: python -m unittest scripts/test_etf_daily.py -v
       - name: Commit only independent ETF feed with safe retry
@@ -291,7 +438,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/etf-daily.json
           if git diff --cached --quiet; then echo "ETF data unchanged"; exit 0; fi
-          git commit -m "data: R191 refresh verified ETF EOD and T86"
+          git commit -m "data: R195 refresh ETF EOD T86 NAV distributions"
           for attempt in 1 2 3 4 5; do
             git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
             if git merge-base --is-ancestor HEAD origin/main; then echo "ETF_PUSH_OK already published"; exit 0; fi
@@ -353,6 +500,6 @@ jobs:
               stale=check_fresh(raw,codes,minimum)
               publish(raw,'https://love18960928-lgtm.github.io/chaopan-radar/'+FILE,os.environ['GITHUB_API_URL']+'/repos/'+os.environ['GITHUB_REPOSITORY']+'/pages/builds',os.environ['GH_TOKEN'])
               if stale: raise RuntimeError('ETF still missing/stale: '+','.join(stale)+'; available verified data retained and published')
-              print('R191_ETF_OK',minimum)
+              print('R192_ETF_OK',minimum)
           if __name__=='__main__': main()
           PYPUBLISH
