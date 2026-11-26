@@ -1,0 +1,66 @@
+name: 超盤手 R200 歷史回測驗證 (唯讀 v2)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Historical audit (no writes to repository)
+        shell: bash
+        run: |
+          cat > /tmp/r200-audit.cjs <<'AUDITJS'
+          'use strict';
+          const fs=require('fs'),vm=require('vm'),assert=require('assert');
+          const src=fs.readFileSync('app-detail-swipe-v222.js','utf8');
+          const start=src.indexOf('function r200Series('),end=src.indexOf('function r200Money(',start);
+          if(start<0||end<0)throw Error('R200 indicator implementation not found; no substitute formula used');
+          const ctx={numeric:v=>v==null||v===''?null:Number(v),r194ValidPrice:v=>typeof v==='number'&&Number.isFinite(v)&&v>0};vm.createContext(ctx);vm.runInContext(src.slice(start,end),ctx);
+          const read=p=>{try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch(e){console.log('DATA_UNAVAILABLE',p,e.code||e.name);return null}};
+          const percent=(a,b)=>b?(100*a/b).toFixed(2)+'%':'—';const mean=(a,b)=>b?(100*a/b).toFixed(2)+'%':'—';
+          const directions=['黃金','死亡'];
+          function stats(){return {rows:0,excluded:0,observations:0,cross:Object.fromEntries(['kd','macd'].flatMap(k=>directions.map(d=>[k+d,{warn:0,actual:0,hit:0,falseReverse:0,reverseN:0,futureN:0,returnSum:0,positive:0}]))),def:Object.fromEntries(['MA5','平均線','MA10'].map(k=>[k,{n:0,exit:0,whipsaw:0,whipsawN:0,returnSum:0}]))};}
+          function ma(b,i,n){return b.slice(i-n+1,i+1).reduce((s,x)=>s+Number(x[4]),0)/n}
+          function auditRow(row,st){
+           const b=row?.bars,date=row?.date||row?.latestDate||row?.asOf,close=Number(row?.close??b?.at(-1)?.[4]);
+           if(row?.possiblePriceAdjustment||!Array.isArray(b)||b.length<61||!ctx.r200Series(b,date,close)||b.some((x,i)=>i>0&&Math.abs(Number(x[4])/Number(b[i-1][4])-1)>.35)){st.excluded++;return;}
+           st.rows++;
+           const series=ctx.r200Series(b,date,close);
+           for(let i=59;i<b.length-1;i++){
+             const f=ctx.r200Forecast(b.slice(0,i+1),b[i][0],Number(b[i][4]),true);if(!f)continue;st.observations++;
+             for(const k of ['kd','macd']){
+               const gap=x=>k==='kd'?x.k-x.d:x.dif-x.dea;
+               const actual=ctx.r200CrossState(gap(series[i]),gap(series[i+1]));
+               for(const d of directions){const m=st.cross[k+d],warn=f[k].warning&&f[k].direction===d,hit=actual===d+'交叉';if(warn)m.warn++;if(hit)m.actual++;if(warn&&hit)m.hit++;
+                 if(hit&&i+4<b.length){m.reverseN++;for(let j=i+2;j<=i+4;j++)if(ctx.r200CrossState(gap(series[j-1]),gap(series[j]))===(d==='黃金'?'死亡':'黃金')+'交叉'){m.falseReverse++;break;}}
+                 if(hit&&i+6<b.length){const r=Number(b[i+6][4])/Number(b[i+1][4])-1;m.futureN++;m.returnSum+=r;if(r>0)m.positive++;}
+               }
+             }
+             // Same historical start and 10-day horizon for all three defenses, no future data at entry.
+             // Closing-price marking, NOT actual executable order or return after fees.
+             if(i+10>=b.length)continue;const p=Number(b[i][4]),a=ma(b,i,5),z=ma(b,i,10);if(!(p>a&&a>z))continue;
+             for(const [key,fn] of [['MA5',(x,y)=>x],['平均線',(x,y)=>(x+y)/2],['MA10',(x,y)=>y]]){
+               const m=st.def[key];m.n++;let j=i+1;for(;j<=i+10;j++)if(Number(b[j][4])<fn(ma(b,j,5),ma(b,j,10)))break;
+               const exited=j<=i+10;if(exited)m.exit++;const mark=Number(b[Math.min(j,i+10)][4]);m.returnSum+=mark/p-1;
+               if(exited&&j+3<b.length){m.whipsawN++;for(let t=j+1;t<=j+3;t++)if(Number(b[t][4])>=fn(ma(b,t,5),ma(b,t,10))){m.whipsaw++;break;}}
+             }
+           }
+          }
+          function report(name,st){let out=`\n### ${name}\n有效標的 ${st.rows}；排除 ${st.excluded}；隔日觀察 ${st.observations}\n\n| 指標 | 預警數 | 實際交叉 | 命中數 | 預警命中率 | 交叉召回率 | 3日反向交叉率 | 交叉後5日上漲率 | 5日平均漲跌 |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n`;
+           for(const [k,m] of Object.entries(st.cross))out+=`| ${k} | ${m.warn} | ${m.actual} | ${m.hit} | ${percent(m.hit,m.warn)} | ${percent(m.hit,m.actual)} | ${percent(m.falseReverse,m.reverseN)} (${m.reverseN}) | ${percent(m.positive,m.futureN)} (${m.futureN}) | ${mean(m.returnSum,m.futureN)} |\n`;
+           out+='\n| 防守線 | 共同樣本 | 跌破次數 | 3日站回率（分母：完整觀察的跌破） | 10日或先跌破收盤價標記平均變化 |\n|---|---:|---:|---:|---:|\n';for(const [k,m] of Object.entries(st.def))out+=`| ${k} | ${m.n} | ${m.exit} | ${percent(m.whipsaw,m.whipsawN)} (${m.whipsaw}/${m.whipsawN}) | ${mean(m.returnSum,m.n)} |\n`;return out;}
+          function selfTest(){const b=Array.from({length:120},(_,i)=>{const p=100+10*Math.sin(i/4)+i*.08;return [new Date(Date.UTC(2025,0,1+i)).toISOString().slice(0,10),p,p+1,p-1,p,1000]});const s=stats();auditRow({date:b.at(-1)[0],close:b.at(-1)[4],bars:b},s);assert.equal(s.rows,1);assert.equal(s.observations,60);assert(Object.values(s.cross).some(x=>x.actual>0));for(const m of Object.values(s.cross)){assert(m.hit<=m.warn&&m.hit<=m.actual);assert(m.falseReverse<=m.reverseN);}assert.equal(s.def.MA5.n,s.def.MA10.n);auditRow({bars:b,date:'bad'},s);auditRow({bars:b,date:b.at(-1)[0],possiblePriceAdjustment:true},s);assert.equal(s.excluded,2);const index=stats();auditRow({asOf:b.at(-1)[0],bars:b},index);assert.equal(index.observations,60);for(const m of Object.values(s.def)){assert(m.whipsaw<=m.whipsawN&&m.whipsawN<=m.exit);}console.log('AUDIT_SELF_TEST_PASS');}
+          selfTest();if(process.argv.includes('--self-test'))process.exit(0);
+          const u=read('data/universe.json'),ix=read('data/taiex-daily.json'),etf=read('data/etf-daily.json');
+          const groups=[['上市個股',Array.isArray(u?.rows)?u.rows.filter(r=>r.market==='上市'):[]],['上櫃個股',Array.isArray(u?.rows)?u.rows.filter(r=>r.market==='上櫃'):[]],['加權指數',ix?.schema==='chaopan-taiex-daily-v1'?[ix]:[]],['ETF（未還原，僅探索）',etf?.kind==='etf-official-eod'&&Array.isArray(etf.rows)?etf.rows:[]]];
+          let text='# R200 歷史回測｜唯讀驗證\n資料日期：個股 '+(u?.asOf||'缺少')+'；大盤 '+(ix?.asOf||'缺少')+'；ETF '+(etf?.asOf||'依各標的')+'。\n\n使用實際部署程式的 R200 公式。以60根起算，每次預警只讀當時及之前的K棒；隔日收盤確認。3日反向交叉為操作性定義，不代表所有假訊號。防守比較以站上MA5且MA5高於MA10為共同起點，跌破依當日收盤判定，不含費稅滑價。樣本可重疊，非獨立交易；當前股票清單有存活偏差；未還原價格的除權息影響仍未排除。\n';let count=0;const missing=[];
+          for(const [name,rows] of groups){const s=stats();for(const r of rows)if(r)auditRow(r,s);count+=s.observations;if(!s.observations)missing.push(name);text+=report(name,s);}
+          text+='\n驗證覆蓋：'+(missing.length?'未完成：'+missing.join('、'):'四組皆有有效觀察')+'。\n';text+='\n沒有樣本的比率以 — 表示。不能以本報告宣稱策略獲利或驗證官方資料正確。\n';console.log(text);if(process.env.GITHUB_STEP_SUMMARY)fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,text);if(!count)throw Error('NO_VALID_HISTORY');if(missing.length)throw Error('INCOMPLETE_HISTORY: '+missing.join(', '));
+          AUDITJS
+          node /tmp/r200-audit.cjs
