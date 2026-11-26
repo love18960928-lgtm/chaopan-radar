@@ -5826,7 +5826,7 @@ document.addEventListener('click',function(e){
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
  const BUILD_ID='R206-20261126-risk-pattern-batch';
- const BUILD_LABEL='r205 · 突破日期核對';
+ const BUILD_LABEL='r206 · 型態風險整合';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  // R161: The static index.html has kept r50/r60-era labels even after
@@ -5845,7 +5845,7 @@ document.addEventListener('click',function(e){
   const status=document.getElementById('r44VersionStatus');
   if(status){
    const raw=status.textContent||'';
-   const next=raw.includes('程式：'+BUILD_LABEL)?raw:raw.replace(/程式：r\d+(?:\s*[（(][^）)]*[）)])?/, '程式：'+BUILD_LABEL);
+   const next=raw.includes('程式：'+BUILD_LABEL)?raw:raw.replace(/程式：r\d+[^｜|\n]*/i, '程式：'+BUILD_LABEL);
    if(next!==raw)status.textContent=next;
   }
  }
