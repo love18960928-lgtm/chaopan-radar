@@ -1,0 +1,322 @@
+name: 超盤手資料更新通知 (R199)
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['大量K雷達盤後自動更新', 'ETF 盤後自動更新 (R197)', '加權指數盤後自動更新 (R193)']
+    types: [completed]
+    branches: [main]
+  schedule:
+    # Taiwan 15:23, 16:53, 18:23, 20:23, 23:53; next morning 08:23.
+    - cron: '23 7,10,12 * * 1-5'
+    - cron: '53 8,15 * * 1-5'
+    - cron: '23 0 * * 2-6'
+permissions:
+  contents: write
+concurrency:
+  group: chaopan-notify-r199
+  cancel-in-progress: false
+jobs:
+  verify-and-notify:
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Verify live data changes and record notification state
+        env:
+          NTFY_URL: ${{ secrets.RADAR_NTFY_URL }}
+          NTFY_TOKEN: ${{ secrets.RADAR_NTFY_TOKEN }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          cat > /tmp/notify_r199.py <<'PYR199'
+          """Compare only verified live site content. Never writes market data or main."""
+          import datetime as dt, hashlib, json, math, os, pathlib, subprocess, sys, time, urllib.request, urllib.parse, unittest
+          SITE='https://love18960928-lgtm.github.io/chaopan-radar/'
+          BRANCH='radar-notify-state'
+          TODAY=dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date().isoformat()
+          FILES=('data/radar.json','data/universe.json','data/taiex-daily.json','data/etf-daily.json')
+          NAV_SOURCE='SITCA open data 11109/160547'
+          DIV_SOURCES=(NAV_SOURCE,'TWSE announcement 2026-10-30')
+          FLOW_KEYS=('foreignNetShares','trustNetShares','dealerNetShares')
+
+          def day(v):
+              try: return isinstance(v,str) and dt.date.fromisoformat(v).isoformat()==v and v<=TODAY
+              except (ValueError,TypeError): return False
+
+          def num(v): return type(v) in (int,float) and math.isfinite(v)
+          def canonical(v):
+              if type(v) is float and v.is_integer():return int(v)
+              if isinstance(v,list):return [canonical(x) for x in v]
+              if isinstance(v,dict):return {k:canonical(x) for k,x in v.items()}
+              return v
+          def digest(v): return hashlib.sha256(json.dumps(canonical(v),ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+          def record(out,kind,key,date,value):
+              if day(date): out.setdefault(kind,{})[str(key)]=(date,digest(value))
+          def bars(row,date,nullable_volume=False):
+              b=row.get('bars'); prior=''
+              if not isinstance(b,list) or not b:return None
+              for x in b:
+                  if not isinstance(x,list) or len(x)<6:return None
+                  d,o,h,l,c,v=x[:6]
+                  if not day(d) or d<=prior or not all(num(n) and n>0 for n in (o,h,l,c)) or h<max(o,c,l) or l>min(o,c,h) or not ((nullable_volume and v is None) or (num(v) and v>=0)):return None
+                  prior=d
+              if prior!=date or ('close' in row and (not num(row['close']) or abs(row['close']-b[-1][4])>0.00001)):return None
+              return [x[:6] for x in b]
+          def flow(row,date):
+              i=row.get('institutional')
+              if not isinstance(i,dict) or i.get('date')!=date or not all(num(i.get(k)) for k in FLOW_KEYS):return None
+              return {k:i[k] for k in (*FLOW_KEYS,'dealerOwnNetShares','dealerHedgeNetShares','totalNetShares') if num(i.get(k))}
+          def stock_day(obj):
+              d=obj.get('asOf'); m=obj.get('marketAsOf') or {}
+              return d if day(d) and all(m.get(k)==d for k in ('上市','上櫃')) else None
+
+          def extract(docs):
+              out={}; radar=docs.get(FILES[0],{}); univ=docs.get(FILES[1],{}); d=stock_day(radar)
+              if d and stock_day(univ)==d and isinstance(univ.get('rows'),list) and len(univ['rows'])>500 and isinstance(radar.get('candidates'),list):
+                  for r in univ['rows']:
+                      if not isinstance(r,dict) or not r.get('code') or r.get('date')!=d:continue
+                      key=str(r.get('market'))+'-'+str(r['code']); b=bars(r,d)
+                      if b:record(out,'個股行情／歷史K線',key,d,b)
+                  if len(out.get('個股行情／歷史K線',{}))<501 or not all(any(k.startswith(m+'-') for k in out.get('個股行情／歷史K線',{})) for m in ('上市','上櫃')):
+                      out.pop('個股行情／歷史K線',None)
+                  # Only stable analysis values, never run/build timestamps. On same date real level changes are detected.
+                  scans=[]
+                  for r in radar['candidates']:
+                      if not isinstance(r,dict) or not r.get('code') or r.get('date')!=d:continue
+                      key=str(r.get('market'))+'-'+str(r['code']); i=flow(r,d)
+                      if i is not None:record(out,'三大法人（個股已核對範圍）',key,d,i)
+                      scans.append([key,{k:r.get(k) for k in ('neck','neckDate','riskLevel','launchStage','unifiedStage','priceConfirmed','volumeRatio')}])
+                  if out.get('個股行情／歷史K線') and (not radar['candidates'] or scans):record(out,'大量K及篩選股','scan',d,sorted(scans,key=lambda a:a[0]))
+                  # A separate universe row may have verified flows; candidates take precedence.
+                  for r in univ['rows']:
+                      if not isinstance(r,dict) or not r.get('code') or r.get('date')!=d:continue
+                      key=str(r.get('market'))+'-'+str(r['code']); i=flow(r,d)
+                      if i is not None and key not in out.get('三大法人（個股已核對範圍）',{}):record(out,'三大法人（個股已核對範圍）',key,d,i)
+                  if out.get('個股行情／歷史K線'):
+                      out.setdefault('三大法人（個股已核對範圍）',{})
+                  else:out.pop('三大法人（個股已核對範圍）',None)
+              ix=docs.get(FILES[2],{}); d=ix.get('asOf')
+              if ix.get('schema')=='chaopan-taiex-daily-v1' and ix.get('source') in ('TWSE/TAIEX/MI_5MINS_HIST','TWSE/indicesReport/MI_5MINS_HIST') and day(d):
+                  b=bars(ix,d,True)
+                  if b and len(b)>=45:record(out,'加權指數日K','TAIEX',d,b)
+              etf=docs.get(FILES[3],{}); rows=etf.get('rows')
+              if etf.get('schema')==1 and etf.get('kind')=='etf-official-eod' and isinstance(rows,list):
+                  for r in rows:
+                      if not isinstance(r,dict):continue
+                      code=r.get('code'); d=r.get('latestDate')
+                      if not isinstance(code,str) or not code or not day(d):continue
+                      b=bars(r,d)
+                      if not b:continue
+                      record(out,'ETF收盤行情',code,d,b)
+                      for kind in ('ETF三大法人','ETF淨值及折溢價','ETF配息公告'):out.setdefault(kind,{})
+                      i=flow(r,d)
+                      if i is not None and (r['institutional'].get('source')=='TWSE T86' and r['institutional'].get('unit')=='shares') and all(k in i for k in ('dealerOwnNetShares','dealerHedgeNetShares','totalNetShares')) and i['dealerNetShares']==i['dealerOwnNetShares']+i['dealerHedgeNetShares'] and i['totalNetShares']==sum(i[k] for k in FLOW_KEYS):record(out,'ETF三大法人',code,d,i)
+                      n=r.get('navDetail') or {}
+                      if not isinstance(n,dict):n={}
+                      if n.get('date')==d and n.get('currency')=='TWD' and num(n.get('nav')) and n['nav']>0 and n.get('source')==NAV_SOURCE:
+                          record(out,'ETF淨值及折溢價',code,d,[n['nav'],b[-1][4]])
+                      dd=r.get('distributionDetail') or {}
+                      e=dd.get('latest') or {} if isinstance(dd,dict) else {}
+                      if not isinstance(e,dict):e={}
+                      ex,pay,amount=e.get('exDate'),e.get('payDate'),e.get('amount')
+                      # Announcements can refer to a future ex-date; validate ISO without TODAY cutoff.
+                      def calendar_date(v):
+                          try:return isinstance(v,str) and dt.date.fromisoformat(v).isoformat()==v
+                          except (ValueError,TypeError):return False
+                      if calendar_date(ex) and calendar_date(pay) and pay>=ex and num(amount) and amount>0 and e.get('source') in DIV_SOURCES and (e.get('source')==NAV_SOURCE or (code=='00406A' and [ex,pay,amount]==['2026-11-03','2026-11-27',.138])):
+                          out.setdefault('ETF配息公告',{})[code]=(ex,digest([ex,pay,amount]))
+              return out
+
+          def compare(state, current):
+              """Baseline on first nonempty verified snapshot. Preserve absent records and seen same-date revisions."""
+              events=[]; tracked=state.setdefault('tracked',{})
+              for kind,records in sorted(current.items()):
+                  initial=kind not in tracked
+                  changes=[]; old=tracked.setdefault(kind,{})
+                  for key,(date,fp) in records.items():
+                      prev=old.get(key)
+                      if prev and date<prev['date']:continue
+                      if prev and date==prev['date'] and fp in prev['seen']:continue
+                      if prev and date==prev['date']:seen=prev['seen']+[fp]
+                      else:seen=[fp]
+                      old[key]={'date':date,'seen':seen}
+                      if not initial:changes.append((key,date,fp))
+                  if changes:events.append({'kind':kind,'dates':sorted({d for _,d,_ in changes}), 'count':len(changes),'codes':[k for k,_,_ in sorted(changes)][:12] if kind.startswith('ETF') else [],'eventId':digest([kind,sorted(changes)])[:32]})
+              if current:state['initialized']=True
+              return events
+
+          def load_verified():
+              result={}
+              for name in FILES:
+                  try:
+                      local=pathlib.Path(name).read_bytes()
+                      req=urllib.request.Request(SITE+name+'?r199='+str(time.time_ns()),headers={'Cache-Control':'no-cache','User-Agent':'Chaopan-R199'})
+                      with urllib.request.urlopen(req,timeout=30) as resp: raw=resp.read(80_000_001)
+                      if len(raw)>80_000_000 or hashlib.sha256(raw).digest()!=hashlib.sha256(local).digest():
+                          print('PAGES_NOT_MATCH',name);continue
+                      obj=json.loads(raw)
+                      if not isinstance(obj,dict):raise ValueError('not object')
+                      result[name]=obj;print('PAGES_VERIFIED',name)
+                  except (OSError,ValueError) as e:print('PAGES_UNAVAILABLE',name,type(e).__name__)
+              return result
+
+          def git(*args,input=None):return subprocess.check_output(['git',*args],input=input).decode().strip()
+          def load_state():
+              ref='refs/heads/'+BRANCH
+              remote=git('ls-remote','--heads','origin',ref)
+              if not remote:return {},None
+              git('fetch','--no-tags','origin',ref)
+              base=git('rev-parse','FETCH_HEAD')
+              obj=json.loads(git('show',base+':state.json'))
+              if obj.get('schema')!=1 or not isinstance(obj.get('tracked'),dict):raise ValueError('invalid state; stop rather than duplicate')
+              return obj,base
+
+          def save_state(state,base):
+              state['schema']=1
+              raw=(json.dumps(state,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode()
+              blob=git('hash-object','-w','--stdin',input=raw)
+              tree=git('mktree',input=f'100644 blob {blob}\tstate.json\n'.encode())
+              if base and git('rev-parse',base+'^{tree}')==tree:return base
+              args=['commit-tree',tree,'-m','R199 notification state only']
+              if base:args.extend(['-p',base])
+              commit=git(*args)
+              git('push','origin',commit+':refs/heads/'+BRANCH)
+              return commit
+
+          def message(events):
+              return '\n'.join(e['kind']+' 已更新｜'+','.join(e['dates'])+(('｜'+str(e['count'])+'項') if e['count']>1 else '')+(('｜'+','.join(e['codes'])) if e['codes'] else '') for e in events)
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs):return None
+
+          def push(text,event_id=None):
+              url=os.environ.get('NTFY_URL','').strip(); token=os.environ.get('NTFY_TOKEN','').strip()
+              if not url or not token:return False
+              u=urllib.parse.urlparse(url)
+              if u.scheme!='https' or not u.hostname or u.username or u.password or not u.path.strip('/') or u.query or u.fragment:raise ValueError('NTFY_URL must be HTTPS topic URL')
+              payload=text.encode('utf-8')
+              if len(payload)>4096:raise ValueError('notification exceeds message limit')
+              headers={'Authorization':'Bearer '+token,'Title':'Chaopan RADAR','Click':SITE,'Content-Type':'text/plain; charset=utf-8'}
+              if event_id:headers['X-Sequence-ID']=event_id
+              req=urllib.request.Request(url,data=payload,headers=headers,method='POST')
+              try:
+                  with urllib.request.build_opener(NoRedirect()).open(req,timeout=20) as resp:
+                      if not 200<=resp.status<300:raise RuntimeError('push rejected')
+              except Exception:raise RuntimeError('Push delivery failed; no secret details logged') from None
+              return True
+
+          def main():
+              docs=load_verified(); current=extract(docs); state,base=load_state()
+              if not current:
+                  raise RuntimeError('No verified live data, no notification and no state change')
+              events=compare(state,current)
+              pending=state.setdefault('pending',[])
+              # Keep an outbox if configured, to retry a failed send on a later run.
+              configured=bool(os.environ.get('NTFY_URL','').strip() and os.environ.get('NTFY_TOKEN','').strip())
+              if configured and events:pending.extend(events)
+              if events:state['lastEvents']=events
+              summary=os.environ.get('GITHUB_STEP_SUMMARY')
+              text=message(events) if events else '首次建立基準或沒有新資料，不通知。'
+              print(text)
+              if summary:
+                  with open(summary,'a',encoding='utf-8') as f:f.write('## R199 正式網站更新檢查\n\n'+text+'\n\n'+('手機推播已設定。' if configured else '手機推播尚未設定；僅記錄更新。')+'\n')
+              base=save_state(state,base)
+              if configured and pending:
+                  # One message per changed module. Stable sequence ID replaces an
+                  # existing notification on supported clients; transport is not exactly-once.
+                  for _ in range(min(12,len(pending))):
+                      event=pending[0]
+                      if not push(message([event]),event.get('eventId') or digest(event)[:32]):break
+                      pending.pop(0);base=save_state(state,base)
+                      print('PUSH_ACCEPTED',event['kind'])
+              elif not configured: print('PUSH_NOT_CONFIGURED')
+
+          class Tests(unittest.TestCase):
+              def row(self,d='2026-11-25'):
+                  return {'code':'00406A','latestDate':d,'close':6.26,'bars':[[d,6.3,6.4,6.2,6.26,100]],'institutional':{'date':d,'foreignNetShares':-1,'trustNetShares':0,'dealerNetShares':1,'dealerOwnNetShares':1,'dealerHedgeNetShares':0,'totalNetShares':0,'source':'TWSE T86','unit':'shares'},'navDetail':{'date':d,'nav':6.31,'currency':'TWD','source':NAV_SOURCE},'distributionDetail':{'latest':{'exDate':'2026-11-03','payDate':'2026-11-27','amount':.138,'source':NAV_SOURCE}}}
+              def ext(self,r):return extract({FILES[3]:{'schema':1,'kind':'etf-official-eod','rows':[r]}})
+              def test_baseline(self):self.assertEqual(compare({},self.ext(self.row())),[])
+              def test_unchanged(self):
+                  s={};r=self.row();compare(s,self.ext(r));r['updatedAt']='different';self.assertEqual(compare(s,self.ext(r)),[])
+              def test_late_flow(self):
+                  s={};r=self.row();i=r.pop('institutional');compare(s,self.ext(r));r['institutional']=i;self.assertEqual([x['kind'] for x in compare(s,self.ext(r))],['ETF三大法人']);self.assertFalse(compare(s,self.ext(r)))
+              def test_same_day_fix(self):
+                  s={};r=self.row();compare(s,self.ext(r));r['navDetail']['nav']=6.32;self.assertEqual([x['kind'] for x in compare(s,self.ext(r))],['ETF淨值及折溢價']);r['navDetail']['nav']=6.31;self.assertFalse(compare(s,self.ext(r)))
+              def test_stale(self):
+                  s={};compare(s,self.ext(self.row()));self.assertFalse(compare(s,self.ext(self.row('2026-11-24'))))
+              def test_missing_return(self):
+                  s={};r=self.row();compare(s,self.ext(r));self.assertFalse(compare(s,{}));self.assertFalse(compare(s,self.ext(r)))
+              def test_wrong_nav_date(self):
+                  r=self.row();r['navDetail']['date']='2026-11-24';self.assertFalse(self.ext(r).get('ETF淨值及折溢價'))
+              def test_zero_dividend(self):
+                  r=self.row();r['distributionDetail']['latest']['amount']=0;self.assertFalse(self.ext(r).get('ETF配息公告'))
+              def test_new_date(self):
+                  s={};compare(s,self.ext(self.row('2026-11-24')));e=compare(s,self.ext(self.row()));self.assertEqual({x['kind'] for x in e},{'ETF收盤行情','ETF三大法人','ETF淨值及折溢價'})
+              def test_new_distribution(self):
+                  s={};r=self.row();compare(s,self.ext(r));r['distributionDetail']['latest']={'exDate':'2026-12-02','payDate':'2026-12-28','amount':.15,'source':NAV_SOURCE};self.assertEqual([x['kind'] for x in compare(s,self.ext(r))],['ETF配息公告'])
+              def test_bad_bar(self):
+                  r=self.row();r['bars'][0][2]=5;self.assertEqual(self.ext(r),{})
+              def test_wrong_flow_date(self):
+                  r=self.row();r['institutional']['date']='2026-11-24';self.assertFalse(self.ext(r).get('ETF三大法人'))
+              def test_stock_mismatch(self):
+                  r={'asOf':'2026-11-25','marketAsOf':{'上市':'2026-11-25','上櫃':'2026-11-25'},'candidates':[]};u=dict(r,asOf='2026-11-24',rows=[{}]*501);self.assertEqual(extract({FILES[0]:r,FILES[1]:u}),{})
+              def test_no_push_without_secret(self):
+                  old=os.environ.copy()
+                  try:os.environ.pop('NTFY_URL',None);os.environ.pop('NTFY_TOKEN',None);self.assertFalse(push('x'))
+                  finally:os.environ.update(old)
+              def test_stock_flow_only(self):
+                  d='2026-11-25'; base={'asOf':d,'marketAsOf':{'上市':d,'上櫃':d}}
+                  rows=[{'code':str(i),'market':'上市' if i<300 else '上櫃','date':d,'close':10,'bars':[[d,10,11,9,10,100]]} for i in range(501)]
+                  radar=dict(base,candidates=[dict(rows[0],neck=10)]); u=dict(base,rows=rows); docs={FILES[0]:radar,FILES[1]:u}
+                  s={};compare(s,extract(docs));radar['candidates'][0]['institutional']={'date':d,'foreignNetShares':100,'trustNetShares':0,'dealerNetShares':-100}
+                  self.assertEqual([x['kind'] for x in compare(s,extract(docs))],['三大法人（個股已核對範圍）'])
+              def test_new_module_baseline(self):
+                  s={};compare(s,self.ext(self.row()));self.assertFalse(compare(s,{'加權指數日K':{'TAIEX':('2026-11-25','x')}}))
+              def test_numeric_encoding(self):
+                  self.assertEqual(digest([6,100]),digest([6.0,100.0]))
+              def test_bad_flow_sum(self):
+                  r=self.row();r['institutional']['dealerNetShares']=4;self.assertFalse(self.ext(r).get('ETF三大法人'))
+              def test_nonempty_required(self):
+                  s={};compare(s,{});self.assertFalse(s.get('initialized'))
+              def test_invalid_etf_schema(self):
+                  self.assertFalse(extract({FILES[3]:{'rows':[self.row()]}}))
+              def test_untrusted_sources(self):
+                  r=self.row();r['navDetail']['source']='unknown';r['distributionDetail']['latest']['source']='unknown';x=self.ext(r)
+                  self.assertFalse(x.get('ETF淨值及折溢價'));self.assertFalse(x.get('ETF配息公告'))
+              def test_official_announcement(self):
+                  r=self.row();r['distributionDetail']['latest']['source']='TWSE announcement 2026-10-30';self.assertTrue(self.ext(r).get('ETF配息公告'));r['distributionDetail']['latest']['amount']=0.2;self.assertFalse(self.ext(r).get('ETF配息公告'))
+              def test_invalid_optional_types(self):
+                  r=self.row();r['navDetail']='invalid';r['distributionDetail']=['invalid'];self.assertTrue(self.ext(r).get('ETF收盤行情'))
+              def test_stable_event_id(self):
+                  import copy
+                  r=self.row();s={};compare(s,self.ext(r));t=copy.deepcopy(s);r['navDetail']['nav']=6.32
+                  self.assertEqual(compare(s,self.ext(r)),compare(t,self.ext(r)))
+              def test_pages_bytes_must_match(self):
+                  from unittest.mock import patch,MagicMock
+                  local=json.dumps({'test':1}).encode();resp=MagicMock();resp.__enter__.return_value.read.return_value=json.dumps({'test':2}).encode()
+                  with patch('pathlib.Path.read_bytes',return_value=local),patch('urllib.request.urlopen',return_value=resp):self.assertEqual(load_verified(),{})
+                  resp.__enter__.return_value.read.return_value=local
+                  with patch('pathlib.Path.read_bytes',return_value=local),patch('urllib.request.urlopen',return_value=resp):self.assertEqual(len(load_verified()),4)
+              def test_independent_notification_send(self):
+                  from unittest.mock import patch
+                  r=self.row();s={};compare(s,self.ext(r));r['navDetail']['nav']=6.32;r['institutional']['foreignNetShares']=-2;r['institutional']['totalNetShares']=-1
+                  with patch.dict(os.environ,{'NTFY_URL':'https://example.test/private','NTFY_TOKEN':'secret'}),patch(__name__+'.load_verified',return_value={FILES[3]:{'schema':1,'kind':'etf-official-eod','rows':[r]}}),patch(__name__+'.load_state',return_value=(s,None)),patch(__name__+'.save_state',return_value='base'),patch(__name__+'.push',return_value=True) as send:
+                      main();self.assertEqual(send.call_count,2);self.assertEqual(s['pending'],[]);self.assertNotEqual(send.call_args_list[0].args[1],send.call_args_list[1].args[1])
+              def test_failed_send_keeps_pending(self):
+                  from unittest.mock import patch
+                  r=self.row();s={};compare(s,self.ext(r));r['navDetail']['nav']=6.32
+                  with patch.dict(os.environ,{'NTFY_URL':'https://example.test/private','NTFY_TOKEN':'secret'}),patch(__name__+'.load_verified',return_value={FILES[3]:{'schema':1,'kind':'etf-official-eod','rows':[r]}}),patch(__name__+'.load_state',return_value=(s,None)),patch(__name__+'.save_state',return_value='base'),patch(__name__+'.push',side_effect=RuntimeError('simulated failure')):
+                      with self.assertRaises(RuntimeError):main()
+                      self.assertEqual(len(s['pending']),1)
+          if __name__=='__main__':
+              if '--self-test' in sys.argv:unittest.main(argv=[sys.argv[0]],verbosity=2)
+              else:main()
+          PYR199
+          python /tmp/notify_r199.py --self-test
+          python /tmp/notify_r199.py
