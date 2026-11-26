@@ -1,4 +1,4 @@
-name: ETF 盤後自動更新 (R201)
+name: ETF 盤後自動更新 (R201a)
 on:
   workflow_dispatch:
     inputs:
@@ -414,18 +414,25 @@ jobs:
                       if not ex or not pay or pay<ex or amt is None or amt<=0: continue
                       events.setdefault(ex,set()).add((pay,amt))
                   records=[{'exDate':ex,'payDate':next(iter(v))[0],'amount':next(iter(v))[1],'source':SOURCE} for ex,v in events.items() if len(v)==1]
-                  # Independently verified announcement, not an estimated distribution.
-                  if code=='00406A' and '2026-11-03' not in events:
-                      records.append({'exDate':'2026-11-03','payDate':'2026-11-27','amount':0.138,'source':'TWSE announcement 2026-10-30'})
-                  # R201: retain verified history, but never silently resolve conflicting source records.
+                  # R201a: reconcile retained records as a group, never pick the first conflicting record.
+                  # A newly fetched unambiguous official record may supersede prior history.
                   conflicts={ex for ex,v in events.items() if len(v)!=1}
                   conflicts.update(ex for ex in previous.get('conflictDates',[]) if day(ex) and ex not in events)
                   oldhist=previous.get('history') or []
+                  retained={}
                   for oldrec in [*oldhist,previous.get('latest')]:
                       if not isinstance(oldrec,dict) or oldrec.get('source') not in (SOURCE,'TWSE announcement 2026-10-30'): continue
                       ex,pay,amt=day(oldrec.get('exDate')),day(oldrec.get('payDate')),num(oldrec.get('amount'))
                       if not ex or not pay or pay<ex or amt is None or amt<=0 or ex in events or ex in conflicts: continue
-                      if not any(z['exDate']==ex for z in records): records.append({'exDate':ex,'payDate':pay,'amount':amt,'source':oldrec['source']})
+                      retained.setdefault(ex,{}).setdefault((pay,amt),set()).add(oldrec['source'])
+                  # Independently verified announcement participates in conflict detection too.
+                  if code=='00406A' and '2026-11-03' not in events and '2026-11-03' not in conflicts:
+                      retained.setdefault('2026-11-03',{}).setdefault(('2026-11-27',0.138),set()).add('TWSE announcement 2026-10-30')
+                  for ex,candidates in retained.items():
+                      if len(candidates)!=1:
+                          conflicts.add(ex); continue
+                      (pay,amt),sources=next(iter(candidates.items()))
+                      records.append({'exDate':ex,'payDate':pay,'amount':amt,'source':SOURCE if SOURCE in sources else 'TWSE announcement 2026-10-30'})
                   records=sorted((z for z in records if z['exDate'] not in conflicts),key=lambda x:x['exDate'])
                   latest=records[-1] if records else None
                   # Preserve unresolved announced date until a verified amount is collected, including after ex-date.
