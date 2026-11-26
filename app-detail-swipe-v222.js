@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R196-20261126-etf-income */
+/* CHAOPAN_RADAR_BUILD: R198-20261126-etf-income-simple */
 /* Prior tested build (historical, not deployed version): CHAOPAN_RADAR_BUILD: R165-20261120-visual-card-red-up-green-down */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
@@ -3001,7 +3001,7 @@ function nextSessionDefenseCard(c){
  const priceLimits=data.fresh?r164LimitBand(c):null;
  return `<section class="r82-decision r91-decision r164-board r165-reference r176-main-card" data-code="${esc(code)}" aria-label="明日持股操作同頁圖形總覽">
  <div class="r176-main-banner"><span>明日持股操作</span><strong>自動策略｜<span class="r174-auto-mode" aria-live="polite">${esc(r174AutoMode(cost===''?NaN:Number(cost),p))}</span></strong></div>
- <div class="r176-banner-date">${esc(c?.date||'日期待核對')} 盤後 · R196 ｜ 持有週期 <select class="r92-mode" aria-label="持有週期"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
+ <div class="r176-banner-date">${esc(c?.date||'日期待核對')} 盤後 · R198 ｜ 持有週期 <select class="r92-mode" aria-label="持有週期"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
  ${r164MABox(c,data)}
  <div class="r176-top-position"><section class="r164-panel r164-position"><div class="r164-inputs">
   <label>成本（元）<input class="r82-cost-input" type="number" inputmode="decimal" min="0" step="any" value="${esc(cost)}" placeholder="成本" /></label>
@@ -3127,7 +3127,7 @@ function arrangeR41Detail(c){
   const marketChange=numeric(c.changePct),quoteClass=r164PctColor(marketChange);
   head.classList.add('r164-detail-heading','r176-detail-heading');
   const industryLabel=String(c.industry||c.fundamentals?.industry||'').trim();
-  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R196</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
+  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R198</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
  }
  const page=document.createElement('div');page.className='r176-one-page';page.setAttribute('aria-label','個股完整單頁操作儀表板');
  const card=document.createElement('div');card.innerHTML=nextSessionDefenseCard(c);r82BindCost(card,c);page.append(card);
@@ -5017,46 +5017,29 @@ function r196Shares(value,unit){
  const n=Number(value),q=n*(unit==='lots'?1000:1);
  return Number.isSafeInteger(n)&&n>0&&Number.isSafeInteger(q)&&q<=1e8?q:null;
 }
-function r196Nonnegative(v){
- if(v===null||v===undefined||String(v).trim()==='')return null;
- const n=Number(v);return Number.isFinite(n)&&n>=0&&n<=1e12?n:null;
-}
-function r196Income(x,shares,cost,close,eligible,received){
+// R198: one holding input only; announced dividend is a scenario, never received cash.
+function r198Income(x,shares,cost,close){
  const held=Number.isSafeInteger(shares)&&shares>0&&shares<=1e8;
  const amt=x&&typeof x.amount==='number'&&Number.isFinite(x.amount)&&x.amount>0?x.amount:null;
- const qualified=Number.isSafeInteger(eligible)&&eligible>=0&&eligible<=1e8;
  const basis=held&&typeof cost==='number'&&Number.isFinite(cost)&&cost>0&&Number.isFinite(cost*shares)?cost*shares:null;
+ const estimate=held&&amt!==null?shares*amt:null;
  const mark=basis!==null&&typeof close==='number'&&Number.isFinite(close)&&close>0&&Number.isFinite(close*shares)?(close-cost)*shares:null;
- const cash=typeof received==='number'&&Number.isFinite(received)&&received>=0&&received<=1e12?received:null;
- const total=mark!==null&&cash!==null?mark+cash:null;
- return {estimate:held&&amt!==null?shares*amt:null,qualified:qualified&&amt!==null?eligible*amt:null,perLot:amt===null?null:amt*1000,costYield:amt!==null&&typeof cost==='number'&&Number.isFinite(cost)&&cost>0?amt/cost*100:null,mark,total,returnPct:total!==null&&basis!==null?total/basis*100:null,breakEven:basis!==null&&cash!==null?Math.max(0,(basis-cash)/shares):null};
+ const scenario=mark!==null&&estimate!==null?mark+estimate:null;
+ return {estimate,perLot:amt===null?null:amt*1000,costYield:amt!==null&&typeof cost==='number'&&Number.isFinite(cost)&&cost>0?amt/cost*100:null,scenario,scenarioReturn:scenario!==null?scenario/basis*100:null,scenarioBreak:basis!==null&&estimate!==null?Math.max(0,cost-amt):null};
 }
-function r196Read(key){try{return localStorage.getItem(key)||''}catch(_){return ''}}
-function r196Write(key,v){try{if(String(v).trim()!=='')localStorage.setItem(key,String(v));else localStorage.removeItem(key)}catch(_){}}
 function r196IncomeMarkup(r){
- const x=r196Dividend(r),code=String(r.code||'');
- const eligible=x?r196Read('chaopan-etf-'+code+'-eligible-'+x.exDate):'';
- return `<section class="r164-panel r196-income" style="border-color:#c5a24b"><style>.r196-income .r196-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:7px 0}.r196-income .r196-cell{min-width:0;border:1px solid #3a7384;border-radius:9px;padding:7px;text-align:center;overflow-wrap:anywhere}.r196-income .r196-cell small{display:block;color:#a9c6d0;font-size:11px}.r196-income .r196-cell b{display:block;font-size:15px;margin:4px 0}.r196-income input{display:block;width:100%;min-width:0;box-sizing:border-box;background:#081e2c;color:#dffaff;border:1px solid #4f91a1;border-radius:7px;padding:7px;font:inherit}.r196-income label{display:block;color:#a9c6d0;font-size:11px;margin:8px 0}.r196-income .r196-note{font-size:11px;color:#a9c6d0;line-height:1.45}</style><div class="r174-small-title"><strong>ETF 配息・含息損益</strong><small>自動連動持股</small></div><div class="r196-grid"><div class="r196-cell" style="border-color:#c5a24b"><small>最近公告配息試算</small><b style="color:#ffd25e" class="r196-est">—</b><small class="r196-holding">輸入股數</small></div><div class="r196-cell"><small>每張配息</small><b class="r196-lot">—</b><small>單次成本配息率 <span class="r196-yield">—</span></small></div></div><div class="r196-note">${x?'除息 '+esc(x.exDate)+'｜發放 '+esc(x.payDate)+'｜以上以目前持股假設全數符合資格，非實際入帳。':'尚無核對完成的配息公告，暫不試算。'}</div>${x?`<label>本次符合除息資格股數（股，選填）<input class="r196-eligible" type="number" min="0" max="100000000" step="1" inputmode="numeric" value="${esc(eligible)}" placeholder="未確認"></label><div class="r196-note">依資格股數試算：<b class="r196-qualified">—</b>（未扣費）</div>`:''}<label>目前持股已實領配息（累計元數，選填）<input class="r196-received" type="number" min="0" step="0.01" inputmode="decimal" placeholder="未輸入"></label><div class="r196-grid"><div class="r196-cell"><small>未含息損益</small><b class="r196-mark">—</b></div><div class="r196-cell"><small>含息總損益</small><b class="r196-total">—</b></div><div class="r196-cell"><small>含息總報酬率</small><b class="r196-return">—</b></div><div class="r196-cell"><small>含息回本價</small><b class="r196-break">—</b></div></div><div class="r196-note">只填目前持股可歸屬的已領配息；成本須為未扣配息的原始平均成本，避免重複扣除。持股或成本變更須重新確認實領金額。未含交易費、稅費；不影響原防守或減碼判斷。</div></section>`;
+ const x=r196Dividend(r);
+ return `<section class="r164-panel r196-income" style="border-color:#c5a24b"><style>.r196-income .r196-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:7px 0}.r196-income .r196-cell{min-width:0;border:1px solid #3a7384;border-radius:9px;padding:7px;text-align:center;overflow-wrap:anywhere}.r196-income .r196-cell small{display:block;color:#a9c6d0;font-size:11px}.r196-income .r196-cell b{display:block;font-size:15px;margin:4px 0}.r196-income .r196-note{font-size:11px;color:#a9c6d0;line-height:1.45}</style><div class="r174-small-title"><strong>ETF 配息試算</strong><small>自動連動上方持股</small></div><div class="r196-grid"><div class="r196-cell" style="border-color:#c5a24b"><small>最近公告配息試算</small><b style="color:#ffd25e" class="r196-est">—</b><small class="r196-holding">輸入上方股數</small></div><div class="r196-cell"><small>每張配息</small><b class="r196-lot">—</b><small>單次成本配息率 <span class="r196-yield">—</span></small></div></div><div class="r196-note">${x?'除息 '+esc(x.exDate)+'｜發放 '+esc(x.payDate):'尚無核對完成的配息公告，暫不試算。'}</div>${x?`<div class="r196-grid"><div class="r196-cell"><small>假設領取本次配息後損益</small><b class="r196-total">—</b><small class="r196-return">—</small></div><div class="r196-cell"><small>假設本次領息後回本價</small><b class="r196-break">—</b></div></div><div class="r196-note">假設目前持股全部符合該次除息資格、成本未扣配息且收盤價不變；僅試算本次公告配息，非實際入帳或累積含息損益。未計費稅，不影響防守判斷。</div>`:''}</section>`;
 }
 function r196BindIncome(root,r,m,ci,qi,ui){
  const el=root.querySelector('.r196-income');if(!el)return ()=>{};
- const get=k=>el.querySelector('.r196-'+k),x=r196Dividend(r),code=String(r.code||''),eligible=get('eligible'),received=get('received');
- const ekey=x?'chaopan-etf-'+code+'-eligible-'+x.exDate:null;
- let currentBasis=null;
- const rkey='chaopan-etf-'+code+'-income-basis';
+ const get=k=>el.querySelector('.r196-'+k),x=r196Dividend(r);
  function paint(k,v,kind='money',colored=false){const n=get(k);if(!n)return;n.textContent=v===null||!Number.isFinite(v)?'—':kind==='pct'?r177Pct(v):kind==='price'?r177Fixed(v,3)+' 元':(colored&&v>0?'+':'')+v.toLocaleString('zh-TW',{maximumFractionDigits:2})+' 元';if(colored)n.className='r196-'+k+' '+r164PctColor(v);}
- function refresh(){
-  const shares=r196Shares(qi.value,ui.value),cost=r177Num(ci.value),basis=shares!==null&&cost>0&&Number.isFinite(cost*shares)?String(cost)+'|'+shares:null;
-  if(basis!==currentBasis){currentBasis=basis;received.value='';if(basis){try{const old=JSON.parse(r196Read(rkey));if(old?.basis===basis&&r196Nonnegative(old.cash)!==null)received.value=old.cash;}catch(_){}}}
-  received.disabled=!basis;
-  const e=eligible?r196Nonnegative(eligible.value):null,cash=basis?r196Nonnegative(received.value):null;
-  const a=r196Income(x,shares,cost,m.close,e,cash);
-  paint('est',a.estimate);paint('lot',a.perLot);paint('yield',a.costYield,'pct');paint('qualified',a.qualified);paint('mark',a.mark,'money',true);paint('total',a.total,'money',true);paint('return',a.returnPct,'pct',true);paint('break',a.breakEven,'price');
-  get('holding').textContent=shares===null?'輸入有效股數':shares.toLocaleString('zh-TW')+' 股'+(x?' × '+x.amount+' 元':'');
- }
- eligible?.addEventListener('input',()=>{if(ekey){const v=r196Nonnegative(eligible.value);r196Write(ekey,Number.isSafeInteger(v)&&v<=1e8?eligible.value:'');}refresh();});
- received.addEventListener('input',()=>{if(currentBasis){const v=r196Nonnegative(received.value);r196Write(rkey,v===null?'':JSON.stringify({basis:currentBasis,cash:received.value}));}refresh();});
- return refresh;
+ return function refresh(){
+  const shares=r196Shares(qi.value,ui.value),cost=r177Num(ci.value),a=r198Income(x,shares,cost,m.close);
+  paint('est',a.estimate);paint('lot',a.perLot);paint('yield',a.costYield,'pct');paint('total',a.scenario,'money',true);paint('return',a.scenarioReturn,'pct',true);paint('break',a.scenarioBreak,'price');
+  get('holding').textContent=shares===null?'輸入上方有效股數':shares.toLocaleString('zh-TW')+' 股'+(x?' × '+x.amount+' 元':'');
+ };
 }
 function r195EtfExtra(r,m){
  const n=r.navDetail,d=r.distributionDetail, v=n?.nav;
@@ -5081,9 +5064,9 @@ function renderR177EtfDetail(r){
  const makeFullChart=()=>bars.length>=5?makeChart(bars,null,state.chartDays,[],[],null,date,{indexMode:true}):'<div class="empty-state">日K資料未足5根／尚未同步</div>';
  const chart=state.r182ChartOpen?makeFullChart():'';
  const note=date?`${date}｜${bars.length}根日K｜證交所 STOCK_DAY｜未經除息還原${state.payload?.asOf&&date<state.payload.asOf?'｜資料較個股盤後舊':''}${r177EtfError?'｜'+r177EtfError:''}`:'ETF資料待核對';
- content.innerHTML=`<div class="detail-title r164-detail-heading r176-detail-heading"><div class="r164-heading-id"><small>ETF ANALYSIS / 上市 · R196</small>${esc(code)} ${esc(r.name||'ETF')}<span class="r169-industry">ETF</span></div><div class="r164-heading-quote"><strong>${r177Fixed(close)}</strong><small class="${r164PctColor(m.change)}">${r177Pct(m.change)}</small></div></div><div class="r176-one-page r182-etf" data-etf-id="${esc(code)}">
+ content.innerHTML=`<div class="detail-title r164-detail-heading r176-detail-heading"><div class="r164-heading-id"><small>ETF ANALYSIS / 上市 · R198</small>${esc(code)} ${esc(r.name||'ETF')}<span class="r169-industry">ETF</span></div><div class="r164-heading-quote"><strong>${r177Fixed(close)}</strong><small class="${r164PctColor(m.change)}">${r177Pct(m.change)}</small></div></div><div class="r176-one-page r182-etf" data-etf-id="${esc(code)}">
  <style>#modalContent .r182-etf .r182-unit{font:inherit;background:#092a38;color:#dffaff;border:1px solid #4f91a1;border-radius:6px;max-width:100%;padding:3px}#modalContent .r182-etf .r176-risk-layout .r174-warning-cells{grid-template-columns:repeat(2,minmax(0,1fr))}#modalContent .r182-etf .r182-range{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}#modalContent .r182-etf .r182-range button{background:#10384b;border:1px solid #37788d;border-radius:7px;color:#dffaff;padding:6px 12px}#modalContent .r182-etf .r182-range .active{background:#36ceb8;color:#05242f}#modalContent .r182-etf .r182-chart svg{width:100%;height:auto}#modalContent .r182-etf .r182-qty{font-size:11px;min-width:0;width:100%;box-sizing:border-box}#modalContent .r182-etf .r182-note{font-size:10px;color:#a9c6d0;overflow-wrap:anywhere}</style>
- <section class="r164-board r165-reference r176-main-card"><div class="r176-main-banner"><span>${fresh?'明日持股操作':'歷史持股觀察'}</span><strong>ETF觀察｜<span class="r182-auto">待輸入</span></strong></div><div class="r176-banner-date">${esc(date||'日期待核對')} 盤後 · R196 ｜持有週期 <select class="r92-mode r182-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
+ <section class="r164-board r165-reference r176-main-card"><div class="r176-main-banner"><span>${fresh?'明日持股操作':'歷史持股觀察'}</span><strong>ETF觀察｜<span class="r182-auto">待輸入</span></strong></div><div class="r176-banner-date">${esc(date||'日期待核對')} 盤後 · R198 ｜持有週期 <select class="r92-mode r182-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
  ${!fresh?`<div role="status" style="color:#ffd25e;font-size:12px;padding:6px 0">⚠ ETF ${esc(date||'日期未知')}｜${expected?'個股盤後 '+esc(expected):'最新交易日待核對'}；僅供歷史參考，暫停明日操作判斷。</div>`:''}
  ${r182EtfMaStrip(m)}
  <div class="r176-top-position"><section class="r164-panel r164-position"><div class="r164-inputs"><label>成本（元）<input class="r182-cost" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="成本"></label><label>數量 <select class="r182-unit"><option value="shares" ${unit==='shares'?'selected':''}>股</option><option value="lots" ${unit==='lots'?'selected':''}>張</option></select><input class="r182-qty" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" placeholder="數量"></label></div><div class="r164-pnlbox r182-pnl" aria-live="polite"></div></section><section class="r164-panel r176-strategy"><small>持股狀態</small><strong class="r182-status">待輸入</strong></section></div>
@@ -5437,8 +5420,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R196-20261126-etf-income';
- const BUILD_LABEL='r196 · ETF配息試算版';
+ const BUILD_ID='R198-20261126-etf-income-simple';
+ const BUILD_LABEL='r198 · ETF配息簡化版';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  // R161: The static index.html has kept r50/r60-era labels even after
