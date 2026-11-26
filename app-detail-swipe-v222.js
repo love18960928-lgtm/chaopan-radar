@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R208-20261127-candle-volume-validation */
+/* CHAOPAN_RADAR_BUILD: R209-20261127-institution-risk-validation */
 /* Prior tested build (historical, not deployed version): CHAOPAN_RADAR_BUILD: R165-20261120-visual-card-red-up-green-down */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
@@ -18,11 +18,29 @@ function r205EventDate(c){
  if(seq!==null&&seq!==undefined&&seq!==''&&(!valid(seq)||seq!==ds[0]))return {date:null,conflict:true};
  return {date:ds[0],conflict:false};
 }
+// R208 validation: the independent stock-flow feed stores lots, while row fields store shares.
+// Never mix markets, sessions, invalid values or conflicting sources.
+function r208Institution(c,intel){
+ if(!c)return null;
+ const date=c.date,iso=d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
+ if(!iso(date))return null;
+ const num=v=>(typeof v==='number'||typeof v==='string'&&v.trim()!=='')&&Number.isFinite(Number(v))?Number(v):null;
+ const keys=['foreignNetShares','trustNetShares','dealerNetShares'];
+ const shares=(values,scale)=>{const out=values.map(v=>{const n=num(v);if(n===null)return null;const x=n*scale,y=Math.round(x);return Number.isSafeInteger(y)&&Math.abs(x-y)<1e-6?y:null;});return out.every(v=>v!==null)?out:null;};
+ const raw=c.institutional,direct=raw?.date===date&&(!raw.unit||raw.unit==='shares')?shares(keys.map(k=>raw[k]),1):null;
+ if(intel===undefined&&typeof state!=='undefined'&&state.mode!=='demo')intel=state.marketIntel;
+ const market=c.market,source=market==='上市'?'TWSE T86':market==='上櫃'?'TPEx 3insti':null,sourceKey=market==='上市'?'twse_t86':'tpex';
+ const item=c.assetType!=='ETF'&&source&&intel?.schema==='chaopan.market.v311'&&intel.asOf===date&&['ok','retained'].includes(intel.sources?.[sourceKey]?.status)?intel.stocks?.[market+'-'+c.code]:null;
+ const feed=item?.date===date&&item.source===source?shares(['foreignLots','trustLots','dealerLots'].map(k=>item[k]),1000):null;
+ if(direct&&feed&&direct.some((x,i)=>x!==feed[i]))return null;
+ const values=feed||direct;if(!values)return null;
+ return {date,source:feed?source:(raw.source||'row'),unit:'shares',...Object.fromEntries(keys.map((k,i)=>[k,values[i]]))};
+}
 const R143StrictRisk = (() => {
  'use strict';
  const stageDays={first:1,second:2,third:3,fourth:4};
  const validDate=s=>/^\d{4}-\d{2}-\d{2}$/.test(String(s))&&Number.isFinite(Date.parse(s+'T00:00:00Z'))&&new Date(s+'T00:00:00Z').toISOString().slice(0,10)===s;
- const n=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v):null;
+ const n=v=>(typeof v==='number'||typeof v==='string'&&v.trim()!=='')&&Number.isFinite(Number(v))?Number(v):null;
  const read=x=>{
   if(!Array.isArray(x)||x.length<6||!validDate(x[0]))return null;
   const [o,h,l,c,v]=[1,2,3,4,5].map(i=>n(x[i]));
@@ -34,7 +52,6 @@ const R143StrictRisk = (() => {
  const upperPct=b=>b.h>b.l?(b.h-Math.max(b.o,b.c))/(b.h-b.l):0;
  const closePos=b=>b.h>b.l?(b.c-b.l)/(b.h-b.l):0.5;
  const reason=(status,reasons,signals=[],evidence={})=>({status,reasons:[...new Set(reasons)],signals:[...new Set(signals)],evidence});
- const dateCompact=s=>String(s||'').replace(/\D/g,'').slice(0,8);
  function parse(c,asOf){
   const raw=Array.isArray(c?.bars)?c.bars:[];
   if(raw.length<25)return {status:'unknown',reasons:['至少需要25根日K以核對連續賣壓及20日均量']};
@@ -44,7 +61,7 @@ const R143StrictRisk = (() => {
   if(bars.some((b,i)=>i>0&&b.date<=bars[i-1].date))return {status:'unknown',reasons:['交易日資料重複或沒有依日期排序']};
   const last=bars.at(-1),rowDate=c?.date;
   if(!validDate(last.date)||rowDate!==last.date||asOf&&last.date!==asOf)return {status:'unknown',reasons:['股票、歷史K棒或盤後快照的交易日期不一致']};
-  if(n(c.close)!==null&&Math.abs(Number(c.close)-last.c)>Math.max(0.011,last.c*.0002))return {status:'unknown',reasons:['股票收盤價與日K收盤價不一致']};
+  if(n(c.close)===null||n(c.close)<=0||Math.abs(Number(c.close)-last.c)>Math.max(0.011,last.c*.0002))return {status:'unknown',reasons:['股票收盤價與日K收盤價不一致']};
   if(c?.possiblePriceAdjustment===true)return {status:'unknown',reasons:['除權息／減資／分割價格尚未還原']};
   // R159: A missing backend corporate-action flag is not proof that prices
   // have already been adjusted. Exceptional adjacent-session gaps may reflect
@@ -58,6 +75,7 @@ const R143StrictRisk = (() => {
    if(prev.c>0&&(Math.abs(next.o/prev.c-1)>.35||Math.abs(next.c/prev.c-1)>.35))
     return {status:'unknown',reasons:[`在${prev.date}與${next.date}間發現大幅價格斷層（超過35%），需核對公司行動、特殊交易狀態及歷史價格還原，不能直接判定出貨或突破`]};
   }
+  if(last.v<=0)return {status:'unknown',reasons:['最新日K成交量為零，無法認證有效交易']};
   const m=mean(bars,bars.length-21,bars.length-1);
   if(!(m>0))return {status:'unknown',reasons:['過去20日均量為零或不足']};
   return {status:'ok',bars,last,volRatio:last.v/m};
@@ -97,6 +115,7 @@ const R143StrictRisk = (() => {
   const warnings=[];let heavyDown=0,healthy=false;
   for(let i=first;i<a.length;i++){
    const b=a[i],vr=vRatio(a,i);
+   if(b.v<=0)return reason('unknown',['突破期間無有效成交量'],[],evidence);
    if(vr===null)return reason('unknown',['突破延續K棒均量無法核對'],[],evidence);
    if(i>first&&b.c<level)return reason('risk',['收盤跌破突破頸線'],['failed_breakout'],evidence);
    if(i>first&&b.c<firstBar.l)return reason('risk',['收盤跌破首次突破K棒低點'],['failed_breakout'],evidence);
@@ -121,7 +140,7 @@ const R143StrictRisk = (() => {
   // Late corrections to OHLCV, risk labels and institutional flow must invalidate it.
   const key=JSON.stringify([asOf||'',c.date,c.close,c.lots,c.riskFirst,c.riskLevel,c.unifiedStage,
    c.followStatus,c.trading?.status,c.overextended,c.possiblePriceAdjustment,
-   c.breakoutSequence,c.breakoutEvent,c.institutional,Array.isArray(c.bars)?c.bars.slice(-160):null]);
+   c.breakoutSequence,c.breakoutEvent,r208Institution(c),Array.isArray(c.bars)?c.bars.slice(-160):null]);
   const cached=memo.get(c);
   if(cached&&cached.key===key)return cached.value;
   const result=compute(c,asOf);memo.set(c,{key,value:result});return result;
@@ -149,7 +168,7 @@ const R143StrictRisk = (() => {
     const dangerHigh=Math.max(a[i-1].h,b.h);
     if(i<L-1&&last.c>dangerHigh)watch.push('近期曾連續放量收黑，但最新收盤已收復賣壓K棒高點');
     else reasons.push('近五根K棒內連續兩根放量收黑');
-    signals.push('distribution_suspected');break;
+    signals.push('distribution_suspected');
    }
   }
   for(let i=Math.max(20,L-4);i<L-1;i++){
@@ -169,8 +188,8 @@ const R143StrictRisk = (() => {
   if(last.c<prev.c&&vr<=.85&&neck!==null&&neck>0&&last.c>=neck){
    watch.push('量縮回測且守住突破頸線，屬健康整理候選');signals.push('healthy_pullback');
   }
-  const institutional=c?.institutional;
-  if(institutional&&dateCompact(institutional.date)===dateCompact(last.date)){
+  const institutional=r208Institution(c);
+  if(institutional){
    const f=n(institutional.foreignNetShares),t=n(institutional.trustNetShares);
    // c.bars volume is in lots; foreign/trust numbers are in shares.
    if(f!==null&&t!==null&&f<0&&t<0){
@@ -178,7 +197,7 @@ const R143StrictRisk = (() => {
     const barIsLots=reportedLots>0&&Math.abs(last.v/reportedLots-1)<.03;
     const barIsShares=reportedLots>0&&Math.abs(last.v/(reportedLots*1000)-1)<.03;
     const shares=barIsLots!==barIsShares?(barIsLots?last.v*1000:last.v):null;
-    const sellFraction=shares>0?(-f-t)/shares:null;
+    const sellFraction=shares>0&&Math.abs(f)<=shares&&Math.abs(t)<=shares&&(-f-t)<=shares?(-f-t)/shares:null;
     if(sellFraction!==null&&sellFraction>=.08&&last.c<last.o){reasons.push('同日外資投信同步賣超且合計達成交股數8%以上，配合收黑');signals.push('institutional_selling');}
     else {watch.push('同日外資投信同步賣超（不單獨判定出貨）');signals.push('institutional_watch');}
    }
@@ -242,7 +261,7 @@ function r185RawRowStamp(c){
   c.unifiedScore,c.unifiedStage,c.followStatus,c.starPhase,c.breakoutQuality,c.continuationEligible,
   c.abovePrevHigh,c.overextended,c.possiblePriceAdjustment,c.onePriceLimit,c.fallingLimitRisk,
   c.assetType,c.changeAmount,c.distributionDetail,c.priceConfirmed,c.preLaunch,c.launchStage,c.neck,c.neckDate,c.volumeRatio,c.avgVolume20,
-  c.tags,c.trading,c.institutional,c.breakoutSequence,c.breakoutEvent,c.cycle,c.supportEvidence,
+  c.tags,c.trading,r208Institution(c),c.breakoutSequence,c.breakoutEvent,c.cycle,c.supportEvidence,
   c.structureV23,c.investment,c.fundamentals,c.decision,c.opportunityScore,c.riskFlags];
  return JSON.stringify([Array.isArray(c.bars)?c.bars:null,meta]);
 }
@@ -1359,9 +1378,10 @@ function r147CombineRisk(...gates){
 }
 function r137BreakoutHistoryGate(c,stage){
  const bars=Array.isArray(c?.bars)?c.bars:[];
- const days={first:1,second:2,third:3,fourth:4}[stage]||1;
+ const days={first:1,second:2,third:3,fourth:4}[stage];
+ if(!days)return {status:'unknown',reason:'突破階段無效'};
  if(bars.length<20+days)return {status:'unknown',reason:'突破事件前20日量能歷史不足'};
- const valid=x=>Array.isArray(x)&&x.length>=6&&[1,2,3,4,5].every(i=>x[i]!==null&&x[i]!==''&&Number.isFinite(Number(x[i])))&&
+ const valid=x=>Array.isArray(x)&&x.length>=6&&typeof x[0]==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x[0])&&Number.isFinite(Date.parse(x[0]+'T00:00:00Z'))&&new Date(Date.parse(x[0]+'T00:00:00Z')).toISOString().slice(0,10)===x[0]&&[1,2,3,4,5].every(i=>(typeof x[i]==='number'||typeof x[i]==='string'&&x[i].trim()!=='')&&Number.isFinite(Number(x[i])))&&
    Number(x[3])>0&&Number(x[2])>=Number(x[3])&&Number(x[1])>=Number(x[3])&&Number(x[1])<=Number(x[2])&&
    Number(x[4])>=Number(x[3])&&Number(x[4])<=Number(x[2])&&Number(x[5])>=0;
  const start=bars.length-days;
@@ -1387,6 +1407,7 @@ function r137BreakoutHistoryGate(c,stage){
   if(history.length!==20||!history.every(valid))return {status:'unknown',reason:'突破後逐日量能基準資料不足'};
   const avg=history.reduce((sum,x)=>sum+Number(x[5]),0)/20;
   if(!(avg>0))return {status:'unknown',reason:'突破期間20日均量無法計算'};
+  if(v<=0)return {status:'unknown',reason:'突破期間無有效成交量'};
   const range=h-l,upper=h-Math.max(o,cl),body=Math.abs(cl-o);
   const longUpper=range>0&&upper/range>=0.4&&upper>body;
   const heavy=v/avg>=1.5;
@@ -1724,9 +1745,13 @@ function sectorDirectoryR185(){
   }
  };
  const uniqueRows=new Map();for(const stage of ['first','second','third','fourth'])for(const c of candidatesForStage(stage))uniqueRows.set(rowId(c),c);
+ // R209: formal certification uses the same canonical universe rows as the advanced screener.
+ // Sector module copies are useful for discovery, but cannot replace corrected EOD records.
+ for(const c of state.universe.rows){if(c?.code&&(uniqueRows.has(rowId(c))||r204Stage(c)))uniqueRows.set(rowId(c),c);}
+ const canonicalIds=new Set(state.universe.rows.filter(c=>c?.code).map(rowId));
  const first=[],follow=[],rejected=[];
  for(const c of uniqueRows.values()){
-  const q=r204Breakout(c);const o={row:c,stage:q.stage||'first',compactStatus:q.reason,reason:q.reason};
+  const q=canonicalIds.has(rowId(c))?r204Breakout(c):{eligible:false,stage:null,reason:'未取得全市場正式同日資料'};const o={row:c,stage:q.stage||'first',compactStatus:q.reason,reason:q.reason};
   if(q.eligible)(q.stage==='first'?first:follow).push(o);else rejected.push(o);
  }
  const group=(id,title,rows)=>`<details class="sector-group"><summary><span class="sector-nom">${title}</span><span class="sector-sum">${rows.length} 檔</span></summary>${r26GroupMarkup(id,rows)}</details>`;
@@ -2113,10 +2138,9 @@ function r92Decision(c,mode='medium'){
  const repeatedSelling=recentDistribution>=2;
 
  const failedBreak=high>Math.max(...bars.slice(-6,-1).map(b=>Number(b[2])))&&close<Math.max(...bars.slice(-6,-1).map(b=>Number(b[2])))&&closeLocation<=.35;
- const ins=c.institutional,insDate=String(ins?.date||'').replace(/[^0-9]/g,'');
- const barDate=String(last[0]).replace(/[^0-9]/g,'');
- const foreign=Number(ins?.foreignNetShares),trust=Number(ins?.trustNetShares);
- const validIns=!!ins&&insDate.length>=8&&insDate===barDate&&ins.foreignNetShares!==null&&ins.foreignNetShares!==undefined&&ins.trustNetShares!==null&&ins.trustNetShares!==undefined&&Number.isFinite(foreign)&&Number.isFinite(trust);
+ const ins=r208Institution(c);
+ const foreign=ins?.foreignNetShares,trust=ins?.trustNetShares;
+ const validIns=!!ins&&ins.date===last[0];
  const institution=validIns?`同日外資 ${foreign>=0?'+':''}${Math.round(foreign/1000).toLocaleString('zh-TW')}張、投信 ${trust>=0?'+':''}${Math.round(trust/1000).toLocaleString('zh-TW')}張`:'待核對（缺少同日個股法人資料）';
  // Institutional totals are in SHARES; EOD volume can be shares or lots.
  // Only use a sell-pressure ratio when the bar unit is independently confirmed
@@ -2125,7 +2149,7 @@ function r92Decision(c,mode='medium'){
  const barIsLots=Number.isFinite(reportedLots)&&reportedLots>0&&Math.abs(vol/reportedLots-1)<.03;
  const barIsShares=Number.isFinite(reportedLots)&&reportedLots>0&&Math.abs(vol/(reportedLots*1000)-1)<.03;
  const volumeShares=(barIsLots!==barIsShares)?(barIsLots?vol*1000:vol):null;
- const institutionalSelling=validIns&&volumeShares!==null&&foreign<0&&trust<0&&(-foreign-trust)/volumeShares>=.08;
+ const institutionalSelling=validIns&&volumeShares!==null&&foreign<0&&trust<0&&(-foreign-trust)<=volumeShares&&(-foreign-trust)/volumeShares>=.08;
  const reasons=[];
  if(trendStrong)reasons.push('所選週期趨勢仍健康');
  else if(trendWeak)reasons.push('所選週期均線轉弱');
@@ -2343,7 +2367,7 @@ function r103ConditionalLevels(c,a){
 // ITS OWN price to calculate proceeds/P&L; no default position or implied fill.
 // R128: EOD-only candle event tracker. Observations, not proof of market manipulation.
 function r129ValidCandle(x){
- if(!Array.isArray(x)||x.length<6||[1,2,3,4,5].some(k=>x[k]===null||x[k]===undefined||typeof x[k]==='boolean'||(typeof x[k]==='string'&&!x[k].trim())))return false;
+ if(!Array.isArray(x)||x.length<6||[1,2,3,4,5].some(k=>!(typeof x[k]==='number'||typeof x[k]==='string'&&x[k].trim()!=='')))return false;
  const [o,h,l,cl,v]=[1,2,3,4,5].map(k=>Number(x[k]));
  return [o,h,l,cl,v].every(Number.isFinite)&&l>0&&h>=l&&o>=l&&o<=h&&cl>=l&&cl<=h&&v>=0;
 }
@@ -3051,8 +3075,8 @@ function r174StockSupportAlert(c,data){
  </section>`;
 }
 function r174InstitutionPanel(c){
- const ins=c?.institutional,asOf=c?.date;
- const valid=ins&&ins.date===asOf&&['foreignNetShares','trustNetShares','dealerNetShares'].every(k=>Number.isFinite(Number(ins[k]))&&ins[k]!==null&&ins[k]!==undefined);
+ const ins=r208Institution(c),asOf=c?.date;
+ const valid=Boolean(ins);
  const row=(label,val)=>`<div class="r174-verified-metric"><small>${label}</small><b class="${r164PctColor(val)}">${val>0?'+':''}${r164Fmt(Math.round(val/1000))} 張</b></div>`;
  return `<section class="r164-board r174-research"><h3>法人動向</h3><div class="r174-source">${esc(asOf||'日期未知')}｜${valid?'同日已取得欄位（仍須核對來源）':'同日法人資料待核對，不補零'}</div>
  ${valid?`<div class="r174-institution-grid">${row('外資',Number(ins.foreignNetShares))}${row('投信',Number(ins.trustNetShares))}${row('自營商',Number(ins.dealerNetShares))}</div>`:'<div class="r174-muted-placeholder">法人買賣超暫無可核對資料</div>'}
@@ -3142,7 +3166,7 @@ function r200Series(bars,date,close){
  for(let i=0;i<bars.length;i++){
   const b=bars[i];if(!Array.isArray(b)||b.length<5||typeof b[0]!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(b[0])||b[0]<=prev)return null;
   const stamp=Date.parse(b[0]+'T00:00:00Z');if(!Number.isFinite(stamp)||new Date(stamp).toISOString().slice(0,10)!==b[0])return null;
-  const [o,h,l,c]=b.slice(1,5).map(numeric);if([o,h,l,c].some(v=>!r194ValidPrice(v))||h<Math.max(o,c)||l>Math.min(o,c))return null;
+  const [o,h,l,c]=b.slice(1,5).map(v=>(typeof v==='number'||typeof v==='string'&&v.trim()!=='')?numeric(v):null);if([o,h,l,c].some(v=>!r194ValidPrice(v))||h<Math.max(o,c)||l>Math.min(o,c))return null;
   prev=b[0];e12=i?e12+2/13*(c-e12):c;e26=i?e26+2/27*(c-e26):c;
   const dif=e12-e26;dea=i?dea+.2*(dif-dea):dif;
   if(i>=8){const w=bars.slice(i-8,i+1),hh=Math.max(...w.map(x=>Number(x[2]))),ll=Math.min(...w.map(x=>Number(x[3]))),rsv=hh===ll?50:100*(c-ll)/(hh-ll);k=(2*k+rsv)/3;d=(2*d+k)/3;}
@@ -3218,7 +3242,7 @@ function r201TechnicalInput(c){
  if(etf&&pendingEx&&pendingEx>=bars[0]?.[0]&&pendingEx<=c.date&&!events?.some(x=>x.exDate===pendingEx))return fail('已知除息日缺少確認金額');
  if(events===null)return fail('配息公告互相衝突');
  const copy=bars.map(b=>Array.isArray(b)?b.slice():b);
- if(copy.some(b=>!Array.isArray(b)||b.length<5||b.slice(1,5).some(v=>!r194ValidPrice(numeric(v)))))return fail('日K格式待核對');
+ if(copy.some(b=>!Array.isArray(b)||b.length<5||b.slice(1,5).some(v=>!(typeof v==='number'||typeof v==='string'&&v.trim()!=='')||!r194ValidPrice(numeric(v)))))return fail('日K格式待核對');
  let adjusted=0;
  for(const x of events){
   if(x.exDate<=bars[0][0]||x.exDate>c.date)continue;
@@ -3253,7 +3277,7 @@ function r202Pattern(bars,date,close){
  if(!Array.isArray(bars)||bars.length<55||!date||bars.at(-1)?.[0]!==date||!Number.isFinite(close)||close<=0)return unknown('至少55根同日完整日K');
  const b=bars.slice(-80).map(x=>Array.isArray(x)?x.slice(0,6):[]);
  let prev='';
- for(const x of b){const d=x[0],n=x.slice(1).map(v=>v===null||v===''?NaN:Number(v));if(typeof d!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(d)||d<=prev||!Number.isFinite(Date.parse(d+'T00:00:00Z'))||new Date(Date.parse(d+'T00:00:00Z')).toISOString().slice(0,10)!==d||n.length!==5||n.some(v=>!Number.isFinite(v))||n[2]<=0||n[1]<Math.max(n[0],n[3])||n[2]>Math.min(n[0],n[3])||n[4]<0)return unknown('日K日期或價量異常');prev=d;for(let k=1;k<=5;k++)x[k]=n[k-1];}
+ for(const x of b){const d=x[0],n=x.slice(1).map(v=>(typeof v==='number'||typeof v==='string'&&v.trim()!=='')?Number(v):NaN);if(typeof d!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(d)||d<=prev||!Number.isFinite(Date.parse(d+'T00:00:00Z'))||new Date(Date.parse(d+'T00:00:00Z')).toISOString().slice(0,10)!==d||n.length!==5||n.some(v=>!Number.isFinite(v))||n[2]<=0||n[1]<Math.max(n[0],n[3])||n[2]>Math.min(n[0],n[3])||n[4]<0)return unknown('日K日期或價量異常');prev=d;for(let k=1;k<=5;k++)x[k]=n[k-1];}
  const t=b.length-1;if(Math.abs(b[t][4]-close)>Math.max(.000001,close*1e-8))return unknown('收盤不一致');
  for(let i=1;i<b.length;i++)if(Math.abs(b[i][4]/b[i-1][4]-1)>.105)return unknown('價格斷層待核對');
  const mean=a=>a.reduce((s,v)=>s+v,0)/a.length;
@@ -3341,7 +3365,7 @@ function r202Pattern(bars,date,close){
   if(type){const out=finish(type,H.at,L.at,first,{converging:conv,pivots:h.length+l.length});if(out)options.push(out);}
  }
  // R207: research candidates; never grant breakout certification on geometry alone.
- const extra=r207ExtraPatterns(b,t,hi,lo,fit,mean,finish);
+ const extra=[...r207ExtraPatterns(b,t,hi,lo,fit,mean,finish),...r208Broadening(b,t,hi,lo,fit,mean,finish)];
  const ranked=options.find(risk)||options.find(x=>!x.top&&!x.bottom)||options[0]||extra[0];
  if(ranked){const all=[...options,...extra];return {...ranked,alternate:[...new Set(all.filter(x=>x.type!==ranked.type).map(x=>x.type))].join('／'),observations:all.map(x=>({type:x.type,phase:x.phase,research:!!x.research}))};}
  return {status:'none',reason:'未符合已定義的形態候選條件'};
@@ -3417,6 +3441,38 @@ function r207ExtraPatterns(b,t,hi,lo,fit,mean,finish){
    const u=up?Math.min(before[3],now[3]):low,l=up?high:Math.max(before[2],now[2]);
    add(finish(up?'多方島狀反轉':'空方島狀反轉',()=>u,()=>l,start,{research:true,bottom:up,top:!up}));break;
   }
+ }
+ return out;
+}
+// Research-only: widening range and diamond (expansion followed by contraction).
+// Fit confirmed alternating pivots; the signal bar is never part of the fit.
+function r208Broadening(b,t,hi,lo,fit,mean,finish){
+ const out=[], base=mean(b.slice(t-35,t).map(x=>x[4]));
+ const segment=(start,end,min)=>{
+  const h=hi.filter(x=>x.i>=start&&x.i<=end),l=lo.filter(x=>x.i>=start&&x.i<=end);
+  if(h.length<min||l.length<min||h.at(-1).i-h[0].i<(end-start)*.35||l.at(-1).i-l[0].i<(end-start)*.35)return null;
+  const ordered=[...h.map(x=>({...x,k:1})),...l.map(x=>({...x,k:-1}))].sort((a,b)=>a.i-b.i);
+  if(ordered.slice(1).filter((x,j)=>x.k!==ordered[j].k).length<2*min-1)return null;
+  const H=fit(h),L=fit(l);if(!H||!L||H.err>.015||L.err>.015)return null;
+  const w0=H.at(start)-L.at(start),w1=H.at(end)-L.at(end),sh=H.m*(end-start)/base,sl=L.m*(end-start)/base;
+  if(w0<base*.012||w1<base*.012||b.slice(start,end+1).some((x,j)=>x[4]>H.at(start+j)+base*.015||x[4]<L.at(start+j)-base*.015))return null;
+  return {H,L,w0,w1,sh,sl,last:Math.max(h.at(-1).i,l.at(-1).i)};
+ };
+ for(const w of [24,32,40]){
+  const start=t-w,g=segment(start,t-1,3);
+  if(g&&t-g.last<=8&&g.sh>.025&&g.sl<-.025&&g.w1/g.w0>=1.5&&g.w1/base>=.08){
+   const x=finish('擴散喇叭形',g.H.at,g.L.at,start,{research:true});if(x)out.push(x);break;
+  }
+ }
+ for(const w of [32,40,44]){
+  const start=t-w;
+  for(const f of [.45,.5,.55]){
+   const mid=start+Math.round(w*f),a=segment(start,mid,2),z=segment(mid,t-1,2);
+   if(!a||!z||t-z.last>8||a.sh<.02||a.sl>-.02||z.sh>-.02||z.sl<.02||a.w1/a.w0<1.45||z.w1/z.w0>.72||a.w1/base<.07)continue;
+   if(Math.abs(a.H.at(mid)-z.H.at(mid))>base*.025||Math.abs(a.L.at(mid)-z.L.at(mid))>base*.025)continue;
+   const x=finish('菱形整理',z.H.at,z.L.at,mid,{research:true,converging:true});if(x)out.push(x);break;
+  }
+  if(out.some(x=>x.type==='菱形整理'))break;
  }
  return out;
 }
@@ -3502,11 +3558,13 @@ function nextSessionDefenseCard(c){
  }catch(e){}
  const data=r164Data(c),close=numeric(c?.close),p=close!==null&&close>0?close:NaN;
  const advice=r176Advice(c,data);
+ const insGate=c?.assetType!=='ETF'&&data.fresh?R143StrictRisk.audit(c,c.date):null;
+ const insWarning=insGate?.signals?.includes('institutional_selling')||insGate?.signals?.includes('institutional_watch')?insGate.reasons.filter(r=>r.includes('外資投信')).join('；'):'';
  const plan=r99Action(c,cost===''?NaN:Number(cost),qty===''?NaN:Number(qty),mode);
  const priceLimits=data.fresh?r164LimitBand(c):null;
  return `<section class="r82-decision r91-decision r164-board r165-reference r176-main-card" data-code="${esc(code)}" aria-label="明日持股操作同頁圖形總覽">
  <div class="r176-main-banner"><span>明日持股操作</span><strong>自動策略｜<span class="r174-auto-mode" aria-live="polite">${esc(r174AutoMode(cost===''?NaN:Number(cost),p))}</span></strong></div>
- <div class="r176-banner-date">${esc(c?.date||'日期待核對')} 盤後 · R208 ｜ 持有週期 <select class="r92-mode" aria-label="持有週期"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
+ <div class="r176-banner-date">${esc(c?.date||'日期待核對')} 盤後 · R209 ｜ 持有週期 <select class="r92-mode" aria-label="持有週期"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
  ${r164MABox(c,data)}
  <div class="r176-top-position"><section class="r164-panel r164-position"><div class="r164-inputs">
   <label>成本（元）<input class="r82-cost-input" type="number" inputmode="decimal" min="0" step="any" value="${esc(cost)}" placeholder="成本" /></label>
@@ -3515,7 +3573,7 @@ function nextSessionDefenseCard(c){
  <section class="r164-panel r176-strategy r174-auto-panel"><small>自動策略</small><strong class="r176-strategy-status">${esc(r174AutoMode(cost===''?NaN:Number(cost),p))}</strong></section>
  </div>
  <div class="r176-risk-layout"><section class="r164-panel r164-action-preview"><div class="r164-quick-action">${r164ActionPreview(plan,c,data)}</div></section>
- <section class="r164-panel r176-advice"><h3>▤ 建議操作</h3><strong>${esc(advice.title)}</strong><p>${esc(advice.body)}</p>${r204PatternRisk(c)?`<p style="color:#f5ce65">⚠ ${esc(r204PatternRisk(c).reasons.join('；'))}｜排除突破候選</p>`:''}</section></div>
+ <section class="r164-panel r176-advice"><h3>▤ 建議操作</h3><strong>${esc(advice.title)}</strong><p>${esc(advice.body)}</p>${r204PatternRisk(c)?`<p style="color:#f5ce65">⚠ ${esc(r204PatternRisk(c).reasons.join('；'))}｜排除突破候選</p>`:''}${insWarning?`<p style="color:#f5ce65">⚠ ${esc(insWarning)}｜不認證突破</p>`:''}</section></div>
  ${r174IndexCompare(c)}
  ${r200CrossCard(c,data)}
  ${r194CostCard(data,Number(cost),Number(qty))}${r200AverageCard(data,Number(cost),Number(qty))}
@@ -3559,7 +3617,7 @@ function r176Advice(c,data){
 function r176ResearchMini(c){
  const date=String(c?.date||''), bars=Array.isArray(c?.bars)?c.bars:[];
  const hist=bars.length>=26&&bars.at(-1)?.[0]===date&&bars.slice(-26).every(b=>r129ValidCandle(b));
- const ins=c?.institutional,goodIns=ins?.date===date&&['foreignNetShares','trustNetShares','dealerNetShares'].every(k=>ins[k]!==null&&ins[k]!==undefined&&Number.isFinite(Number(ins[k])));
+ const ins=r208Institution(c),goodIns=Boolean(ins);
  const insDefs=[['外資','foreignNetShares'],['投信','trustNetShares'],['自營','dealerNetShares']];
  const insMax=goodIns?Math.max(1,...insDefs.map(([,k])=>Math.abs(Number(ins[k])))):1;
  const insRows=insDefs.map(([name,k])=>{
@@ -3633,7 +3691,7 @@ function arrangeR41Detail(c){
   const marketChange=numeric(c.changePct),quoteClass=r164PctColor(marketChange);
   head.classList.add('r164-detail-heading','r176-detail-heading');
   const industryLabel=String(c.industry||c.fundamentals?.industry||'').trim();
-  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R208</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
+  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R209</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
  }
  const page=document.createElement('div');page.className='r176-one-page';page.setAttribute('aria-label','個股完整單頁操作儀表板');
  const card=document.createElement('div');card.innerHTML=nextSessionDefenseCard(c);r82BindCost(card,c);page.append(card);
@@ -4053,8 +4111,7 @@ async function loadData(){
   if(!verified){
    if(alreadyVisible||state.universe){
     stampStatus('全市場'+(universeFailure||'未驗證')+' · 保留 '+(state.payload?.asOf||'舊')+' 快照');
-    if(intel&&state.payload?.asOf===obj.asOf){state.marketIntel=intel;
-     const el=$('#intelMarket');if(el)el.innerHTML=ChaopanIntel.marketPanel(intel,obj.asOf);institutionalBoard();renderRelativeStrength();}
+    if(intel&&state.payload?.asOf===obj.asOf){state.marketIntel=intel;render();}
    }else{
     // Render base radar only, but never label it a verified universe.
     state.payload=obj;state.mode=['live','warming','partial'].includes(obj.mode)?obj.mode:'empty';state.loadingExtra=false;render();
@@ -4064,7 +4121,7 @@ async function loadData(){
   }
   const supplemental=intel||(state.payload?.asOf===obj.asOf&&ChaopanIntel.safeMarket(state.marketIntel,obj.asOf)?state.marketIntel:null);
   if(!(sameRadar&&alreadyLoaded&&unchanged))applySnapshot(obj,univ,supplemental,{cached:false});
-  else if(intel){state.marketIntel=intel;const el=$('#intelMarket');if(el)el.innerHTML=ChaopanIntel.marketPanel(intel,obj.asOf);institutionalBoard()}
+  else if(intel){state.marketIntel=intel;render()}
   state.cachedSnapshot=false;state.loadingExtra=false;
   stampStatus('個股資料 '+obj.asOf+' 已核對'+(intel?' · 指數法人依來源顯示':' · 官方補充資料未取得'));
  }finally{if(run===loadRun){refreshBusy=false;if(btn){btn.disabled=false;btn.classList.remove('syncing')}}}
@@ -4177,13 +4234,13 @@ function r131Signals(c){
 function r133BaseRiskGate(c){
  const b=Array.isArray(c?.bars)?c.bars:[];
  const last=b.at(-1), prev=b.at(-2);
- const num=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?Number(v):null;
+ const num=v=>(typeof v==='number'||typeof v==='string'&&v.trim()!=='')&&Number.isFinite(Number(v))?Number(v):null;
  const result={status:'unknown',reasons:[]};
  if(c?.possiblePriceAdjustment===true)return {...result,reasons:['公司行動價格尚未還原']};
  if(c?.date&&Array.isArray(last)&&String(last[0])!==String(c.date))return {...result,reasons:['日K與股票日期不一致']};
  if(!Array.isArray(last)||last.length<6)return {...result,reasons:['缺少完整日K']};
  const o=num(last[1]),h=num(last[2]),l=num(last[3]),cl=num(last[4]),v=num(last[5]);
- if([o,h,l,cl,v].some(x=>x===null)||h<l||o>h||o<l||cl>h||cl<l||v<0||h<=0)return {...result,reasons:['日K資料異常']};
+ if([o,h,l,cl,v].some(x=>x===null)||h<l||o>h||o<l||cl>h||cl<l||v<0||l<=0)return {...result,reasons:['日K資料異常']};
  const range=h-l,upper=h-Math.max(o,cl),body=Math.abs(cl-o);
  const upperPct=range>0?upper/range:0;
  const prior=b.slice(-21,-1).map(x=>Array.isArray(x)?num(x[5]):null);
@@ -4234,7 +4291,7 @@ function r131Mount(){
  const host=document.querySelector('.advanced-radar')||document.querySelector('#candidateList')?.parentElement;
  if(!host||document.querySelector('#r131Screener'))return;
  const panel=document.createElement('section');panel.id='r131Screener';panel.style.cssText='margin:12px 0;padding:14px;border:1px solid #35576b;border-radius:14px;background:#0c2432;color:#e7f5fa';
- panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">有效突破篩選｜R208</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">突破階段（風險原因另查）</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+[['all','全部'],['first','突破第一根'],['confirmed-follow','突破續強']].map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜已通過突破條件（非買點）</option><option value="watch">黃燈｜未通過／待確認（非買點）</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
+ panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">有效突破篩選｜R209</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">突破階段（風險原因另查）</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+[['all','全部'],['first','突破第一根'],['confirmed-follow','突破續強']].map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜已通過突破條件（非買點）</option><option value="watch">黃燈｜未通過／待確認（非買點）</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
  host.insertBefore(panel,host.firstChild);
  const r185Disclosure=panel.closest('details');
  if(r185Disclosure)r185Disclosure.addEventListener('toggle',()=>{if(r185Disclosure.open)r131Render()});
@@ -5577,9 +5634,9 @@ function renderR177EtfDetail(r){
  const makeFullChart=()=>bars.length>=5?makeChart(bars,null,state.chartDays,[],[],null,date,{indexMode:true}):'<div class="empty-state">日K資料未足5根／尚未同步</div>';
  const chart=state.r182ChartOpen?makeFullChart():'';
  const note=date?`${date}｜${bars.length}根日K｜證交所 STOCK_DAY｜未經除息還原${state.payload?.asOf&&date<state.payload.asOf?'｜資料較個股盤後舊':''}${r177EtfError?'｜'+r177EtfError:''}`:'ETF資料待核對';
- content.innerHTML=`<div class="detail-title r164-detail-heading r176-detail-heading"><div class="r164-heading-id"><small>ETF ANALYSIS / 上市 · R208</small>${esc(code)} ${esc(r.name||'ETF')}<span class="r169-industry">ETF</span></div><div class="r164-heading-quote"><strong>${r177Fixed(close)}</strong><small class="${r164PctColor(m.change)}">${r177Pct(m.change)}</small></div></div><div class="r176-one-page r182-etf" data-etf-id="${esc(code)}">
+ content.innerHTML=`<div class="detail-title r164-detail-heading r176-detail-heading"><div class="r164-heading-id"><small>ETF ANALYSIS / 上市 · R209</small>${esc(code)} ${esc(r.name||'ETF')}<span class="r169-industry">ETF</span></div><div class="r164-heading-quote"><strong>${r177Fixed(close)}</strong><small class="${r164PctColor(m.change)}">${r177Pct(m.change)}</small></div></div><div class="r176-one-page r182-etf" data-etf-id="${esc(code)}">
  <style>#modalContent .r182-etf .r182-unit{font:inherit;background:#092a38;color:#dffaff;border:1px solid #4f91a1;border-radius:6px;max-width:100%;padding:3px}#modalContent .r182-etf .r176-risk-layout .r174-warning-cells{grid-template-columns:repeat(2,minmax(0,1fr))}#modalContent .r182-etf .r182-range{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}#modalContent .r182-etf .r182-range button{background:#10384b;border:1px solid #37788d;border-radius:7px;color:#dffaff;padding:6px 12px}#modalContent .r182-etf .r182-range .active{background:#36ceb8;color:#05242f}#modalContent .r182-etf .r182-chart svg{width:100%;height:auto}#modalContent .r182-etf .r182-qty{font-size:11px;min-width:0;width:100%;box-sizing:border-box}#modalContent .r182-etf .r182-note{font-size:10px;color:#a9c6d0;overflow-wrap:anywhere}</style>
- <section class="r164-board r165-reference r176-main-card"><div class="r176-main-banner"><span>${fresh?'明日持股操作':'歷史持股觀察'}</span><strong>ETF觀察｜<span class="r182-auto">待輸入</span></strong></div><div class="r176-banner-date">${esc(date||'日期待核對')} 盤後 · R208 ｜持有週期 <select class="r92-mode r182-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
+ <section class="r164-board r165-reference r176-main-card"><div class="r176-main-banner"><span>${fresh?'明日持股操作':'歷史持股觀察'}</span><strong>ETF觀察｜<span class="r182-auto">待輸入</span></strong></div><div class="r176-banner-date">${esc(date||'日期待核對')} 盤後 · R209 ｜持有週期 <select class="r92-mode r182-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
  ${!fresh?`<div role="status" style="color:#ffd25e;font-size:12px;padding:6px 0">⚠ ETF ${esc(date||'日期未知')}｜${expected?'個股盤後 '+esc(expected):'最新交易日待核對'}；僅供歷史參考，暫停明日操作判斷。</div>`:''}
  ${r182EtfMaStrip(m)}
  <div class="r176-top-position"><section class="r164-panel r164-position"><div class="r164-inputs"><label>成本（元）<input class="r182-cost" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="成本"></label><label>數量 <select class="r182-unit"><option value="shares" ${unit==='shares'?'selected':''}>股</option><option value="lots" ${unit==='lots'?'selected':''}>張</option></select><input class="r182-qty" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" placeholder="數量"></label></div><div class="r164-pnlbox r182-pnl" aria-live="polite"></div></section><section class="r164-panel r176-strategy"><small>持股狀態</small><strong class="r182-status">待輸入</strong></section></div>
@@ -5933,8 +5990,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R208-20261127-candle-volume-validation';
- const BUILD_LABEL='r208 · K棒量價修正';
+ const BUILD_ID='R209-20261127-institution-risk-validation';
+ const BUILD_LABEL='r209 · 法人風險整合';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  // R161: The static index.html has kept r50/r60-era labels even after
