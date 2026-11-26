@@ -937,6 +937,22 @@
         "dealerOwnNetShares": 604000,
         "dealerHedgeNetShares": -118143119,
         "totalNetShares": -41804163
+      },
+      "fundTaxId": "00682450",
+      "navDetail": {
+        "date": "2026-11-25",
+        "nav": 6.31,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      },
+      "distributionDetail": {
+        "latest": {
+          "exDate": "2026-11-03",
+          "payDate": "2026-11-27",
+          "amount": 0.138,
+          "source": "TWSE announcement 2026-10-30"
+        },
+        "nextExPending": "2026-12-02"
       }
     },
     {
@@ -2431,7 +2447,15 @@
         "dealerOwnNetShares": -21745411,
         "dealerHedgeNetShares": -22238622,
         "totalNetShares": -138369413
-      }
+      },
+      "fundTaxId": "98764389",
+      "navDetail": {
+        "date": "2026-11-25",
+        "nav": 90.45,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      },
+      "distributionDetail": null
     },
     {
       "code": "0056",
@@ -3925,6 +3949,22 @@
         "dealerOwnNetShares": 42341,
         "dealerHedgeNetShares": -74411258,
         "totalNetShares": -89397484
+      },
+      "fundTaxId": "48966213",
+      "navDetail": {
+        "date": "2026-11-25",
+        "nav": 45.53,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      },
+      "distributionDetail": {
+        "latest": {
+          "exDate": "2026-10-22",
+          "payDate": "2026-11-11",
+          "amount": 1.72,
+          "source": "SITCA open data 11109/160547"
+        },
+        "nextExPending": null
       }
     },
     {
@@ -5419,7 +5459,15 @@
         "dealerOwnNetShares": -16254,
         "dealerHedgeNetShares": -1711009,
         "totalNetShares": -2124251
-      }
+      },
+      "fundTaxId": "31840182",
+      "navDetail": {
+        "date": "2026-11-25",
+        "nav": 203.5,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      },
+      "distributionDetail": null
     },
     {
       "code": "00878",
@@ -6913,7 +6961,15 @@
         "dealerOwnNetShares": -667000,
         "dealerHedgeNetShares": -40272211,
         "totalNetShares": -44679728
-      }
+      },
+      "fundTaxId": "88090913",
+      "navDetail": {
+        "date": "2026-11-25",
+        "nav": 28.56,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      },
+      "distributionDetail": null
     },
     {
       "code": "00919",
@@ -8407,7 +8463,15 @@
         "dealerOwnNetShares": 35304,
         "dealerHedgeNetShares": -24054167,
         "totalNetShares": -40042552
-      }
+      },
+      "fundTaxId": "88330879",
+      "navDetail": {
+        "date": "2026-11-25",
+        "nav": 27.83,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      },
+      "distributionDetail": null
     },
     {
       "code": "00929",
@@ -9901,6 +9965,22 @@
         "dealerOwnNetShares": 14469,
         "dealerHedgeNetShares": -10511513,
         "totalNetShares": -14939204
+      },
+      "fundTaxId": "88399314",
+      "navDetail": {
+        "date": "2026-11-25",
+        "nav": 21.99,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      },
+      "distributionDetail": {
+        "latest": {
+          "exDate": "2026-10-21",
+          "payDate": "2026-11-16",
+          "amount": 0.38,
+          "source": "SITCA open data 11109/160547"
+        },
+        "nextExPending": null
       }
     },
     {
@@ -11395,6 +11475,22 @@
         "dealerOwnNetShares": 34000,
         "dealerHedgeNetShares": -690006,
         "totalNetShares": -1065995
+      },
+      "fundTaxId": "93176257",
+      "navDetail": {
+        "date": "2026-11-25",
+        "nav": 11.03,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      },
+      "distributionDetail": {
+        "latest": {
+          "exDate": "2026-10-07",
+          "payDate": "2026-11-02",
+          "amount": 0.055,
+          "source": "SITCA open data 11109/160547"
+        },
+        "nextExPending": null
       }
     },
     {
@@ -12889,7 +12985,15 @@
         "dealerOwnNetShares": -18683000,
         "dealerHedgeNetShares": 167907801,
         "totalNetShares": 514604323
-      }
+      },
+      "fundTaxId": "00583395",
+      "navDetail": {
+        "date": "2026-11-25",
+        "nav": 20.74,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      },
+      "distributionDetail": null
     }
   ],
   "warnings": []
