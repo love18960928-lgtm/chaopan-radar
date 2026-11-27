@@ -452,8 +452,17 @@ def markets_needing_refresh(known,stamp):
     return [m for m,threshold in minimum.items()
             if len(known.get((m,stamp),()))<threshold]
 
-def run(days,delay,as_of=None):
+def backfill_dates(now,days,offset=0):
+    """Historical window only; never shift the real latest-feed reference date."""
+    if type(days) is not int or days<0 or days>780 or type(offset) is not int or not 0<=offset<=450 or (offset and not days):
+        raise ValueError('invalid backfill days/offset (days 0..780, offset 0..450; offset requires days)')
+    end=now-dt.timedelta(days=offset)
+    return [end-dt.timedelta(days=i) for i in range((days or 7)-1,-1,-1)]
+
+
+def run(days,delay,as_of=None,backfill_offset=0):
     now=(dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()) if as_of is None else dt.date.fromisoformat(as_of)
+    dates=backfill_dates(now,days,backfill_offset)
     allstocks=read_existing()
     # Keep prospective signal diary when rebuilding/updating history.
     prior_history=json.loads(HISTORY.read_text('utf-8')) if HISTORY.exists() else {}
@@ -465,10 +474,6 @@ def run(days,delay,as_of=None):
     for s in allstocks.values():
         for row in s.get('bars',[]):
             known.setdefault((s['market'],row[0]),set()).add(s['code'])
-    if days>0:
-        dates=[now-dt.timedelta(days=i) for i in range(days-1,-1,-1)]
-    else:
-        dates=[now-dt.timedelta(days=i) for i in range(6,-1,-1)]  # repair missed weekday/holiday jobs
     modified=0
     for date in dates:
         if date.weekday()>=5:continue
@@ -589,7 +594,12 @@ if __name__=='__main__':
     logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s')
     ap=argparse.ArgumentParser()
     ap.add_argument('--backfill',type=int,default=0,metavar='CALENDAR_DAYS',help='Backfill past N calendar days (e.g. 220)')
+    ap.add_argument('--backfill-offset',type=int,default=0,help='End historical window N calendar days before today (0..450)')
     ap.add_argument('--delay',type=float,default=1.1,help='Sleep between each market request')
     ap.add_argument('--as-of',help='Test date YYYY-MM-DD')
     args=ap.parse_args()
-    run(args.backfill,max(.35,args.delay),args.as_of)
+    try:
+        backfill_dates(dt.date.today(),args.backfill,args.backfill_offset)
+    except ValueError as exc:
+        ap.error(str(exc))
+    run(args.backfill,max(.35,args.delay),args.as_of,args.backfill_offset)
