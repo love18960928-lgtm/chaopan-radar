@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R222-20261127-ma-defense-guard */
+/* CHAOPAN_RADAR_BUILD: R222-20261127-ma-defense-guard-label-fix */
 /* Prior tested build (historical, not deployed version): CHAOPAN_RADAR_BUILD: R165-20261120-visual-card-red-up-green-down */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
@@ -6417,8 +6417,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R222-20261127-ma-defense-guard';
- const BUILD_LABEL='r220 · 缺口支撐與壓力防錯';
+ const BUILD_ID='R222-20261127-ma-defense-guard-label-fix';
+ const BUILD_LABEL='r222 · 三線均線防守（版號修正）';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  // R161: The static index.html has kept r50/r60-era labels even after
