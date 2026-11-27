@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R223-20261127-etf-cash-guard */
+/* CHAOPAN_RADAR_BUILD: R224-20261127-cache-update-guard */
 /* Prior tested build (historical, not deployed version): CHAOPAN_RADAR_BUILD: R165-20261120-visual-card-red-up-green-down */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
@@ -3835,7 +3835,7 @@ function nextSessionDefenseCard(c){
  const priceLimits=data.fresh?r164LimitBand(c):null;
  return `<section class="r82-decision r91-decision r164-board r165-reference r176-main-card" data-code="${esc(code)}" aria-label="明日持股操作同頁圖形總覽">
  <div class="r176-main-banner"><span>明日持股操作</span><strong>自動策略｜<span class="r174-auto-mode" aria-live="polite">${esc(r174AutoMode(cost===''?NaN:Number(cost),p))}</span></strong></div>
- <div class="r176-banner-date">${esc(c?.date||'日期待核對')} 盤後 · R223 ｜ 持有週期 <select class="r92-mode" aria-label="持有週期"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
+ <div class="r176-banner-date">${esc(c?.date||'日期待核對')} 盤後 · R224 ｜ 持有週期 <select class="r92-mode" aria-label="持有週期"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
  ${r164MABox(c,data)}
  <div class="r176-top-position"><section class="r164-panel r164-position"><div class="r164-inputs">
   <label>成本（元）<input class="r82-cost-input" type="number" inputmode="decimal" min="0" step="any" value="${esc(cost)}" placeholder="成本" /></label>
@@ -3963,7 +3963,7 @@ function arrangeR41Detail(c){
   const marketChange=numeric(c.changePct),quoteClass=r164PctColor(marketChange);
   head.classList.add('r164-detail-heading','r176-detail-heading');
   const industryLabel=String(c.industry||c.fundamentals?.industry||'').trim();
-  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R223</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
+  head.innerHTML=`<div class="r164-heading-id"><small>STOCK ANALYSIS / ${esc(c.market||'台股')} · R224</small>${esc(c.code)} ${esc(c.name)}${industryLabel?`<span class="r169-industry">${esc(industryLabel)}</span>`:''}</div><div class="r164-heading-quote"><strong>${price(c.close)}</strong><small class="${quoteClass}">${pct(c.changePct)}</small></div>`;
  }
  const page=document.createElement('div');page.className='r176-one-page';page.setAttribute('aria-label','個股完整單頁操作儀表板');
  const card=document.createElement('div');card.innerHTML=nextSessionDefenseCard(c);r82BindCost(card,c);page.append(card);
@@ -4233,8 +4233,25 @@ let loadRun=0,refreshBusy=false;
 // release forces the phone to redownload the 2000-stock universe.
 const EOD_CACHE='chaopan-eod-data-v311-r3';
 let lastUniverseRaw=null;
+const r224Responses=new WeakMap(),r224Validators=new WeakMap();
 const eodUrl=name=>new URL('./data/'+name,location.href).href;
 const isValidRadar=obj=>obj&&/^\d{4}-\d{2}-\d{2}$/.test(String(obj.asOf||''))&&Array.isArray(obj.candidates);
+function r224CoherentMarket(obj,date){return Boolean(obj&&obj.asOf===date&&obj.marketAsOf?.['上市']===date&&obj.marketAsOf?.['上櫃']===date);}
+function r224MarketDateOK(d,now=new Date()){
+ if(typeof d!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(d))return false;
+ const t=new Date(d+'T00:00:00Z');if(!Number.isFinite(t.getTime())||t.toISOString().slice(0,10)!==d)return false;
+ const taipei=new Date(now.getTime()+8*3600000).toISOString();return d<taipei.slice(0,10)||(d===taipei.slice(0,10)&&taipei.slice(11,16)>='13:30');
+}
+function r224AcceptRadar(radar,priorDate){return Boolean(isValidRadar(radar)&&r224MarketDateOK(radar.asOf)&&(!priorDate||!r224MarketDateOK(priorDate)||radar.asOf>=priorDate));}
+function r224CacheablePair(radar,universe){
+ const d=radar?.asOf;if(!r224AcceptRadar(radar)||!isValidUniverse(universe,d)||!r224CoherentMarket(radar,d)||!r224CoherentMarket(universe,d))return false;
+ const keys=new Set();for(const row of universe.rows){if(!row||row.date!==d||!['上市','上櫃'].includes(row.market)||!row.code)return false;const k=row.market+'-'+row.code;if(keys.has(k))return false;keys.add(k);}
+ return ['上市','上櫃'].every(m=>universe.rows.some(r=>r.market===m));
+}
+async function r224SaveVerified(name,value){
+ const response=value&&r224Responses.get(value);if(!response||!('caches' in window))return;
+ try{const cache=await caches.open(EOD_CACHE);await cache.put(eodUrl(name),response); }catch(e){console.info('快照保存失敗',name)}finally{r224Responses.delete(value)}
+}
 const isValidUniverse=(obj,date)=>Boolean(obj&&obj.asOf===date&&Array.isArray(obj.rows)&&obj.rows.length>500);
 function stampStatus(msg){const target=$('#dataStatus');if(target)target.textContent=msg;}
 function pauseForPaint(){return new Promise(resolve=>setTimeout(resolve,0));}
@@ -4246,7 +4263,7 @@ async function cachedResponse(name){
 async function cachedJson(name){
  const response=await cachedResponse(name);
  if(!response)return null;
- try{return await response.json()}catch(e){return null}
+ try{const value=await response.json();if(value&&typeof value==='object')r224Validators.set(value,response.headers);return value}catch(e){return null}
 }
 async function fetchEod(name,timeoutMs){
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),timeoutMs);
@@ -4258,25 +4275,22 @@ async function fetchEod(name,timeoutMs){
   // Do not persist a truncated or malformed JSON response as a valid snapshot.
   const copy=r.clone();
   const value=await r.json();
-  if('caches' in window){try{const cache=await caches.open(EOD_CACHE);await cache.put(eodUrl(name),copy);}catch(e){console.info('快照保存失敗',name)}}
+  if(value&&typeof value==='object'){r224Responses.set(value,copy);r224Validators.set(value,r.headers);}
   return value;
  } finally{clearTimeout(timer)}
 }
 function validatorsMatch(a,b){
- if(!a||!b)return false;
- const oldETag=a.headers?.get?.('ETag'),newETag=b.headers?.get?.('ETag');
- if(oldETag&&newETag)return oldETag===newETag;
- const odate=a.headers?.get?.('Last-Modified'),ndate=b.headers?.get?.('Last-Modified');
- const osize=a.headers?.get?.('Content-Length'),nsize=b.headers?.get?.('Content-Length');
- return Boolean(odate&&ndate&&osize&&nsize&&odate===ndate&&osize===nsize);
+ const oldETag=a?.headers?.get?.('ETag'),newETag=b?.headers?.get?.('ETag');
+ // Only a matching strong ETag can prove that the in-memory universe is unchanged.
+ return Boolean(oldETag&&newETag&&!/^W\//i.test(oldETag)&&!/^W\//i.test(newETag)&&oldETag===newETag);
 }
 async function samePublishedUniverse(timeoutMs=2200){
- const previous=await cachedResponse('universe.json');
- if(!previous)return false;
+ const headers=lastUniverseRaw&&r224Validators.get(lastUniverseRaw);
+ if(!headers)return false;
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),timeoutMs);
  try {
   const head=await fetch(eodUrl('universe.json'),{method:'HEAD',cache:'no-cache',signal:ctl.signal});
-  return Boolean(head.ok&&validatorsMatch(previous,head));
+  return Boolean(head.ok&&validatorsMatch({headers},head));
  } catch(e){return false}finally{clearTimeout(timer)}
 }
 function mergeUniverse(obj,univ){
@@ -4323,7 +4337,7 @@ async function loadData(){
   if(!alreadyVisible){
    const [radar,univ,intel]=await Promise.all([cachedJson('radar.json'),cachedJson('universe.json'),cachedJson('market-intel.json')]);
    if(run!==loadRun)return;
-   if(isValidRadar(radar)&&isValidUniverse(univ,radar.asOf)){
+   if(r224CacheablePair(radar,univ)){
     applySnapshot(radar,univ,intel,{cached:true});
     stampStatus('目前顯示快照 '+radar.asOf+' · 尚未重新核對');
     await pauseForPaint();
@@ -4333,7 +4347,7 @@ async function loadData(){
   // without waiting for multi-megabyte universe or repeating an all-stock sort.
   const intelTask=fetchEod('market-intel.json',7000).then(v=>({ok:true,v}),err=>({ok:false,err}));
   let obj;
-  try{obj=await fetchEod('radar.json',7000);if(!isValidRadar(obj))throw Error('雷達資料格式無效')}
+  try{obj=await fetchEod('radar.json',7000);if(!r224AcceptRadar(obj,state.payload?.asOf))throw Error('雷達格式或日期未通過核對，保留有效快照')}
   catch(e){
    if(run!==loadRun)return;
    stampStatus(state.payload?'伺服器無法核對 · 保留 '+state.payload.asOf+' 快照':'雷達資料無法下載 · 請檢查 GitHub Actions');
@@ -4366,7 +4380,7 @@ async function loadData(){
     unchanged=await samePublishedUniverse(2200);
     if(unchanged){
      univ=isValidUniverse(lastUniverseRaw,obj.asOf)?lastUniverseRaw:await cachedJson('universe.json');
-     verified=isValidUniverse(univ,obj.asOf);
+     verified=r224CacheablePair(obj,univ);
     }
    }
    if(!verified){
@@ -4374,7 +4388,7 @@ async function loadData(){
     // Fail quickly and make the unverified status visible rather than spinning
     // for >25 seconds on every mobile swipe/refresh.
     univ=await fetchEod('universe.json',10000);
-    verified=isValidUniverse(univ,obj.asOf);
+    verified=r224CacheablePair(obj,univ);
     if(!verified)universeFailure='檔案日期或內容不一致';
    }
   }catch(e){universeFailure=e?.name==='AbortError'?'下載逾時':'下載失敗';console.warn('全市場資料',e)}
@@ -4399,6 +4413,10 @@ async function loadData(){
   else if(intel){state.marketIntel=intel;render()}
   state.cachedSnapshot=false;state.loadingExtra=false;
   stampStatus('個股資料 '+obj.asOf+' 已核對'+(intel?' · 指數法人依來源顯示':' · 官方補充資料未取得'));
+  await pauseForPaint();
+  // Commit only after both stock files agree; rejected responses never replace the old cache.
+  await r224SaveVerified('universe.json',univ);await r224SaveVerified('radar.json',obj);
+  if(intel)await r224SaveVerified('market-intel.json',intel);
  }finally{if(run===loadRun){refreshBusy=false;if(btn){btn.disabled=false;btn.classList.remove('syncing')}}}
 }
 
@@ -4613,7 +4631,7 @@ function r131Mount(){
  const host=document.querySelector('.advanced-radar')||document.querySelector('#candidateList')?.parentElement;
  if(!host||document.querySelector('#r131Screener'))return;
  const panel=document.createElement('section');panel.id='r131Screener';panel.style.cssText='margin:12px 0;padding:14px;border:1px solid #35576b;border-radius:14px;background:#0c2432;color:#e7f5fa';
- panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">有效突破篩選｜R223</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">突破階段（風險原因另查）</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+[['all','全部'],['first','突破第一根'],['confirmed-follow','突破續強']].map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜已通過突破條件（非買點）</option><option value="watch">黃燈｜未通過／待確認（非買點）</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
+ panel.innerHTML='<div style="font-weight:700;margin-bottom:8px">有效突破篩選｜R224</div><label for="r131Condition" style="display:block;font-size:13px;margin-bottom:6px">突破階段（風險原因另查）</label><select id="r131Condition" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382">'+[['all','全部'],['first','突破第一根'],['confirmed-follow','突破續強']].map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><label for="r133Bucket" style="display:block;font-size:13px;margin:10px 0 6px">篩選結果分區</label><select id="r133Bucket" style="width:100%;padding:10px;border-radius:8px;background:#173848;color:white;border:1px solid #547382"><option value="eligible">綠燈｜已通過突破條件（非買點）</option><option value="watch">黃燈｜未通過／待確認（非買點）</option><option value="risk">紅燈｜出貨疑慮／轉弱警戒</option><option value="unknown">灰燈｜資料不足／待驗證</option></select><p id="r131Summary" style="font-size:12px;color:#b8d1dc;margin:10px 0">等待盤後資料</p><div id="r131Results"></div><div id="r132Pagination" style="display:flex;gap:10px;align-items:center;margin-top:10px"><button type="button" data-r132-page="prev">上一頁</button><span id="r132PageLabel"></span><button type="button" data-r132-page="next">下一頁</button></div>';
  host.insertBefore(panel,host.firstChild);
  const r185Disclosure=panel.closest('details');
  if(r185Disclosure)r185Disclosure.addEventListener('toggle',()=>{if(r185Disclosure.open)r131Render()});
@@ -6075,9 +6093,9 @@ function renderR177EtfDetail(r){
  const makeFullChart=()=>bars.length>=5?makeChart(bars,null,state.chartDays,[],[],null,date,{indexMode:true,priceAdjustment:!!r.possiblePriceAdjustment}):'<div class="empty-state">日K資料未足5根／尚未同步</div>';
  const chart=state.r182ChartOpen?makeFullChart():'';
  const note=date?`${date}｜${bars.length}根日K｜證交所 STOCK_DAY｜未經除息還原${state.payload?.asOf&&date<state.payload.asOf?'｜資料較個股盤後舊':''}${r177EtfError?'｜'+r177EtfError:''}`:'ETF資料待核對';
- content.innerHTML=`<div class="detail-title r164-detail-heading r176-detail-heading"><div class="r164-heading-id"><small>ETF ANALYSIS / 上市 · R223</small>${esc(code)} ${esc(r.name||'ETF')}<span class="r169-industry">ETF</span></div><div class="r164-heading-quote"><strong>${r177Fixed(close)}</strong><small class="${r164PctColor(m.change)}">${r177Pct(m.change)}</small></div></div><div class="r176-one-page r182-etf" data-etf-id="${esc(code)}">
+ content.innerHTML=`<div class="detail-title r164-detail-heading r176-detail-heading"><div class="r164-heading-id"><small>ETF ANALYSIS / 上市 · R224</small>${esc(code)} ${esc(r.name||'ETF')}<span class="r169-industry">ETF</span></div><div class="r164-heading-quote"><strong>${r177Fixed(close)}</strong><small class="${r164PctColor(m.change)}">${r177Pct(m.change)}</small></div></div><div class="r176-one-page r182-etf" data-etf-id="${esc(code)}">
  <style>#modalContent .r182-etf .r182-unit{font:inherit;background:#092a38;color:#dffaff;border:1px solid #4f91a1;border-radius:6px;max-width:100%;padding:3px}#modalContent .r182-etf .r176-risk-layout .r174-warning-cells{grid-template-columns:repeat(2,minmax(0,1fr))}#modalContent .r182-etf .r182-range{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}#modalContent .r182-etf .r182-range button{background:#10384b;border:1px solid #37788d;border-radius:7px;color:#dffaff;padding:6px 12px}#modalContent .r182-etf .r182-range .active{background:#36ceb8;color:#05242f}#modalContent .r182-etf .r182-chart svg{width:100%;height:auto}#modalContent .r182-etf .r182-qty{font-size:11px;min-width:0;width:100%;box-sizing:border-box}#modalContent .r182-etf .r182-note{font-size:10px;color:#a9c6d0;overflow-wrap:anywhere}</style>
- <section class="r164-board r165-reference r176-main-card"><div class="r176-main-banner"><span>${fresh?'明日持股操作':'歷史持股觀察'}</span><strong>ETF觀察｜<span class="r182-auto">待輸入</span></strong></div><div class="r176-banner-date">${esc(date||'日期待核對')} 盤後 · R223 ｜持有週期 <select class="r92-mode r182-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
+ <section class="r164-board r165-reference r176-main-card"><div class="r176-main-banner"><span>${fresh?'明日持股操作':'歷史持股觀察'}</span><strong>ETF觀察｜<span class="r182-auto">待輸入</span></strong></div><div class="r176-banner-date">${esc(date||'日期待核對')} 盤後 · R224 ｜持有週期 <select class="r92-mode r182-mode"><option value="short" ${mode==='short'?'selected':''}>短線（5／10日）</option><option value="medium" ${mode==='medium'?'selected':''}>中期（20日）</option><option value="long" ${mode==='long'?'selected':''}>長期（60日）</option></select></div>
  ${!fresh?`<div role="status" style="color:#ffd25e;font-size:12px;padding:6px 0">⚠ ETF ${esc(date||'日期未知')}｜${expected?'個股盤後 '+esc(expected):'最新交易日待核對'}；僅供歷史參考，暫停明日操作判斷。</div>`:''}
  ${r182EtfMaStrip(m)}
  <div class="r176-top-position"><section class="r164-panel r164-position"><div class="r164-inputs"><label>成本（元）<input class="r182-cost" type="number" min="0" step="any" inputmode="decimal" value="${esc(cost)}" placeholder="成本"></label><label>數量 <select class="r182-unit"><option value="shares" ${unit==='shares'?'selected':''}>股</option><option value="lots" ${unit==='lots'?'selected':''}>張</option></select><input class="r182-qty" type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" placeholder="數量"></label></div><div class="r164-pnlbox r182-pnl" aria-live="polite"></div></section><section class="r164-panel r176-strategy"><small>持股狀態</small><strong class="r182-status">待輸入</strong></section></div>
@@ -6431,8 +6449,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R223-20261127-etf-cash-guard';
- const BUILD_LABEL='r223 · ETF除息與配息核對';
+ const BUILD_ID='R224-20261127-cache-update-guard';
+ const BUILD_LABEL='r224 · 資料更新與快取防護';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  // R161: The static index.html has kept r50/r60-era labels even after
