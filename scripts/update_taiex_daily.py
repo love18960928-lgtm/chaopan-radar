@@ -62,7 +62,10 @@ def monthly(month, report):
                     if attempt==0:time.sleep(.5)
     raise RuntimeError('TWSE historical data unavailable: '+ '; '.join(errors[-5:]))
 
-def months_back(today,count=9):
+HISTORY_LIMIT=320
+MIN_HISTORY=260
+
+def months_back(today,count=16):
     out=[]
     y,m=today.year,today.month
     for _ in range(count):
@@ -99,6 +102,8 @@ def produce(today=None,fetcher=monthly):
     for month in months_back(today):
         try:
             part=parse_ohlc(fetcher(month,'TAIEX/MI_5MINS_HIST'))
+            if not part or any(not d.startswith(month.strftime('%Y-%m')) for d in part):
+                raise ValueError('Empty or wrong-month OHLC: '+month.strftime('%Y-%m'))
             price_paths.append(getattr(fetcher,'last_index_path','TAIEX/MI_5MINS_HIST'))
             price.update(part);processed.append(month.strftime('%Y-%m'))
         except Exception as exc:
@@ -110,7 +115,8 @@ def produce(today=None,fetcher=monthly):
             pass  # volume is optional. Never fabricate it.
     if len(price)<45:raise RuntimeError(f'Only {len(price)} official TAIEX OHLC bars available, 45 required; {failures[:3]}')
     sorted_dates=sorted(d for d in price if d<=today.isoformat())
-    bars=[[d,*price[d],market_vol.get(d)] for d in sorted_dates[-200:]]
+    bars=[[d,*price[d],market_vol.get(d)] for d in sorted_dates[-HISTORY_LIMIT:]]
+    if len(bars)<45:raise RuntimeError('Fewer than 45 non-future index bars')
     last=bars[-1][0]
     # Conservative freshness guard: stale collectors may preserve a visible
     # historical graph, but must not claim today's same-day market validation.
