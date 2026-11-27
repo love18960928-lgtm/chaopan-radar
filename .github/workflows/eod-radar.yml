@@ -10,6 +10,14 @@ on:
         description: '回補窗口結束距今幾天：依序執行 0、90、180、270、360（每批90天）'
         required: false
         default: '0'
+  workflow_call:
+    inputs:
+      backfill_days:
+        type: string
+        default: '0'
+      backfill_offset_days:
+        type: string
+        default: '0'
   schedule:
     # R185: Taiwan weekdays 14:37, 15:47, 17:17, 19:17, 23:17.
     # Stagger from top/bottom of hour; preserve late official data catch-up.
@@ -34,14 +42,19 @@ jobs:
           python-version: '3.12'
       - name: Collect official Taiwan market data
         env:
-          BACKFILL: ${{ github.event.inputs.backfill_days || '0' }}
-          BACKFILL_OFFSET: ${{ github.event.inputs.backfill_offset_days || '0' }}
+          BACKFILL: ${{ inputs.backfill_days || '0' }}
+          BACKFILL_OFFSET: ${{ inputs.backfill_offset_days || '0' }}
         run: |
-          if [ "$BACKFILL_OFFSET" != "0" ]; then
-            echo "::error::目前 collector.py 不支援 backfill_offset_days；請先使用 0，勿靜默忽略回補日期偏移"
+          # A single bounded window uses exactly the ordinary EOD release gate.
+          if ! [[ "$BACKFILL" =~ ^[0-9]{1,3}$ && "$BACKFILL_OFFSET" =~ ^[0-9]{1,3}$ ]]; then
+            echo "::error::Invalid backfill arguments"
             exit 1
           fi
-          time python -u scripts/collector.py --backfill "$BACKFILL" --delay 1.1
+          if (( 10#$BACKFILL > 120 || 10#$BACKFILL_OFFSET > 450 )); then
+            echo "::error::Backfill limit: 120 days per workflow, 450 day offset"
+            exit 1
+          fi
+          time python -u scripts/collector.py --backfill "$BACKFILL" --backfill-offset "$BACKFILL_OFFSET" --delay 1.1
       - name: Verify all strategy and data rules (required)
         run: time python -m unittest discover -s scripts -p 'test_*.py' -v
       - name: Collect verified supplemental official EOD data
@@ -84,6 +97,8 @@ jobs:
         run: time python -u scripts/build_three_low.py
       - name: Validate published snapshots, canonical levels and stock lookup
         run: time python -u scripts/verify_release_gate_r4410.py
+      - name: Report actual MA240 history coverage (not a certification)
+        run: python scripts/ma240_coverage_check.py --min-coverage 0
       - name: Explain market and institutional freshness in Actions summary
         if: always()
         run: python scripts/eod_freshness_report_r4411.py
@@ -111,7 +126,7 @@ jobs:
               if [ "$base" != "$(git rev-parse origin/main)" ]; then
                 # A different writer may have published data or changed the analysis engine.
                 # Never auto-merge generated JSON or publish results from superseded inputs.
-                if ! git diff --quiet "$base" origin/main -- scripts/ storage/ data/radar.json data/universe.json data/stock-lookup/ data/market-intel.json three-low-data.json three-low-price-context.json three-low-volume-context.json ma240-three-low-context.json .github/workflows/eod-radar.yml; then
+                if ! git diff --quiet "$base" origin/main -- scripts/ storage/ data/radar.json data/universe.json data/stock-lookup/ data/market-intel.json three-low-data.json three-low-price-context.json three-low-volume-context.json ma240-three-low-context.json .github/workflows/eod-radar.yml .github/workflows/ma240-backfill.yml; then
                   echo "::error::Market data or computation inputs changed on main; run a NEW workflow on latest main. No remote data overwritten."
                   exit 1
                 fi

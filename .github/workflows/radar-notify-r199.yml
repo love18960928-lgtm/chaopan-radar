@@ -2,7 +2,7 @@ name: 超盤手資料更新通知 (R199)
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ['大量K雷達盤後自動更新', 'ETF 盤後自動更新 (R197)', '加權指數盤後自動更新 (R193)']
+    workflows: ['大量K雷達盤後自動更新', 'ETF 盤後自動更新 (R201a)', '加權指數盤後自動更新 (R193)']
     types: [completed]
     branches: [main]
   schedule:
