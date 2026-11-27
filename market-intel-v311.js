@@ -1,14 +1,20 @@
 /* 超盤手 V3.1.1 | 證交所/櫃買/期交所獨立日期的盤後輔助資訊。 */
 (function(root,factory){'use strict';const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;root.ChaopanIntel=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
 'use strict';
-const num=v=>v===null||v===undefined||v===''||!Number.isFinite(Number(v))?null:Number(v);
+const num=v=>(typeof v==='number'||typeof v==='string'&&v.trim()!=='')&&Number.isFinite(Number(v))?Number(v):null;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const iso=v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||''));
+const iso=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v+'T00:00:00Z'))&&new Date(v+'T00:00:00Z').toISOString().slice(0,10)===v;
 const fm=(v,d=2)=>num(v)===null?'—':num(v).toLocaleString('zh-TW',{minimumFractionDigits:d,maximumFractionDigits:d});
 const signed=v=>num(v)===null?'—':(num(v)>0?'+':'')+fm(v);
 const tone=v=>num(v)===null?'unknown':num(v)>0?'up':num(v)<0?'down':'flat';
 const safeMarket=(intel,asOf)=>Boolean(intel&&intel.schema==='chaopan.market.v311'&&iso(intel.asOf)&&intel.asOf===asOf);
-function stock(intel,row){if(!safeMarket(intel,row?.date))return null;const x=intel.stocks?.[row.market+'-'+row.code];return x?.date===row.date?x:null;}
+function sourceOK(intel,key){return ['ok','retained'].includes(intel?.sources?.[key]?.status);}
+function stock(intel,row){if(!safeMarket(intel,row?.date))return null;
+ const m=row.market, key=m==='上市'?'twse_t86':m==='上櫃'?'tpex':null, source=m==='上市'?'TWSE T86':'TPEx 3insti';
+ const x=intel.stocks?.[m+'-'+row.code];if(!key||!sourceOK(intel,key)||x?.date!==row.date||x.source!==source)return null;
+ if(!['foreignLots','trustLots','dealerLots'].every(k=>{const n=num(x[k]);return n!==null&&Number.isSafeInteger(Math.round(n*1000))&&Math.abs(n*1000-Math.round(n*1000))<1e-6;}))return null;
+ return x;
+}
 function chipLight(intel,row){const x=stock(intel,row);if(!x)return {tone:'unknown',text:'法人待資料',desc:'缺同交易日資料'};
  const f=num(x.foreignLots),t=num(x.trustLots),d=num(x.dealerLots);
  if(f===null||t===null||d===null)return {tone:'unknown',text:'法人待資料',desc:'缺完整欄位'};
@@ -34,7 +40,7 @@ function marketPanel(intel,asOf){
   if(!['ok','retained'].includes(sources[sourceKey]?.status))return null;
   let f=0,t=0,d=0,count=0;
   for(const [id,x] of Object.entries(intel.stocks||{})){
-   if(!id.startsWith(market+'-')||x.date!==asOf)continue;
+   if(!id.startsWith(market+'-')||!stock(intel,{market,code:id.slice(market.length+1),date:asOf}))continue;
    const fs=num(x.foreignLots),ts=num(x.trustLots),ds=num(x.dealerLots);
    if([fs,ts,ds].some(v=>v===null))continue;
    f+=fs;t+=ts;d+=ds;count++;
@@ -48,18 +54,18 @@ function marketPanel(intel,asOf){
    const age=iso(date)?(Date.parse(asOf+'T00:00:00Z')-Date.parse(date+'T00:00:00Z'))/86400000:null;
    return ok&&date&&age!==null&&age>=0&&age<=5&&v!==null&&v>0&&v<200?fm(v)+'（'+esc(date)+' 收盤）':'待官方數據';
  };
- const marginRows=ok?Object.entries(intel.margin||{}).filter(([id,x])=>id.startsWith('上市-')&&x.date===asOf&&num(x.marginLots)!==null&&num(x.marginPreviousLots)!==null):[];
+ const marginRows=ok?Object.entries(intel.margin||{}).filter(([id,x])=>id.startsWith('上市-')&&marginLight(intel,{market:'上市',code:id.slice(3),date:asOf})):[];
  const subtotal=marginRows.length?marginRows.reduce((a,[,x])=>a+Number(x.marginLots),0):null;
  const previous=marginRows.length?marginRows.reduce((a,[,x])=>a+Number(x.marginPreviousLots),0):null;
  const officialMargin=ok&&intel.marginMarket?.date===asOf&&num(intel.marginMarket?.marginAmountYi)!==null&&['ok','retained'].includes(sources.twse_margin_total?.status)?intel.marginMarket:null;
  const rawTx=ok&&intel.derivatives?.foreignTxOI?.date===asOf?intel.derivatives.foreignTxOI:null;
  const foreignTx=rawTx&&num(rawTx.longLots)!==null&&num(rawTx.shortLots)!==null&&num(rawTx.netLots)===num(rawTx.longLots)-num(rawTx.shortLots)?rawTx:null;
  const coverage=ok?intel.marginCoverage:null;
- const marginInfo=coverage&&coverage.date===asOf&&num(coverage.marginLotsSubtotal)!==null?coverage:null;
+ const marginInfo=coverage&&coverage.date===asOf&&sourceOK(intel,'twse_margin')&&num(coverage.marginLotsSubtotal)===subtotal&&num(coverage.marginDeltaLotsSubtotal)===subtotal-previous&&coverage.matchedStocks===marginRows.length?coverage:null;
  const marginTotal=marginInfo?num(marginInfo.marginLotsSubtotal):subtotal;
  const marginDelta=marginInfo?num(marginInfo.marginDeltaLotsSubtotal):subtotal===null?null:subtotal-previous;
  const covered=marginInfo?.matchedStocks||marginRows.length;
- const otcMargins=ok?Object.entries(intel.margin||{}).filter(([id,x])=>id.startsWith('上櫃-')&&x.date===asOf&&num(x.marginLots)!==null):[];
+ const otcMargins=ok?Object.entries(intel.margin||{}).filter(([id,x])=>id.startsWith('上櫃-')&&marginLight(intel,{market:'上櫃',code:id.slice(3),date:asOf})):[];
  const otcMarginSubtotal=otcMargins.length?otcMargins.reduce((sum,[,x])=>sum+num(x.marginLots),0):null;
  const sourceMessage=key=>{const x=sources[key];return !x?'未執行':x.status==='error'?'抓取錯誤':x.status==='invalid'?'資料／格式未通過':x.status==='rejected'?'舊資料已隔離':x.status==='ok'?'已核對':x.status==='retained'?'保留同日已驗來源':esc(x.status||'未知');};
  const checkedKeys=['taiex','otc','twse_bfi','twse_t86','tpex','twse_margin_total','twse_margin','tpex_margin','taifex_foreign_tx'];
@@ -80,7 +86,11 @@ function marketPanel(intel,asOf){
  `;
 }
 function marginLight(intel,row){if(!safeMarket(intel,row?.date))return null;
- const x=intel.margin?.[row.market+'-'+row.code];return x?.date===row.date?x:null;}
+ const m=row.market,key=m==='上市'?'twse_margin':m==='上櫃'?'tpex_margin':null,source=m==='上市'?'TWSE MI_MARGN':'TPEx margin_bal_result (official HTML)';
+ const x=intel.margin?.[m+'-'+row.code];if(!key||!sourceOK(intel,key)||x?.date!==row.date||x.source!==source)return null;
+ for(const prefix of ['margin','short']){const b=num(x[prefix+'Lots']),p=num(x[prefix+'PreviousLots']),d=num(x[prefix+'DeltaLots']);if(![b,p,d].every(Number.isSafeInteger)||b<0||p<0||b-p!==d)return null;}
+ return x;
+}
 function marginPreview(intel,row){
  const r=marginLight(intel,row);if(!r)return '';
  const bal=num(r.marginLots),delta=num(r.marginDeltaLots),usage=num(r.marginUsedPct);
@@ -99,5 +109,5 @@ function chipPanel(intel,row,plan){const x=stock(intel,row),chip=chipLight(intel
  ${margin?`<div class="intel-individual-grid"><div><span>融資餘額</span><strong>${margin?fm(margin.marginLots,0):'待資料'}</strong><small>${margin?'張 · 增減 '+signed(margin.marginDeltaLots):'未接入或日期不同'}</small></div><div><span>融券餘額</span><strong>${margin?fm(margin.shortLots,0):'待資料'}</strong><small>${margin?'張 · 增減 '+signed(margin.shortDeltaLots):'未接入或日期不同'}</small></div></div>`:``}
  <details class="intel-subdetail"><summary>融資／融券・借券・分點說明</summary><p>上市融資融券：若已取得同交易日資料，顯示當日暫定餘額；實際以次一營業日更正餘額為準。上櫃融資融券只在取得同交易日官方逐股資料後顯示，缺資料不補零；借券尚待另外核對。分點統計不等於持倉或放空證據；有可靠授權來源才顯示分點。法人單日買超不代表隔日必漲。</p></details></section>`;
 }
-return {num,iso,stock,chipLight,light,miniLights,marketPanel,chipPanel,marginPreview,safeMarket,twseNeedsReview:true};
+return {num,iso,stock,chipLight,light,miniLights,marketPanel,chipPanel,marginPreview,marginLight,safeMarket,twseNeedsReview:true};
 });
