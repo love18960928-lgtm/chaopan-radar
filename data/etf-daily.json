@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "etf-official-eod",
-  "asOf": "2026-11-26",
+  "asOf": "2026-11-27",
   "source": "TWSE STOCK_DAY official monthly EOD",
   "note": "ETF獨立行情；配息、法人、淨值未接入不填零。日K價為未還原歷史，不是報酬率。",
   "rows": [
@@ -12,10 +12,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=00406A&response=json",
-      "latestDate": "2026-11-26",
-      "close": 6.73,
-      "changeAmount": 0.47,
-      "changePct": 7.508,
+      "latestDate": "2026-11-27",
+      "close": 6.62,
+      "changeAmount": -0.11,
+      "changePct": -1.6345,
       "bars": [
         [
           "2026-06-11",
@@ -928,23 +928,31 @@
           6.47,
           6.73,
           831030938
+        ],
+        [
+          "2026-11-27",
+          6.77,
+          6.77,
+          6.58,
+          6.62,
+          627238079
         ]
       ],
-      "barCount": 114,
+      "barCount": 115,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
       "institutional": {
-        "date": "2026-11-26",
+        "date": "2026-11-27",
         "source": "TWSE T86",
         "unit": "shares",
-        "foreignNetShares": 157931200,
+        "foreignNetShares": -150279500,
         "trustNetShares": 0,
-        "dealerNetShares": 28519032,
-        "dealerOwnNetShares": 14000,
-        "dealerHedgeNetShares": 28505032,
-        "totalNetShares": 186450232
+        "dealerNetShares": -121721944,
+        "dealerOwnNetShares": 41000,
+        "dealerHedgeNetShares": -121762944,
+        "totalNetShares": -272001444
       },
       "distributionDetail": {
         "latest": {
@@ -971,12 +979,7 @@
         "nextExPending": "2026-12-02"
       },
       "fundTaxId": "00682450",
-      "navDetail": {
-        "date": "2026-11-26",
-        "nav": 6.67,
-        "source": "SITCA open data 11109/160547",
-        "currency": "TWD"
-      }
+      "navDetail": null
     },
     {
       "code": "0050",
@@ -985,10 +988,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=0050&response=json",
-      "latestDate": "2026-11-26",
-      "close": 92.85,
-      "changeAmount": 2.55,
-      "changePct": 2.8239,
+      "latestDate": "2026-11-27",
+      "close": 92.4,
+      "changeAmount": -0.45,
+      "changePct": -0.4847,
       "bars": [
         [
           "2026-03-02",
@@ -2461,31 +2464,34 @@
           90.8,
           92.85,
           242920377
+        ],
+        [
+          "2026-11-27",
+          92.8,
+          93.0,
+          91.6,
+          92.4,
+          111385656
         ]
       ],
-      "barCount": 184,
+      "barCount": 185,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
       "institutional": {
-        "date": "2026-11-26",
+        "date": "2026-11-27",
         "source": "TWSE T86",
         "unit": "shares",
-        "foreignNetShares": -19873644,
-        "trustNetShares": 15000000,
-        "dealerNetShares": 25209308,
-        "dealerOwnNetShares": 10363701,
-        "dealerHedgeNetShares": 14845607,
-        "totalNetShares": 20335664
+        "foreignNetShares": 11484011,
+        "trustNetShares": 2150000,
+        "dealerNetShares": -2763984,
+        "dealerOwnNetShares": 7319013,
+        "dealerHedgeNetShares": -10082997,
+        "totalNetShares": 10870027
       },
       "fundTaxId": "98764389",
-      "navDetail": {
-        "date": "2026-11-26",
-        "nav": 92.09,
-        "source": "SITCA open data 11109/160547",
-        "currency": "TWD"
-      },
+      "navDetail": null,
       "distributionDetail": null
     },
     {
@@ -2495,10 +2501,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=0056&response=json",
-      "latestDate": "2026-11-26",
-      "close": 47.49,
-      "changeAmount": 1.83,
-      "changePct": 4.0079,
+      "latestDate": "2026-11-27",
+      "close": 46.97,
+      "changeAmount": -0.52,
+      "changePct": -1.095,
       "bars": [
         [
           "2026-03-02",
@@ -3971,23 +3977,31 @@
           46.25,
           47.49,
           53293485
+        ],
+        [
+          "2026-11-27",
+          47.55,
+          47.55,
+          46.82,
+          46.97,
+          34990758
         ]
       ],
-      "barCount": 184,
+      "barCount": 185,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
       "institutional": {
-        "date": "2026-11-26",
+        "date": "2026-11-27",
         "source": "TWSE T86",
         "unit": "shares",
-        "foreignNetShares": 874434,
-        "trustNetShares": 2434000,
-        "dealerNetShares": -289704,
-        "dealerOwnNetShares": 653000,
-        "dealerHedgeNetShares": -942704,
-        "totalNetShares": 3018730
+        "foreignNetShares": -403271,
+        "trustNetShares": 0,
+        "dealerNetShares": -12340465,
+        "dealerOwnNetShares": 0,
+        "dealerHedgeNetShares": -12340465,
+        "totalNetShares": -12743736
       },
       "distributionDetail": {
         "latest": {
@@ -4008,12 +4022,7 @@
         "nextExPending": null
       },
       "fundTaxId": "48966213",
-      "navDetail": {
-        "date": "2026-11-26",
-        "nav": 47.34,
-        "source": "SITCA open data 11109/160547",
-        "currency": "TWD"
-      }
+      "navDetail": null
     },
     {
       "code": "006208",
@@ -4022,10 +4031,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=006208&response=json",
-      "latestDate": "2026-11-26",
-      "close": 208.75,
-      "changeAmount": 5.6,
-      "changePct": 2.7566,
+      "latestDate": "2026-11-27",
+      "close": 208.0,
+      "changeAmount": -0.75,
+      "changePct": -0.3593,
       "bars": [
         [
           "2026-03-02",
@@ -5498,31 +5507,34 @@
           204.35,
           208.75,
           4777381
+        ],
+        [
+          "2026-11-27",
+          208.9,
+          209.4,
+          206.4,
+          208.0,
+          2205021
         ]
       ],
-      "barCount": 184,
+      "barCount": 185,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
       "institutional": {
-        "date": "2026-11-26",
+        "date": "2026-11-27",
         "source": "TWSE T86",
         "unit": "shares",
-        "foreignNetShares": 171816,
+        "foreignNetShares": -65170,
         "trustNetShares": 0,
-        "dealerNetShares": 264963,
+        "dealerNetShares": -377110,
         "dealerOwnNetShares": 0,
-        "dealerHedgeNetShares": 264963,
-        "totalNetShares": 436779
+        "dealerHedgeNetShares": -377110,
+        "totalNetShares": -442280
       },
       "fundTaxId": "31840182",
-      "navDetail": {
-        "date": "2026-11-26",
-        "nav": 207.19,
-        "source": "SITCA open data 11109/160547",
-        "currency": "TWD"
-      },
+      "navDetail": null,
       "distributionDetail": null
     },
     {
@@ -5532,10 +5544,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=00878&response=json",
-      "latestDate": "2026-11-26",
-      "close": 29.52,
-      "changeAmount": 0.92,
-      "changePct": 3.2168,
+      "latestDate": "2026-11-27",
+      "close": 29.26,
+      "changeAmount": -0.26,
+      "changePct": -0.8808,
       "bars": [
         [
           "2026-03-02",
@@ -7008,31 +7020,34 @@
           28.83,
           29.52,
           43633558
+        ],
+        [
+          "2026-11-27",
+          29.52,
+          29.6,
+          29.18,
+          29.26,
+          31063542
         ]
       ],
-      "barCount": 184,
+      "barCount": 185,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
       "institutional": {
-        "date": "2026-11-26",
+        "date": "2026-11-27",
         "source": "TWSE T86",
         "unit": "shares",
-        "foreignNetShares": 3254445,
-        "trustNetShares": -2000000,
-        "dealerNetShares": -2102637,
-        "dealerOwnNetShares": 581000,
-        "dealerHedgeNetShares": -2683637,
-        "totalNetShares": -848192
+        "foreignNetShares": -1023511,
+        "trustNetShares": 0,
+        "dealerNetShares": -8115522,
+        "dealerOwnNetShares": 15000,
+        "dealerHedgeNetShares": -8130522,
+        "totalNetShares": -9139033
       },
       "fundTaxId": "88090913",
-      "navDetail": {
-        "date": "2026-11-26",
-        "nav": 29.5,
-        "source": "SITCA open data 11109/160547",
-        "currency": "TWD"
-      },
+      "navDetail": null,
       "distributionDetail": null
     },
     {
@@ -7042,10 +7057,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=00919&response=json",
-      "latestDate": "2026-11-26",
-      "close": 28.82,
-      "changeAmount": 0.95,
-      "changePct": 3.4087,
+      "latestDate": "2026-11-27",
+      "close": 28.72,
+      "changeAmount": -0.1,
+      "changePct": -0.347,
       "bars": [
         [
           "2026-03-02",
@@ -8518,31 +8533,34 @@
           28.05,
           28.82,
           52885299
+        ],
+        [
+          "2026-11-27",
+          28.8,
+          29.0,
+          28.53,
+          28.72,
+          36825963
         ]
       ],
-      "barCount": 184,
+      "barCount": 185,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
       "institutional": {
-        "date": "2026-11-26",
+        "date": "2026-11-27",
         "source": "TWSE T86",
         "unit": "shares",
-        "foreignNetShares": 572689,
+        "foreignNetShares": 215290,
         "trustNetShares": 0,
-        "dealerNetShares": 45588,
-        "dealerOwnNetShares": 0,
-        "dealerHedgeNetShares": 45588,
-        "totalNetShares": 618277
+        "dealerNetShares": -7426027,
+        "dealerOwnNetShares": 43000,
+        "dealerHedgeNetShares": -7469027,
+        "totalNetShares": -7210737
       },
       "fundTaxId": "88330879",
-      "navDetail": {
-        "date": "2026-11-26",
-        "nav": 28.9,
-        "source": "SITCA open data 11109/160547",
-        "currency": "TWD"
-      },
+      "navDetail": null,
       "distributionDetail": null
     },
     {
@@ -8552,10 +8570,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=00929&response=json",
-      "latestDate": "2026-11-26",
-      "close": 23.07,
-      "changeAmount": 1.07,
-      "changePct": 4.8636,
+      "latestDate": "2026-11-27",
+      "close": 22.89,
+      "changeAmount": -0.18,
+      "changePct": -0.7802,
       "bars": [
         [
           "2026-03-02",
@@ -10028,23 +10046,31 @@
           22.38,
           23.07,
           31969735
+        ],
+        [
+          "2026-11-27",
+          23.08,
+          23.08,
+          22.82,
+          22.89,
+          15298422
         ]
       ],
-      "barCount": 184,
+      "barCount": 185,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
       "institutional": {
-        "date": "2026-11-26",
+        "date": "2026-11-27",
         "source": "TWSE T86",
         "unit": "shares",
-        "foreignNetShares": 4337300,
-        "trustNetShares": -2500000,
-        "dealerNetShares": 905074,
-        "dealerOwnNetShares": 129000,
-        "dealerHedgeNetShares": 776074,
-        "totalNetShares": 2742374
+        "foreignNetShares": -1957850,
+        "trustNetShares": 0,
+        "dealerNetShares": -2375609,
+        "dealerOwnNetShares": 13000,
+        "dealerHedgeNetShares": -2388609,
+        "totalNetShares": -4333459
       },
       "distributionDetail": {
         "latest": {
@@ -10065,12 +10091,7 @@
         "nextExPending": null
       },
       "fundTaxId": "88399314",
-      "navDetail": {
-        "date": "2026-11-26",
-        "nav": 23.0,
-        "source": "SITCA open data 11109/160547",
-        "currency": "TWD"
-      }
+      "navDetail": null
     },
     {
       "code": "00940",
@@ -10079,10 +10100,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=00940&response=json",
-      "latestDate": "2026-11-26",
-      "close": 11.29,
-      "changeAmount": 0.29,
-      "changePct": 2.6364,
+      "latestDate": "2026-11-27",
+      "close": 11.27,
+      "changeAmount": -0.02,
+      "changePct": -0.1771,
       "bars": [
         [
           "2026-03-02",
@@ -11555,23 +11576,31 @@
           11.16,
           11.29,
           11530322
+        ],
+        [
+          "2026-11-27",
+          11.25,
+          11.34,
+          11.19,
+          11.27,
+          6820713
         ]
       ],
-      "barCount": 184,
+      "barCount": 185,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
       "institutional": {
-        "date": "2026-11-26",
+        "date": "2026-11-27",
         "source": "TWSE T86",
         "unit": "shares",
-        "foreignNetShares": -1514000,
+        "foreignNetShares": 3649105,
         "trustNetShares": 0,
-        "dealerNetShares": 4440955,
-        "dealerOwnNetShares": -9000,
-        "dealerHedgeNetShares": 4449955,
-        "totalNetShares": 2926955
+        "dealerNetShares": 63041,
+        "dealerOwnNetShares": 82000,
+        "dealerHedgeNetShares": -18959,
+        "totalNetShares": 3712146
       },
       "distributionDetail": {
         "latest": {
@@ -11592,12 +11621,7 @@
         "nextExPending": null
       },
       "fundTaxId": "93176257",
-      "navDetail": {
-        "date": "2026-11-26",
-        "nav": 11.32,
-        "source": "SITCA open data 11109/160547",
-        "currency": "TWD"
-      }
+      "navDetail": null
     },
     {
       "code": "00981A",
@@ -11606,10 +11630,10 @@
       "assetType": "ETF",
       "source": "TWSE STOCK_DAY official monthly EOD",
       "sourceUrl": "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261101&stockNo=00981A&response=json",
-      "latestDate": "2026-11-26",
-      "close": 21.89,
-      "changeAmount": 1.36,
-      "changePct": 6.6245,
+      "latestDate": "2026-11-27",
+      "close": 21.58,
+      "changeAmount": -0.31,
+      "changePct": -1.4162,
       "bars": [
         [
           "2026-03-02",
@@ -13082,31 +13106,34 @@
           21.13,
           21.89,
           619194428
+        ],
+        [
+          "2026-11-27",
+          21.91,
+          22.0,
+          21.44,
+          21.58,
+          284233672
         ]
       ],
-      "barCount": 184,
+      "barCount": 185,
       "dataQuality": "verified_ohlcv",
       "nav": null,
       "premiumDiscountPct": null,
       "dividends": null,
       "institutional": {
-        "date": "2026-11-26",
+        "date": "2026-11-27",
         "source": "TWSE T86",
         "unit": "shares",
-        "foreignNetShares": 157037151,
+        "foreignNetShares": 7007041,
         "trustNetShares": 0,
-        "dealerNetShares": 55836353,
-        "dealerOwnNetShares": -2942000,
-        "dealerHedgeNetShares": 58778353,
-        "totalNetShares": 212873504
+        "dealerNetShares": 44194850,
+        "dealerOwnNetShares": 4208000,
+        "dealerHedgeNetShares": 39986850,
+        "totalNetShares": 51201891
       },
       "fundTaxId": "00583395",
-      "navDetail": {
-        "date": "2026-11-26",
-        "nav": 21.8,
-        "source": "SITCA open data 11109/160547",
-        "currency": "TWD"
-      },
+      "navDetail": null,
       "distributionDetail": null
     }
   ],
