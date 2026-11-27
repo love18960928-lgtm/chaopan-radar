@@ -979,7 +979,12 @@
         "nextExPending": "2026-12-02"
       },
       "fundTaxId": "00682450",
-      "navDetail": null
+      "navDetail": {
+        "date": "2026-11-27",
+        "nav": 6.62,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      }
     },
     {
       "code": "0050",
@@ -2491,7 +2496,12 @@
         "totalNetShares": 10870027
       },
       "fundTaxId": "98764389",
-      "navDetail": null,
+      "navDetail": {
+        "date": "2026-11-27",
+        "nav": 92.72,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      },
       "distributionDetail": null
     },
     {
@@ -4022,7 +4032,12 @@
         "nextExPending": null
       },
       "fundTaxId": "48966213",
-      "navDetail": null
+      "navDetail": {
+        "date": "2026-11-27",
+        "nav": 46.97,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      }
     },
     {
       "code": "006208",
@@ -5534,7 +5549,12 @@
         "totalNetShares": -442280
       },
       "fundTaxId": "31840182",
-      "navDetail": null,
+      "navDetail": {
+        "date": "2026-11-27",
+        "nav": 208.61,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      },
       "distributionDetail": null
     },
     {
@@ -7047,7 +7067,12 @@
         "totalNetShares": -9139033
       },
       "fundTaxId": "88090913",
-      "navDetail": null,
+      "navDetail": {
+        "date": "2026-11-27",
+        "nav": 29.22,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      },
       "distributionDetail": null
     },
     {
@@ -8560,7 +8585,12 @@
         "totalNetShares": -7210737
       },
       "fundTaxId": "88330879",
-      "navDetail": null,
+      "navDetail": {
+        "date": "2026-11-27",
+        "nav": 28.73,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      },
       "distributionDetail": null
     },
     {
@@ -10091,7 +10121,12 @@
         "nextExPending": null
       },
       "fundTaxId": "88399314",
-      "navDetail": null
+      "navDetail": {
+        "date": "2026-11-27",
+        "nav": 22.9,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      }
     },
     {
       "code": "00940",
@@ -11621,7 +11656,12 @@
         "nextExPending": null
       },
       "fundTaxId": "93176257",
-      "navDetail": null
+      "navDetail": {
+        "date": "2026-11-27",
+        "nav": 11.3,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      }
     },
     {
       "code": "00981A",
@@ -13133,7 +13173,12 @@
         "totalNetShares": 51201891
       },
       "fundTaxId": "00583395",
-      "navDetail": null,
+      "navDetail": {
+        "date": "2026-11-27",
+        "nav": 21.69,
+        "source": "SITCA open data 11109/160547",
+        "currency": "TWD"
+      },
       "distributionDetail": null
     }
   ],
