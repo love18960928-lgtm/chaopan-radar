@@ -80,9 +80,23 @@ jobs:
           def update(old,minimum,fetcher=src.monthly):
               try: rows=validated(old)
               except (ValueError,TypeError,KeyError): rows={}
-              if rows and minimum in rows and max(rows)>=minimum:
-                  # Already current: avoid unnecessary fetch and byte changes.
+              current=bool(rows and minimum in rows and max(rows)>=minimum)
+              complete=bool(rows and len(rows)>=src.MIN_HISTORY and old.get('missingMonths')==[])
+              if current and complete:
                   return old
+              if rows and not complete:
+                  # Backfill even when the latest date is already present; never replace
+                  # known-good dates with a partial or older historical response.
+                  try:
+                      full=src.produce(today=today,fetcher=fetcher); expanded=validated(full)
+                      if (len(expanded)>=src.MIN_HISTORY and full.get('missingMonths')==[] and
+                          minimum in expanded and max(expanded)>=max(rows) and
+                          all(d in expanded for d in rows if d>=min(expanded))):
+                          return full
+                      print('::warning::Historical index backfill incomplete; preserve verified history')
+                  except (ValueError,TypeError,KeyError,RuntimeError) as exc:
+                      print('::warning::Historical index backfill unavailable: '+str(exc)[:120])
+                  if current:return old
               if not rows:
                   full=src.produce(today=today,fetcher=fetcher); rows=validated(full); old=full
               else:
@@ -96,7 +110,7 @@ jobs:
                           if v is None and prior and prior[1:5]==ohlc: v=prior[5]
                           rows[d]=[d,*ohlc,v]
               if minimum not in rows: raise RuntimeError('Official index has no required stock date '+minimum+'; old data preserved')
-              out=dict(old); out.update(bars=[rows[d] for d in sorted(rows)[-200:]],asOf=max(rows),generatedAt=dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'))
+              out=dict(old); out.update(bars=[rows[d] for d in sorted(rows)[-src.HISTORY_LIMIT:]],asOf=max(rows),generatedAt=dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'))
               validated(out); return out
           def main():
               old=json.loads(p.read_text(encoding='utf-8')) if p.exists() else {}

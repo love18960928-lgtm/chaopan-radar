@@ -18,6 +18,9 @@ jobs:
           python-version: '3.12'
       - name: Check snapshot consistency without publishing fake updates
         run: |
-          python scripts/audit_three_low_freshness.py | tee freshness.txt
+          status=0
+          python scripts/audit_three_low_freshness.py > freshness.txt 2>&1 || status=$?
+          cat freshness.txt
           cat freshness.txt >> "$GITHUB_STEP_SUMMARY"
           echo '此巡檢不抓盤中即時行情，也不修改資料。' >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

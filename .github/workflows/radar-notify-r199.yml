@@ -220,6 +220,13 @@ jobs:
               # Keep an outbox if configured, to retry a failed send on a later run.
               configured=bool(os.environ.get('NTFY_URL','').strip() and os.environ.get('NTFY_TOKEN','').strip())
               if configured and events:pending.extend(events)
+              # Deduplicate persisted/retried events by the stable ID, before sending.
+              unique={}
+              for e in pending:
+                  if not isinstance(e,dict) or not isinstance(e.get('kind'),str) or not isinstance(e.get('dates'),list) or not e['dates'] or not all(isinstance(d,str) for d in e['dates']) or not isinstance(e.get('codes'),list) or not isinstance(e.get('count'),int):raise ValueError('invalid pending notification; stop')
+                  key=e.get('eventId') or digest(e)[:32]
+                  unique.setdefault(key,e)
+              pending[:]=unique.values()
               if events:state['lastEvents']=events
               summary=os.environ.get('GITHUB_STEP_SUMMARY')
               text=message(events) if events else '首次建立基準或沒有新資料，不通知。'
@@ -230,10 +237,9 @@ jobs:
               if configured and pending:
                   # One message per changed module. Stable sequence ID replaces an
                   # existing notification on supported clients; transport is not exactly-once.
-                  for _ in range(min(12,len(pending))):
-                      event=pending[0]
+                  for event in [e for e in pending if current.get(e['kind'])][:12]:
                       if not push(message([event]),event.get('eventId') or digest(event)[:32]):break
-                      pending.pop(0);base=save_state(state,base)
+                      pending.remove(event);base=save_state(state,base)
                       print('PUSH_ACCEPTED',event['kind'])
               elif not configured: print('PUSH_NOT_CONFIGURED')
 
