@@ -171,14 +171,15 @@ def parse_latest_otc(rows,expected):
     return result
 
 
-def fetch_market(date,market,allow_latest):
+def fetch_market(date,market,allow_latest,min_count=None):
+    threshold=min_count if min_count is not None else MARKET_MINIMUM[market]
     ymd=date.replace('-','')
     if market=='上市':
         params=urllib.parse.urlencode({'date':ymd,'type':'ALLBUT0999','response':'json'})
         url=f'https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?{params}'
         try: data=parse_twse_rwd(get_json(url),date)
         except Exception as ex:LOG.warning('TWSE historical request failed: %s',ex);data={}
-        if len(data)>=700:return data
+        if len(data)>=threshold:return data
         if allow_latest:
             try: data=parse_latest_twse(get_json('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL'),date)
             except Exception as ex:LOG.warning('TWSE open data failed: %s',ex)
@@ -189,13 +190,13 @@ def fetch_market(date,market,allow_latest):
     modern=f'https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes?{urllib.parse.urlencode({"response":"json","date":rocstr})}'
     try:
         data=parse_otc_modern(get_json(modern),date)
-        if len(data)>=450:return data
+        if len(data)>=threshold:return data
     except Exception as ex:LOG.warning('TPEx modern historic request failed: %s',ex)
     params=urllib.parse.urlencode({'l':'zh-tw','d':rocstr,'se':'EW'})
     url=f'https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php?{params}'
     try: data=parse_otc_historical(get_json(url),date)
     except Exception as ex:LOG.warning('TPEx historical request failed: %s',ex);data={}
-    if len(data)>=450:return data
+    if len(data)>=threshold:return data
     if allow_latest:
         try:data=parse_latest_otc(get_json('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes'),date)
         except Exception as ex:LOG.warning('TPEx open data failed: %s',ex)
@@ -446,11 +447,21 @@ def score_company(stock, candidate):
             'datePolicy':'月營收至少次月11日、季報依保守揭露期限、本益比不得使用未來日期（並非實際公告時刻）'}
 
 
+MARKET_MINIMUM={'上市':700,'上櫃':450}
+
+
+def market_refresh_threshold(known,stamp,market):
+    """Match the release gate: absolute floor and 90% of prior session coverage."""
+    floor=MARKET_MINIMUM[market]
+    previous=max((d for m,d in known if m==market and d<stamp),default=None)
+    count=len(known.get((market,previous),()))
+    return max(floor,math.ceil(count*.90)) if count>=floor else floor
+
+
 def markets_needing_refresh(known,stamp):
-    """Retry missing market sessions without pretending a partial batch is complete."""
-    minimum={'上市':700,'上櫃':450}
-    return [m for m,threshold in minimum.items()
-            if len(known.get((m,stamp),()))<threshold]
+    """Retry partial sessions even when above the absolute floor."""
+    return [m for m in MARKET_MINIMUM
+            if len(known.get((m,stamp),()))<market_refresh_threshold(known,stamp,m)]
 
 def backfill_dates(now,days,offset=0):
     """Historical window only; never shift the real latest-feed reference date."""
@@ -529,9 +540,10 @@ def run(days,delay,as_of=None,backfill_offset=0):
         if not needed:continue
         fetched={}
         for market in needed:
-            data=fetch_market(stamp,market,allow_latest=(date==now or date==now-dt.timedelta(days=1)))
-            if len(data)<(700 if market=='上市' else 450):
-                LOG.warning('%s %s ignored incomplete payload (%s records).',stamp,market,len(data))
+            threshold=market_refresh_threshold(known,stamp,market)
+            data=fetch_market(stamp,market,allow_latest=(date==now or date==now-dt.timedelta(days=1)),min_count=threshold)
+            if len(data)<threshold:
+                LOG.warning('%s %s ignored incomplete payload (%s records; required %s).',stamp,market,len(data),threshold)
             else:
                 fetched[market]=data
             time.sleep(delay)
