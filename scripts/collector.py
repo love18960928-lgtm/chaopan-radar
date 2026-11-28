@@ -464,6 +464,24 @@ def backfill_dates(now,days,offset=0):
 # A diary is an observation log, not permission to retire an old risk veto.
 _JOURNAL_FIELDS = ('stage', 'neck', 'risk', 'origin', 'strengthPhase', 'historicalBreakout')
 
+# Keep the latest 90 full observations and compact only older ordinary changes.
+# Retain the initial observation and both sides of every risk/event identity
+# transition. This is observational evidence, never a risk-veto release rule.
+_JOURNAL_CRITICAL_FIELDS = ('risk', 'origin', 'historicalBreakout')
+_JOURNAL_RECENT_LIMIT = 90
+
+
+def compact_structure_journal(events):
+    if len(events) <= _JOURNAL_RECENT_LIMIT:
+        return events
+    keep = {0}
+    for i in range(1, len(events)):
+        if any(events[i-1].get(f) != events[i].get(f) for f in _JOURNAL_CRITICAL_FIELDS):
+            keep.update((i-1, i))
+    cutoff = len(events) - _JOURNAL_RECENT_LIMIT
+    return [e for i, e in enumerate(events) if i >= cutoff or i in keep]
+
+
 
 def update_structure_journal(journal, row, asof):
     key = row['market'] + row['code']
@@ -484,8 +502,7 @@ def update_structure_journal(journal, row, asof):
         events[-1] = record  # one canonical EOD observation per day
     elif not events or any(events[-1].get(f) != record.get(f) for f in _JOURNAL_FIELDS):
         events.append(record)
-    if len(events) > 90:
-        del events[:-90]
+    events = compact_structure_journal(events)
     journal[key] = events
     row['stageHistory'] = [e.copy() for e in events[-12:]]
 

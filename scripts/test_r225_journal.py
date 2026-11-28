@@ -29,7 +29,7 @@ class Journal(unittest.TestCase):
         import datetime as dt
         j={};start=dt.date(2026,1,1)
         for i in range(100):r=self.put(j,(start+dt.timedelta(days=i)).isoformat(),neck=100+i)
-        self.assertEqual(len(j['上市2330']),90);self.assertEqual(len(r['stageHistory']),12)
+        self.assertEqual(len(j['上市2330']),91);self.assertEqual(j['上市2330'][0]['date'],start.isoformat());self.assertEqual(len(r['stageHistory']),12)
     def test_no_alias(self):
         j={};r=self.put(j,'2026-11-26');r['stageHistory'][0]['risk']='changed';self.assertEqual(j['上市2330'][0]['risk'],'low')
     def test_market_identity(self):
