@@ -460,6 +460,36 @@ def backfill_dates(now,days,offset=0):
     return [end-dt.timedelta(days=i) for i in range((days or 7)-1,-1,-1)]
 
 
+
+# A diary is an observation log, not permission to retire an old risk veto.
+_JOURNAL_FIELDS = ('stage', 'neck', 'risk', 'origin', 'strengthPhase', 'historicalBreakout')
+
+
+def update_structure_journal(journal, row, asof):
+    key = row['market'] + row['code']
+    events = journal.get(key, [])
+    date = row['date']
+    # A historical replay must not rewrite or expose observations from later dates.
+    # Retain the original stored journal even when an older snapshot is rebuilt.
+    if date != asof or (events and events[-1]['date'] > date):
+        row['stageHistory'] = [e.copy() for e in events if e['date'] <= date][-12:]
+        return
+    record = {'date':date, 'stage':row.get('unifiedStage'),
+              'neck':row.get('neck'), 'risk':row.get('riskLevel'),
+              'score':row.get('unifiedScore'),
+              'origin':(row.get('cycle') or {}).get('initialDate'),
+              'strengthPhase':(row.get('continuationContext') or {}).get('kind'),
+              'historicalBreakout':(row.get('continuationContext') or {}).get('breakoutDate')}
+    if events and events[-1]['date'] == date:
+        events[-1] = record  # one canonical EOD observation per day
+    elif not events or any(events[-1].get(f) != record.get(f) for f in _JOURNAL_FIELDS):
+        events.append(record)
+    if len(events) > 90:
+        del events[:-90]
+    journal[key] = events
+    row['stageHistory'] = [e.copy() for e in events[-12:]]
+
+
 def run(days,delay,as_of=None,backfill_offset=0):
     now=(dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()) if as_of is None else dt.date.fromisoformat(as_of)
     dates=backfill_dates(now,days,backfill_offset)
@@ -566,24 +596,9 @@ def run(days,delay,as_of=None,backfill_offset=0):
         atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values()),'signalEvents':historical_signals,'structureJournal':structure_journal})
         LOG.warning('BLOCKED public snapshot: market coverage/date inconsistent: %s',snapshot['marketAsOf'])
         return
-    # Track stage CHANGES prospectively in source history (up to 90 events).
-    # Do not manufacture observations for missed dates or recompute old results
-    # with today's newer algorithm. A restart without history simply starts fresh.
+    # Record changes prospectively, including risk-only and event identity changes.
     for row in universe['rows']:
-        key=row['market']+row['code']
-        record={'date':row['date'],'stage':row.get('unifiedStage'),
-                'neck':row.get('neck'),'risk':row.get('riskLevel'),
-                'score':row.get('unifiedScore'),
-                'origin':(row.get('cycle') or {}).get('initialDate'),
-                'strengthPhase':(row.get('continuationContext') or {}).get('kind'),
-                'historicalBreakout':(row.get('continuationContext') or {}).get('breakoutDate')}
-        events=structure_journal.setdefault(key,[])
-        if events and events[-1]['date']==record['date']:
-            events[-1]=record
-        elif not events or events[-1].get('stage')!=record['stage'] or events[-1].get('neck')!=record['neck'] or events[-1].get('strengthPhase')!=record['strengthPhase']:
-            events.append(record)
-        if len(events)>90:del events[:-90]
-        row['stageHistory']=events[-12:]
+        update_structure_journal(structure_journal, row, snapshot['asOf'])
     atomic_json(HISTORY,{'schema':1,'stocks':list(allstocks.values()),'signalEvents':updated_signals,'structureJournal':structure_journal})
     atomic_json(UNIVERSE,universe)
     atomic_json(SNAPSHOT,snapshot)
