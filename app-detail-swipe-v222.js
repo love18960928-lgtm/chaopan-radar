@@ -1,4 +1,4 @@
-/* CHAOPAN_RADAR_BUILD: R225-20261127-release-integrity */
+/* CHAOPAN_RADAR_BUILD: R225-20261128-event-baseline */
 /* Prior tested build (historical, not deployed version): CHAOPAN_RADAR_BUILD: R165-20261120-visual-card-red-up-green-down */
 'use strict';
 const $ = s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
@@ -24,6 +24,12 @@ function r214SessionGate(c){
  const missing=expected.filter(d=>!actual.includes(d));
  if(missing.length)return wait('市場交易日參考缺少個股K棒：'+missing.join('、')+'；停牌／無成交／資料缺漏待核對');
  if(expected.length!==days||actual.join('|')!==expected.join('|'))return wait('突破根數與市場交易日參考不一致，待核對');
+ // R225 round 5: the event-day volume baseline uses the preceding 20
+ // sessions, not merely the latest 20 bars. Do not substitute older bars.
+ const sessionStart=a.indexOf(event.date),barStart=c.bars.findIndex(b=>b?.[0]===event.date);
+ if(sessionStart<20||barStart<20)return wait('突破前20個市場交易日參考不足，量能基準待核對');
+ const expectedPrior=a.slice(sessionStart-20,sessionStart),actualPrior=c.bars.slice(barStart-20,barStart).map(b=>b?.[0]);
+ if(actualPrior.join('|')!==expectedPrior.join('|'))return wait('突破前20個市場交易日與個股K棒不一致，量能基準待核對');
  return null;
 }
 /* R144: shared, conservative EOD stock selection risk audit.
@@ -6464,8 +6470,8 @@ document.addEventListener('click',function(e){
 // R135: one runtime build identifier for the detail script and visible home badge.
 // A separate index.html change is still required for an authoritative static badge.
 (function(){
- const BUILD_ID='R225-20261127-release-integrity';
- const BUILD_LABEL='r225 · 行情完整性與歷史回補';
+ const BUILD_ID='R225-20261128-event-baseline';
+ const BUILD_LABEL='r225 · 第五輪量能基準核對';
  globalThis.CHAOPAN_DETAIL_BUILD=BUILD_ID;
  if(document.documentElement)document.documentElement.dataset.chaopanDetailBuild=BUILD_ID;
  // R161: The static index.html has kept r50/r60-era labels even after
